@@ -1,0 +1,113 @@
+Message(
+    id=7152,
+    peer_id=PeerChannel(
+        channel_id=1776900496),
+    date=datetime.datetime(2024, 1, 27, 0, 10, 38, tzinfo=datetime.timezone.utc),
+    message='Harlequins v Leicester - Gallagher Premiership - 26th January 2024',
+    out=False,
+    mentioned=False,
+    media_unread=False,
+    silent=False,
+    post=False,
+    from_scheduled=False,
+    legacy=False,
+    edit_hide=True,
+    pinned=False,
+    noforwards=False,
+    invert_media=False,
+    offline=False,
+    from_id=PeerUser(user_id=6374327237),
+    from_boosts_applied=None,
+    saved_peer_id=None,
+    fwd_from=None,
+    via_bot_id=None,
+    via_business_bot_id=None,
+    reply_to=MessageReplyHeader(reply_to_scheduled=False,
+        forum_topic=True, quote=False,
+        reply_to_msg_id=3833,
+        reply_to_peer_id=None,
+        reply_from=None,
+        reply_media=None,
+        reply_to_top_id=None,
+        quote_text=None,
+        quote_entities=[],
+        quote_offset=None
+    ),
+    media=MessageMediaDocument(
+        nopremium=False,
+        spoiler=False,
+        video=True,
+        round=False,
+        voice=False,
+        document=Document(
+            id=5881753065270284935,
+            access_hash=8943890647306949704,
+            file_reference=b'\x02i\xe9Y\x90\x00\x00\x1b\xf0f:@y=U\x87\xb8\xe2|\xbd\xd6\x1e\xc8o\xd2\xbe\xe0\xbd\x0c',
+            date=datetime.datetime(2024, 1, 27, 0, 10, 38, tzinfo=datetime.timezone.utc),
+            mime_type='video/mp4',
+            size=3550593583,
+            dc_id=4,
+            attributes=[DocumentAttributeVideo(
+                        duration=5428.76,
+                        w=1920,
+                        h=1080,
+                        round_message=False,
+                        supports_streaming=True,
+                        nosound=False,
+                        preload_prefix_size=None
+                    ),
+                    DocumentAttributeFilename(
+                        file_name='Harlequins_v_Leicester_Gallagher_Premiership_26th_January_2024.mp4')
+                    ],
+            thumbs=[PhotoStrippedSize(
+                type='i',
+                bytes=b'\x01\x16(\xcc\x11\r\xdfu\xf1N0\x0ep\xaf\xedWA\xa5\xdf\x83\xc9\xa8\xe6\x03?\xc8o\xee\xb5\x06\x19\x060\r^\xde\xa4\xe34\x8c\xdb}\xc5\x1c\xc0Q!\x80\xc3)\xfc\xa8\xabfU\xf5\xa2\x9d\xc0\x85\x9c\x95\xe0\x91L\x0e\xdd\xd8\xd1ER@;q?1\xa8\xd9\xb9\xc6O\xe7E\x14\x08M\xf8<t\xf7\xa2\x8a(\x19'),
+                PhotoSize(type='m', w=320, h=180, size=13787)], video_thumbs=[]
+                ),
+            alt_document=None,
+            ttl_seconds=None
+        ),
+        reply_markup=None,
+        entities=[],
+        views=None,
+        forwards=None,
+        replies=None,
+        edit_date=datetime.datetime(2024, 1, 27, 0, 15, 54, tzinfo=datetime.timezone.utc),
+        post_author=None,
+        grouped_id=None,
+        reactions=MessageReactions(results=
+                [ReactionCount(reaction=ReactionEmoji(emoticon='🔥'), count=6, chosen_order=None),
+                ReactionCount(reaction=ReactionEmoji(emoticon='👍'),
+                count=2, chosen_order=None)
+                ],
+            min=False,
+            can_see_list=True,
+            reactions_as_tags=False,
+            recent_reactions=[
+                MessagePeerReaction(peer_id=PeerUser(user_id=5805132022),
+                    date=datetime.datetime(2024, 1, 29, 0, 17, 49, tzinfo=datetime.timezone.utc),
+                    reaction=ReactionEmoji(emoticon='🔥'),
+                    big=False,
+                    unread=False,
+                    my=False
+                    ),
+                MessagePeerReaction(peer_id=PeerUser(user_id=6462185091),
+                    date=datetime.datetime(2024, 1, 28, 10, 57, 39, tzinfo=datetime.timezone.utc),
+                    reaction=ReactionEmoji(emoticon='🔥'),
+                    big=False,
+                    unread=False,
+                    my=False
+                    ),
+                MessagePeerReaction(peer_id=PeerUser(user_id=897059749),
+                    date=datetime.datetime(2024, 1, 27, 19, 49, 36, tzinfo=datetime.timezone.utc),
+                    reaction=ReactionEmoji(emoticon='🔥'),
+                    big=False,
+                    unread=False,
+                    my=False)
+            ]
+        ),
+        restriction_reason=[],
+        ttl_period=None,
+        quick_reply_shortcut_id=None
+	)
+)
