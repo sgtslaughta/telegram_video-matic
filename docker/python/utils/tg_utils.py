@@ -135,7 +135,15 @@ class TGAccount:
         except errors as e:
             log(f"Error getting videos by topic: {e}", level="ERROR")
 
-    async def grab_video(self, semaphore, client, message, dl_path='./'):
+    async def grab_video(self, semaphore, client, message, idx, dl_path='./'):
+        total_b = message.file.size
+        progress_bart = tqdm(total=total_b, unit='B', unit_scale=True, unit_divisor=1024, desc=message.file.name,
+                             leave=False, position=idx)
+
+        def progress_bar(downloaded_bytes, total_bytes):
+            if total_bytes:
+                diff_since_last = downloaded_bytes - progress_bart.n
+                progress_bart.update(diff_since_last)
         if not pathlib.Path(dl_path).exists():
             log(f"Download path does not exist: {dl_path}", level="ERROR")
             return None
@@ -143,7 +151,7 @@ class TGAccount:
         try:
             async with semaphore:
                 with open(dl_path + message.file.name, 'wb') as f:
-                    await download_file(client, message.document, f)
+                    await download_file(client, message.document, f, progress_callback=progress_bar)
 
         except KeyboardInterrupt as e:
             log(f"Error grabbing video: {e}", level="ERROR")
@@ -196,8 +204,8 @@ async def test(tga):
         ]
         # Define the list of videos you want to download concurrently
         video_tasks = []
-        for message in messages_to_download:
-            video_tasks.append(tga.grab_video(semaphore, client, message, './'))
+        for idx, message in enumerate(messages_to_download):
+            video_tasks.append(tga.grab_video(semaphore, client, message, idx, './'))
 
         # Run the grab_video tasks concurrently
         await asyncio.gather(*video_tasks)
