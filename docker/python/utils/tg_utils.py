@@ -1,27 +1,11 @@
 from telethon.sync import TelegramClient, functions, types
 from telethon.tl.functions.messages import GetDialogsRequest
-from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.tl.types import InputPeerEmpty
 from telethon import errors
 from tqdm import tqdm
 from log_utils import log
 import pathlib
-import threading
 import asyncio
-import aiohttp
 from fast_telethon import download_file
-import time
-
-class Timer:
-    def __init__(self, time_between=2):
-        self.start_time = time.time()
-        self.time_between = time_between
-
-    def can_send(self):
-        if time.time() > (self.start_time + self.time_between):
-            self.start_time = time.time()
-            return True
-        return False
 
 
 class TGAccount:
@@ -122,7 +106,7 @@ class TGAccount:
                         for msg in messages:
                             if msg.reply_to:
                                 if msg.reply_to.reply_to_msg_id == topic_id:
-                                    if msg.media:
+                                    if msg.media.video:
                                         videos[msg.id] = {
                                             'text': msg.message,
                                             'id': msg.id,
@@ -144,6 +128,7 @@ class TGAccount:
             if total_bytes:
                 diff_since_last = downloaded_bytes - progress_bart.n
                 progress_bart.update(diff_since_last)
+
         if not pathlib.Path(dl_path).exists():
             log(f"Download path does not exist: {dl_path}", level="ERROR")
             return None
@@ -156,7 +141,13 @@ class TGAccount:
         except KeyboardInterrupt as e:
             log(f"Error grabbing video: {e}", level="ERROR")
 
-    def get_message_by_id(self, msg_id, channel_name):
+    def get_message_by_id(self, msg_id: int, channel_name: str) -> None:
+        """
+        Get a telethon Telegram message object by ID.
+        :param msg_id: int - the message ID
+        :param channel_name: str - the channel name
+        :return: None
+        """
         try:
             with TelegramClient('name', self.api_id, self.api_hash) as client:
                 result = client(GetDialogsRequest(
@@ -175,64 +166,18 @@ class TGAccount:
         except errors as e:
             log(f"Error getting message by ID: {e}", level="ERROR")
 
+    async def threaded_dl(self, message_list: list, dl_path: str = './') -> None:
+        """
+        Download videos concurrently using asyncio.
+        :param message_list: list - of the telethon Telegram message objects containing the videos
+        :param dl_path: str - the path to download the videos to
+        :return:
+        """
+        semaphore = asyncio.Semaphore(5)
+        async with TelegramClient('name', self.api_id, self.api_hash) as client:
+            video_tasks = []
+            for idx, message in enumerate(message_list):
+                video_tasks.append(self.grab_video(semaphore, client, message, idx, dl_path))
 
-
-api_id = 26748451
-api_hash = '00200de1624adc3900bfc3075665dd40'
-tg = TGAccount(api_id, api_hash)
-channels = tg.get_channels()
-# for ch in channels:
-#     topics = tg.get_topics(ch)
-#     for key, value in topics.items():
-#         print(key, value['title'])
-# chats = tg.get_chats_by_topic('Rugby Try-Lights', 8837)
-# print(chats)
-videos = tg.get_videos_by_topic('Rugby Try-Lights', 8837)
-# tg.grab_video(9222, 'Rugby Try-Lights')
-# tg.grab_video(9221, 'Rugby Try-Lights')
-msg1 = tg.get_message_by_id(9222, 'Rugby Try-Lights')
-msg2 = tg.get_message_by_id(9221, 'Rugby Try-Lights')
-
-
-async def test(tga):
-    semaphore = asyncio.Semaphore(5)
-    async with TelegramClient('name', api_id, api_hash) as client:
-        messages_to_download = [
-            msg1,
-            msg2,
-            # Add more message objects as needed
-        ]
-        # Define the list of videos you want to download concurrently
-        video_tasks = []
-        for idx, message in enumerate(messages_to_download):
-            video_tasks.append(tga.grab_video(semaphore, client, message, idx, './'))
-
-        # Run the grab_video tasks concurrently
-        await asyncio.gather(*video_tasks)
-
-print(videos)
-asyncio.run(test(tg))
-
-# for key, value in videos.items():
-
-
-# async def main(tga):
-#     # Define the list of videos you want to download concurrently
-#     videos_to_download = [
-#         (9222, 'Rugby Try-Lights'),
-#         (9221, 'Rugby Try-Lights'),
-#         # Add more video IDs and channel names here if needed
-#     ]
-#
-#     semaphore = asyncio.Semaphore(5)
-#
-#     # Create tasks for each video to be downloaded concurrently
-#     tasks = []
-#     for video_info in videos_to_download:
-#         tasks.append(tga.grab_video(semaphore, *video_info))
-#
-#     # Run the tasks concurrently
-#     await asyncio.gather(*tasks)
-
-
-
+            # Run the grab_video tasks concurrently
+            await asyncio.gather(*video_tasks)
