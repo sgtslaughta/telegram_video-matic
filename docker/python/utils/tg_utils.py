@@ -1,5 +1,6 @@
 """
 The functions in this file are used to interact with the Telegram API using the Telethon library.
+
 """
 
 from telethon.sync import TelegramClient, functions, types
