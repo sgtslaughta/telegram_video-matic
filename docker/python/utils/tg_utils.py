@@ -5,12 +5,12 @@ The functions in this file are used to interact with the Telegram API using the 
 
 from telethon.sync import TelegramClient, functions, types
 from telethon.tl.functions.messages import GetDialogsRequest
-from telethon import errors
+import sqlite3
 from tqdm import tqdm
-from log_utils import log
+from .log_utils import log
 import pathlib
 import asyncio
-from fast_telethon import download_file
+from .fast_telethon import download_file
 
 
 class TGAccount:
@@ -18,58 +18,52 @@ class TGAccount:
         self.api_id = api_id
         self.api_hash = api_hash
 
-    def get_channels(self, limit=200):
+    async def get_channels(self, limit=200):
         last_date = None
         channels = {}
-        try:
-            with TelegramClient('name', self.api_id, self.api_hash) as client:
-                result = client(GetDialogsRequest(
-                    offset_date=last_date,
-                    offset_id=0,
-                    offset_peer='username',
-                    limit=limit,
-                    hash=0
-                ))
-                for chat in result.chats:
-                    if type(chat) is types.Channel:
-                        channels[chat.id] = {
-                            'name': chat.title,
-                            'id': chat.id,
-                            'raw_obj': chat,
-                        }
-                if not channels:
-                    log("No channels found", level="WARN")
-                    return None
-                return channels
-        except errors as e:
-            log(f"Error getting channels: {e}", level="ERROR")
-
-    def get_topics(self, channel_name=None, limit=100):
-        try:
-            topics = {}
-            with TelegramClient('name', self.api_id, self.api_hash) as client:
-                result = client(functions.channels.GetForumTopicsRequest(
-                    channel=channel_name,
-                    offset_date=None,
-                    offset_id=0,
-                    offset_topic=0,
-                    limit=limit,
-                ))
-                for topic in result.topics:
-                    topics[topic.id] = {
-                        'title': topic.title,
-                        'id': topic.id,
-                        'raw': topic,
+        async with TelegramClient('name', self.api_id, self.api_hash) as client:  # Use async with
+            result = await client(GetDialogsRequest(
+                offset_date=last_date,
+                offset_id=0,
+                offset_peer='username',
+                limit=limit,
+                hash=0
+            ))
+            for chat in result.chats:
+                if isinstance(chat, types.Channel):  # Use isinstance() instead of type()
+                    channels[chat.id] = {
+                        'name': chat.title,
+                        'id': chat.id,
+                        'raw_obj': chat,
                     }
-                return topics
-        except errors as e:
-            log(f"Error getting topics: {e}", level="ERROR")
+            if not channels:
+                log("No channels found", level="WARN")
+                return None
+            return channels
 
-    def get_chats_by_topic(self, channel_name, topic_id, ch_limit=100, msg_limit=100):
+    async def get_topics(self, channel_name=None, limit=100):
+        topics = {}
+        async with TelegramClient('name', self.api_id, self.api_hash) as client:
+            result = await client(functions.channels.GetForumTopicsRequest(
+                channel=channel_name,
+                offset_date=None,
+                offset_id=0,
+                offset_topic=0,
+                limit=limit,
+            ))
+            for topic in result.topics:
+                topics[topic.id] = {
+                    'title': topic.title,
+                    'id': topic.id,
+                    'raw': topic,
+                }
+            return topics
+
+    async def get_chats_by_topic(self, channel_name, topic_id, ch_limit=100, msg_limit=100):
         try:
             chats = {}
-            with TelegramClient('name', self.api_id, self.api_hash) as client:
-                result = client(GetDialogsRequest(
+            async with TelegramClient('name', self.api_id, self.api_hash) as client:
+                result = await client(GetDialogsRequest(
                     offset_id=0,
                     offset_date=None,
                     offset_peer='username',
@@ -91,38 +85,44 @@ class TGAccount:
                 log(f"No chats found for topic {topic_id}", level="WARN")
                 return None
             return chats
-        except errors as e:
+        except [Exception] as e:
             log(f"Error getting chats by topic: {e}", level="ERROR")
 
-    def get_videos_by_topic(self, channel_name, topic_id, ch_limit=100, msg_limit=100):
-        try:
-            videos = {}
-            with TelegramClient('name', self.api_id, self.api_hash) as client:
-                result = client(GetDialogsRequest(
-                    offset_id=0,
-                    offset_date=None,
-                    offset_peer='username',
-                    limit=ch_limit,
-                    hash=0
-                ))
-                for channel in result.chats:
-                    if type(channel) is types.Channel and channel.title == channel_name:
-                        messages = client.get_messages(channel, limit=msg_limit)
-                        for msg in messages:
-                            if msg.reply_to:
-                                if msg.reply_to.reply_to_msg_id == topic_id:
-                                    if msg.media.video:
+    async def get_videos_by_topic(self, channel_name, topic_id, ch_limit=100, msg_limit=2000):
+        videos = {}
+        if not channel_name or not topic_id:
+            log("Channel name or topic ID not provided", level="ERROR")
+            return None
+        async with TelegramClient('name', self.api_id, self.api_hash) as client:
+            result = await client(GetDialogsRequest(
+                offset_id=0,
+                offset_date=None,
+                offset_peer='username',
+                limit=ch_limit,
+                hash=0
+            ))
+            if not result:
+                log("No dialogs found", level="ERROR")
+                return None
+            for channel in result.chats:
+                if type(channel) is types.Channel and channel.title == channel_name:
+                    messages = await client.get_messages(channel, limit=msg_limit)
+                    for msg in messages:
+                        if msg.reply_to:
+                            if msg.reply_to.reply_to_msg_id == topic_id:
+                                try:
+                                    if msg.media.document:
                                         videos[msg.id] = {
                                             'text': msg.message,
                                             'id': msg.id,
                                             'raw_obj': msg,
                                         }
-            if not videos:
-                log(f"No videos found for topic {topic_id}", level="WARN")
-                return None
-            return videos
-        except errors as e:
-            log(f"Error getting videos by topic: {e}", level="ERROR")
+                                except AttributeError:
+                                    pass
+        if not videos:
+            log(f"No videos found for topic {topic_id}", level="WARN")
+            return None
+        return videos
 
     async def grab_video(self, semaphore, client, message, idx, dl_path='./'):
         total_b = message.file.size
@@ -143,10 +143,10 @@ class TGAccount:
                 with open(dl_path + message.file.name, 'wb') as f:
                     await download_file(client, message.document, f, progress_callback=progress_bar)
 
-        except KeyboardInterrupt as e:
+        except [Exception] as e:
             log(f"Error grabbing video: {e}", level="ERROR")
 
-    def get_message_by_id(self, msg_id: int, channel_name: str) -> None:
+    async def get_message_by_id(self, msg_id: int, channel_name: str) -> None:
         """
         Get a telethon Telegram message object by ID.
         :param msg_id: int - the message ID
@@ -154,8 +154,8 @@ class TGAccount:
         :return: None
         """
         try:
-            with TelegramClient('name', self.api_id, self.api_hash) as client:
-                result = client(GetDialogsRequest(
+            async with TelegramClient('name', self.api_id, self.api_hash) as client:
+                result = await client(GetDialogsRequest(
                     offset_id=0,
                     offset_date=None,
                     offset_peer='username',
@@ -168,7 +168,7 @@ class TGAccount:
                         for msg in messages:
                             if msg.id == msg_id:
                                 return msg
-        except errors as e:
+        except [Exception] as e:
             log(f"Error getting message by ID: {e}", level="ERROR")
 
     async def threaded_dl(self, message_list: list, dl_path: str = './') -> None:
