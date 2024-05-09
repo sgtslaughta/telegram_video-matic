@@ -20,7 +20,7 @@ def log(msg: str, level: str = "INFO") -> None:
         color = white
     elif level == "WARN":
         color = yellow
-    elif level == "ERROR":
+    elif level == "ERROR" or level == "FAIL":
         color = red
     elif level == "SUCCESS":
         color = green

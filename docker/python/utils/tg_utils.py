@@ -186,4 +186,3 @@ class TGAccount:
 
             # Run the grab_video tasks concurrently
             await asyncio.gather(*video_tasks)
-
