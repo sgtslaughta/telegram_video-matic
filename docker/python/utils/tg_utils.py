@@ -5,12 +5,14 @@ The functions in this file are used to interact with the Telegram API using the 
 
 from telethon.sync import TelegramClient, functions, types
 from telethon.tl.functions.messages import GetDialogsRequest
+from telethon.tl.types import MessageMediaDocument
 import sqlite3
 from tqdm import tqdm
 from .log_utils import log
 import pathlib
 import asyncio
 from .fast_telethon import download_file
+import base64
 
 
 class TGAccount:
@@ -55,7 +57,7 @@ class TGAccount:
                 topics[topic.id] = {
                     'title': topic.title,
                     'id': topic.id,
-                    'raw': topic,
+                    'raw_obj': topic,
                 }
             return topics
 
@@ -87,6 +89,61 @@ class TGAccount:
             return chats
         except [Exception] as e:
             log(f"Error getting chats by topic: {e}", level="ERROR")
+
+    async def get_all_videos(self, channel_name):
+        videos = {}
+        if not channel_name:
+            log("Channel name not provided", level="ERROR")
+            return None
+        async with TelegramClient('name', self.api_id, self.api_hash) as client:
+            log("Fetching total messages...")
+            dialogs = await client.get_dialogs()
+            for dialog in dialogs:
+                if dialog.title == channel_name:
+                    try:
+                        if dialog.entity.megagroup:
+                            total = int(dialog.message.id)
+                            break
+                    except AttributeError:
+                        pass
+            log(f"Attempting to fetch video messages from {total} total messages, this may take some time...")
+            pbar = tqdm(total=total, desc=f"Looking for videos in: {channel_name}")
+            async for message in client.iter_messages(channel_name):
+                pbar.update(1)
+                # Check if the message has media
+                if message.media:
+                    # Check if the media type is a document (video, gif, etc.)
+                    if isinstance(message.media, MessageMediaDocument):
+                        # If it's a video, process the message
+                        if message.media.document.mime_type.startswith('video/'):
+                            # Do something with the video message
+                            if message.reply_to:
+                                if message.reply_to.forum_topic:
+                                    try:
+                                        f_name = message.media.document.attributes[1].file_name
+                                    except AttributeError:
+                                        continue
+                                    except IndexError:
+                                        continue
+                                    thumb = await client.download_media(message, thumb=-1, file=bytes)
+                                    if thumb:
+                                        thumb_base64 = base64.b64encode(thumb).decode('utf-8')
+                                    else:
+                                        thumb_base64 = None
+                                    videos[message.id] = {
+                                        'title': message.message,
+                                        'id': message.id,
+                                        'topic_id': message.reply_to.reply_to_msg_id,
+                                        'ch_id': message.peer_id.channel_id,
+                                        'file_name': f_name,
+                                        'date_posted': message.date,
+                                        'raw_obj': message,
+                                        "thumb": thumb_base64
+                                    }
+        if not videos:
+            log(f"No videos found for channel {channel_name}", level="WARN")
+            return None
+        return videos
 
     async def get_videos_by_topic(self, channel_name, topic_id, ch_limit=100, msg_limit=2000):
         videos = {}

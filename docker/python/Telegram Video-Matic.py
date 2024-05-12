@@ -1,9 +1,11 @@
 import pandas as pd
+from IPython.core.display import HTML
 
-from utils.tg_utils import TGAccount
+from utils import db_utils as db
 import streamlit as st
 import asyncio
 import pandas as pd
+from utils.data_utils import show_tags
 
 if 'api_id' not in st.session_state:
     st.session_state.api_id = None
@@ -21,6 +23,9 @@ if 'topic_select' not in st.session_state:
     st.session_state.topic_select = None
 if 'videos' not in st.session_state:
     st.session_state.videos = None
+
+db_url = 'mysql+mysqlconnector://user:password@127.0.0.1:3306/moviesdb'
+st.set_page_config(page_title="Telegram Video-Matic", page_icon=":tv:", layout="wide")
 
 
 def how_to():
@@ -55,53 +60,76 @@ def api_entry():
                                     args=[api_id, api_hash])
 
 
-async def get_channels():
-    st.session_state.channels = await st.session_state.tg_obj.get_channels()
+def get_channels():
+    query = 'SELECT * FROM tg_channel'
+    st.session_state.channels = db.execute_db_command(db_url, query)
 
 
-async def get_topics(channel_name):
-    st.session_state.topics = await st.session_state.tg_obj.get_topics(channel_name)
+def get_topics():
+    db_channel_id = st.session_state.channel_select[0]
+    query = f"SELECT * FROM tg_topic WHERE telegram_channel_id='{db_channel_id}'"
+    st.session_state.topics = db.execute_db_command(db_url, query)
 
 
-async def get_videos():
-    channel = st.session_state.channel_select
-    data = st.session_state.topics
-    title_to_find = st.session_state.topic_select
-    id_found = None
-    for topic in data.values():
-        if topic['title'] == title_to_find:
-            id_found = topic['id']
-            break
-    if id_found:
-        st.session_state.videos = \
-            await st.session_state.tg_obj.get_videos_by_topic(channel, id_found)
+def get_videos():
+    topic = st.session_state.topic_select[0]
+    query = f"SELECT * FROM tg_message WHERE topic_id='{topic[0]}'"
+    st.session_state.videos = db.execute_db_command(db_url, query)
+
+
+def base64_to_image(base64_str):
+    """
+    Converts a base64 string to an image.
+    Args:
+        base64_str:
+
+    Returns:
+
+    """
+    # Decode base64 string to binary data
+    return f'data:image/jpeg;base64,{base64_str}'
+
+
+def get_tags(msg_id):
+    return show_tags(db_url, msg_id)
 
 
 async def main():
     st.title("Telegram Video-Matic")
     st.write("Welcome to the Telegram Video-Matic app.")
-    if st.session_state.tg_obj is None:
-        st.session_state.tg_obj = TGAccount(
-            int(st.session_state.api_id),
-            st.session_state.api_hash)
+    st.write("Please select a channel and topic to view the videos.")
     if st.session_state.channels is None:
-        await get_channels()
-    channel_names = [channel['name'] for channel in st.session_state.channels.values()]
+        get_channels()
+
+    channel_names = [channel[1] for channel in st.session_state.channels]
     channel_select = st.selectbox("Select a channel", channel_names)
-    st.session_state.channel_select = channel_select
+    st.session_state.channel_select = [channel for channel in st.session_state.channels if channel[1] == channel_select][0]
     if st.session_state.topics is None:
-        await get_topics(channel_select)
-    topic_names = [topic['title'] for topic in st.session_state.topics.values()]
+        get_topics()
+    topic = st.session_state.topics
+    topic_names = [topic[1] for topic in st.session_state.topics]
     topic_select = st.selectbox("Select a topic", topic_names)
+    st.session_state.topic_select = [topic for topic in st.session_state.topics if topic[1] == topic_select]
     if st.session_state.topic_select != topic_select or st.session_state.videos is None:
-        st.session_state.topic_select = topic_select
+        st.session_state.topic_select = [topic for topic in st.session_state.topics if topic[1] == topic_select]
         st.session_state.videos = None
     st.write(f"Videos: {topic_select}")
     if st.session_state.videos is None:
-        await get_videos()
+        get_videos()
     if st.session_state.videos:
-        df = pd.DataFrame(st.session_state.videos).transpose()
-        st.dataframe(df)
+        st.write(f"Found {len(st.session_state.videos)} videos.")
+        df = pd.DataFrame(st.session_state.videos)
+        df['thumb'] =  df['thumb'].apply(base64_to_image)
+        df['tags'] = df['id'].apply(get_tags)
+        df = st.dataframe(df,
+                     hide_index=True,
+                     use_container_width=True,
+                          column_config={'thumb': st.column_config.ImageColumn()})
+
+
+
+    else:
+        st.write("No videos found.")
         # st.write(st.session_state.videos)
 
 how_to()
