@@ -2,14 +2,13 @@
 The functions in this file are used to interact with the Telegram API using the Telethon library.
 
 """
-
+from utils.db_utils import DBHelper
 from telethon.sync import TelegramClient, functions, types
 from telethon.tl.functions.messages import GetDialogsRequest
 from telethon.tl.types import MessageMediaDocument
+from telethon.tl.types import InputMessagesFilterDocument, InputMessagesFilterPhotos, InputMessagesFilterVideo
+from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, InputMessagesFilterVoice
 from telethon import errors
-from utils.db_utils import DBHelper
-import mysql
-from mysql.connector.errors import IntegrityError
 import sqlite3
 from tqdm import tqdm
 from .log_utils import log
@@ -26,6 +25,7 @@ def ensure_authenticated(method):
         if not self.client or not await self.client.is_user_authorized():
             await self.try_login()
         return await method(self, *args, **kwargs)
+
     return wrapper
 
 
@@ -37,6 +37,7 @@ class TGAccount:
     :param phone: str - the phone number associated with the account
     :param session_location: str - the location to store the session file
     """
+
     def __init__(self,
                  api_id: int,
                  api_hash: str,
@@ -55,16 +56,29 @@ class TGAccount:
         try:
             await self.client.connect()
             if not await self.client.is_user_authorized():
+                # # Request the phone code
+                # phone_code_hash = await self.client.send_code_request(self.phone)
+                # print(f"Phone code hash: {phone_code_hash}")
                 if self.auth_callback:
+                    # Pass the phone code hash to the auth callback if available
                     code = self.auth_callback()
                 else:
                     code = input('Enter the code: ')
-                await self.client.sign_in(self.phone, code)
+                # Sign in using the received phone code hash and the entered code
+                await self.client.sign_in(phone=self.phone, code=code)
         except KeyboardInterrupt as e:
             log(f"Error logging in: {e}", level="ERROR")
 
     @ensure_authenticated
-    async def get_channels(self, limit=200):
+    async def get_channels(self, limit=200) -> dict | None:
+        """
+        Get the channels that the account is a member of.
+        Args:
+            limit: The max number of channels to get
+
+        Returns: dict The channels that the account is a member of
+
+        """
         last_date = None
         channels = {}
         try:
@@ -99,7 +113,7 @@ class TGAccount:
         Get the topics from a channel.
         :param channel_name: The name or ID of the channel
         :param limit: How many topics to get
-        :return:
+        :return: dict The topics from the channel or None if there are no topics
         """
         topics = {}
         if not channel_name:
@@ -127,72 +141,42 @@ class TGAccount:
         except Exception as e:
             log(f"Error getting topics: {e}", level="ERROR")
 
-    async def get_video_mt(self, message,
-                           db_url,
-                           client,
-                           progress=0,
-                           total=0,
-                           callback=None,
-                           topic_dict=None,
-                           channel_dict=None,
-                           pool=None):
+    @ensure_authenticated
+    async def get_media_message(self, message, callback=None):
         # Check if the message has media
+        if not message.media:
+            log(f"No media found in message: {message.id}", level="WARN")
+            return None
         if message.media:
             # Check if the media type is a document (video, gif, etc.)
             if isinstance(message.media, MessageMediaDocument):
-                # If it's a video, process the message
-                if message.media.document.mime_type.startswith('video/'):
-                    # Do something with the video message
-                    if message.reply_to:
-                        if message.reply_to.forum_topic:
-                            if callback:
-                                progress += 1
-                                msg = f"{progress}/{total}: {message.message}"
-                                callback(progress, total, msg)
-                            try:
-                                f_name = message.media.document.attributes[1].file_name
-                            except AttributeError:
-                                return
-                            except IndexError:
-                                return
-                            thumb = await client.download_media(message, thumb=-1, file=bytes)
-                            if thumb:
-                                thumb_base64 = base64.b64encode(thumb).decode('utf-8')
-                            else:
-                                thumb_base64 = None
-                            # Mismatch on the Ids, need to fix this (tg ch id and topic id)
-                            topic_id = None
-                            channel_id = None
-                            try:
-                                topic_id = topic_dict[int(message.reply_to.reply_to_msg_id)]
-                            except KeyError:
-                                if message.reply_to.reply_to_msg_id not in topic_dict:
-                                    topic_id = None
-                            try:
-                                channel_id = channel_dict[message.peer_id.channel_id]
-                            except KeyError:
-                                if message.peer_id.channel_id not in channel_dict:
-                                    channel_id = None
-                            try:
-                                x = {
-                                    'name': f_name,
-                                    'msg_id': message.id,
-                                    'topic_id': topic_id,
-                                    'tg_ch_id': channel_id,
-                                    'date_posted': message.date,
-                                    'raw_obj': message.stringify(),
-                                    "thumb": thumb_base64,
-                                    'date_added': datetime.now(),
-                                }
-                            except KeyError:
-                                log(f"KeyError: {message.id}", level="ERROR")
-                                return
-                            # insert_into_table(db_url, Message, filter_column='msg_id', filter_value=x['msg_id'],
-                            #                   **x)
-                            self.insert_video(x, pool)
+                msgs = {}
 
-    @staticmethod
-    async def grab_file(client, message, idx, dl_path='./', callback=None) -> None:
+                try:
+                    f_name = message.media.document.attributes[1].file_name
+                except AttributeError:
+                    return
+                except IndexError:
+                    return
+                thumb = await self.client.download_media(message, thumb=-1, file=bytes)
+                if thumb:
+                    thumb_base64 = base64.b64encode(thumb).decode('utf-8')
+                else:
+                    thumb_base64 = None
+                try:
+                    x = {
+                        'name': f_name,
+                        'msg_id': message.id,
+                        'date_posted': message.date,
+                        'raw_obj': message.stringify(),
+                        "thumb": thumb_base64,
+                        'date_added': datetime.now(),
+                    }
+                except Exception as e:
+                    log(f"Error getting media message: {e}", level="ERROR")
+
+    @ensure_authenticated
+    async def grab_file(self, message, idx, dl_path='./', callback=None) -> None:
         """
         Download a file from a Telegram message.
         :param client: The Telegram client
@@ -202,24 +186,27 @@ class TGAccount:
         :param callback: Optional callback function to update the progress
         :return: None
         """
+
         def progress_bar(downloaded_bytes, total_bytes):
             if total_bytes:
                 diff_since_last = downloaded_bytes - progress_bar.n
                 progress_bar.update(diff_since_last)
+
         total_b = message.file.size
         if not callback:
             progress_bar = tqdm(total=total_b, unit='B', unit_scale=True, unit_divisor=1024, desc=message.file.name,
-                                 leave=False, position=idx)
+                                leave=False, position=idx)
             callback = progress_bar
 
         if not pathlib.Path(dl_path).exists():
             log(f"Download path does not exist: {dl_path}", level="ERROR")
             return None
         try:
-            path = await client.download_media(message, dl_path, progress_callback=callback)
+            path = await self.client.download_media(message, dl_path, progress_callback=callback)
         except KeyboardInterrupt as e:
             log(f"Error grabbing video: {e}", level="ERROR")
 
+    @ensure_authenticated
     async def get_messages_by_id(self, msg_ids: list, channel_name: str) -> list:
         """
         Get a telethon Telegram message object by ID.
@@ -229,13 +216,13 @@ class TGAccount:
         """
         try:
             messages = []
-            async with TelegramClient(self.session_location, self.api_id, self.api_hash) as client:
-                async for msg in client.iter_messages(channel_name, ids=msg_ids):
-                    messages.append(msg)
+            async for msg in self.client.iter_messages(channel_name, ids=msg_ids):
+                messages.append(msg)
             return messages
         except [Exception] as e:
             log(f"Error getting message by ID: {e}", level="ERROR")
 
+    @ensure_authenticated
     async def multi_download(self, message_list: list, dl_path: str = './') -> None:
         """
         Download media concurrently using asyncio.
@@ -243,10 +230,69 @@ class TGAccount:
         :param dl_path: str - the path to download the videos to
         :return:
         """
-        async with TelegramClient(self.session_location, self.api_id, self.api_hash) as client:
-            video_tasks = []
-            for idx, message in enumerate(message_list):
-                video_tasks.append(self.grab_file(client, message, idx, dl_path))
+        video_tasks = []
+        for idx, message in enumerate(message_list):
+            video_tasks.append(self.grab_file(message, idx, dl_path))
 
             # Run the grab_video tasks concurrently
-            await asyncio.gather(*video_tasks)
+        await asyncio.gather(*video_tasks)
+
+    @ensure_authenticated
+    async def get_messages(self,
+                           limit: int = 100,
+                           offset_id: int = 0,
+                           offset_date: int = None,
+                           search_str: str = None,
+                           msg_filter: str = None,
+                           min_id: int = 0,
+                           max_id: int = 0,
+                           entity: str = None) -> list:
+        """
+        Get messages from a channel.
+        Args:
+            limit:
+            offset_id:
+            offset_date:
+            search_str:
+            msg_filter:
+            min_id:
+            max_id:
+            entity:
+
+        References: https://docs.telethon.dev/en/stable/modules/client.html#telethon.client.messages.MessageMethods.iter_messages
+        Returns:
+
+        """
+        try:
+
+            messages = []
+            async for msg in self.client.iter_messages(limit=limit,
+                                                       offset_id=offset_id,
+                                                       offset_date=offset_date,
+                                                       search=search_str,
+                                                       filter=msg_filter,
+                                                       min_id=min_id,
+                                                       max_id=max_id,
+                                                       entity=entity):
+                messages.append(msg)
+            return messages
+        except Exception as e:
+            log(f"Error getting messages: {e}", level="ERROR")
+
+    @ensure_authenticated
+    async def get_peer(self, entity):
+        """
+        Get a peer object.
+        Args:
+            entity:
+
+        Returns:
+
+        """
+        try:
+            dialogs = await self.client.get_dialogs()
+            for dialog in dialogs:
+                if dialog.name == entity:
+                    return dialog.id
+        except Exception as e:
+            log(f"Error getting peer: {e}", level="ERROR")
