@@ -1,7 +1,6 @@
-import pandas as pd
-from IPython.core.display import HTML
 
 from utils import db_utils as db
+from utils.tg_utils import TGAccount
 import streamlit as st
 import asyncio
 import pandas as pd
@@ -72,8 +71,9 @@ def get_topics():
 
 
 def get_videos():
-    topic = st.session_state.topic_select[0]
-    query = f"SELECT * FROM tg_message WHERE topic_id='{topic[0]}'"
+    topic_id = st.session_state.topic_select[0][0]
+    q_str = f"SELECT id FROM tg_topic WHERE topic_id={topic_id}"
+    query = f"SELECT * FROM tg_message WHERE topic_id={topic_id}"
     st.session_state.videos = db.execute_db_command(db_url, query)
 
 
@@ -92,6 +92,12 @@ def base64_to_image(base64_str):
 
 def get_tags(msg_id):
     return show_tags(db_url, msg_id)
+
+
+async def download_videos(message_list, contiainer):
+    tg = TGAccount(api_id=st.session_state.api_id, api_hash=st.session_state.api_hash, phone='+17623334995')
+    msgs = await tg.get_messages_by_id(message_list, st.session_state.channel_select[1])
+    await tg.threaded_dl(msgs)
 
 
 async def main():
@@ -121,12 +127,23 @@ async def main():
         df = pd.DataFrame(st.session_state.videos)
         df['thumb'] =  df['thumb'].apply(base64_to_image)
         df['tags'] = df['id'].apply(get_tags)
-        df = st.dataframe(df,
+        df.insert(0, "Select", False)
+        df = st.data_editor(df,
                      hide_index=True,
                      use_container_width=True,
-                          column_config={'thumb': st.column_config.ImageColumn()})
-
-
+                          column_config={'thumb': st.column_config.ImageColumn(),
+                                         'Select': st.column_config.CheckboxColumn(required=True)
+                                         }
+                          )
+        df.drop('Select', axis=1)
+        selected = df[df['Select'] == True]
+        selected_list = selected['name'].tolist()
+        dl = st.button("Download Selected")
+        if dl:
+            st.write("Downloading...")
+            message_list = selected['msg_id'].tolist()
+            cont = st.container(border=True)
+            await download_videos(message_list)
 
     else:
         st.write("No videos found.")
