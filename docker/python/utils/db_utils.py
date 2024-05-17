@@ -115,7 +115,6 @@ class DBHelper:
         try:
             Base.metadata.create_all(self.engine)
             with self.new_session() as session:
-                # Commit the transaction
                 session.commit()
                 log(f"Database '{self.engine.url.database}': connected successfully.", level="SUCCESS")
         except Exception as e:
@@ -148,7 +147,6 @@ class DBHelper:
                                 **kwargs):
         async with self.new_async_session() as session:
             if filter_column:
-                # Check if a row with the same value in the filter column exists
                 existing_row = session.query(table_cls).filter(
                     getattr(table_cls, filter_column) == filter_value).first()
                 if existing_row:
@@ -158,7 +156,7 @@ class DBHelper:
             new_row = table_cls(**kwargs)
             session.add(new_row)
             session.commit()
-            log(f"Data inserted into: '{table_cls.__name__}' successfully.", level="SUCCESS")
+            log(f"Data inserted into: '{table_cls.__tablename__}' successfully.", level="SUCCESS")
 
     @catch_and_log_errors
     async def modify_row(self,
@@ -166,12 +164,9 @@ class DBHelper:
                          primary_key_value: int,
                          **kwargs):
         async with self.new_async_session() as session:
-            # Retrieve the row to modify
             row_to_modify = session.query(table_cls).filter(table_cls.id == primary_key_value).first()
-            # Update the attributes of the row
             for key, value in kwargs.items():
                 setattr(row_to_modify, key, value)
-            # Commit the transaction to persist the changes to the database
             session.commit()
             log("Row modified successfully.", level="SUCCESS")
 
@@ -186,7 +181,7 @@ class DBHelper:
     @catch_and_log_errors
     async def map_topic_ids(self) -> dict:
         try:
-            with self.new_session() as session:
+            async with self.new_async_session() as session:
                 table = Base.metadata.tables['tg_topic']
                 rows = session.query(table).all()
                 id_map = {row.topic_id: row.id for row in rows}
@@ -196,34 +191,23 @@ class DBHelper:
         finally:
             session.close()
 
-    def map_channel_ids(self) -> dict:
-        try:
-            with self.new_session() as session:
-                table = Base.metadata.tables['tg_channel']
-                rows = session.query(table).all()
-                id_map = {}
-                for row in rows:
-                    id_map[row.ch_id] = row.id
-                return id_map
-        except Exception as e:
-            log(f"Error mapping channel IDs: {e}", level="ERROR")
-        finally:
-            session.close()
+    @catch_and_log_errors
+    async def map_channel_ids(self) -> dict:
+        async with self.new_async_session() as session:
+            table = Base.metadata.tables['tg_channel']
+            rows = session.query(table).all()
+            id_map = {}
+            for row in rows:
+                id_map[row.ch_id] = row.id
+            return id_map
 
+    @catch_and_log_errors
     def delete_rows(self, table_cls: type, where_clause: str):
-        try:
-            with self.new_session() as session:
-                # Construct the delete query
-                delete_query = f"DELETE FROM {table_cls.__tablename__} WHERE {where_clause}"
-                # Execute the delete query
-                session.execute(text(delete_query))
-                # Commit the transaction to persist the changes to the database
-                session.commit()
-                log("Rows deleted successfully.", level="SUCCESS")
-        except Exception as e:
-            log(f"Error deleting rows: {e}", level="ERROR")
-        finally:
-            session.close()
+        async with self.new_async_session() as session:
+            delete_query = f"DELETE FROM {table_cls.__tablename__} WHERE {where_clause}"
+            session.execute(text(delete_query))
+            session.commit()
+            log("Rows deleted successfully.", level="SUCCESS")
 
 
 def init_db():
@@ -264,5 +248,6 @@ def init_db():
             exit(1)
         db = environ['MYSQL_DATABASE']
         database_url = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{db}"
-    create_database(database_url)
+    dbh = DBHelper(database_url)
+    dbh.create_database()
     environ['DATABASE_URL'] = database_url
