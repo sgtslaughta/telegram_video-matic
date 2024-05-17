@@ -33,6 +33,7 @@ class TelegramChannel(Base):
     raw_obj = Column(Text)
     date_added = Column(Date)
     date_last_updated = Column(Date)
+    last_msg_id = Column(Integer, ForeignKey('message.id'))
 
 
 class Topic(Base):
