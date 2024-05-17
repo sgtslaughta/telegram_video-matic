@@ -202,7 +202,7 @@ class DBHelper:
             return id_map
 
     @catch_and_log_errors
-    def delete_rows(self, table_cls: type, where_clause: str):
+    async def delete_rows(self, table_cls: type, where_clause: str):
         async with self.new_async_session() as session:
             delete_query = f"DELETE FROM {table_cls.__tablename__} WHERE {where_clause}"
             session.execute(text(delete_query))

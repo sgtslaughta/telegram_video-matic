@@ -3,8 +3,6 @@ The functions in this file are used to interact with the Telegram API using the 
 
 """
 
-
-from utils.db_utils import DBHelper
 from telethon.sync import TelegramClient, functions, types
 from telethon.tl.functions.messages import GetDialogsRequest
 from telethon.tl.functions.channels import GetFullChannelRequest
@@ -27,6 +25,7 @@ def catch_and_log_errors(method: callable) -> callable:
     :param method: The method to call
     :return: callable The wrapped method
     """
+
     @wraps(method)
     async def wrapper(self, *args, **kwargs):
         try:
@@ -34,6 +33,7 @@ def catch_and_log_errors(method: callable) -> callable:
         except Exception as e:
             log(f"An error occurred in {method.__name__}: {e}, {e.__class__}", level="ERROR")
             return None
+
     return wrapper
 
 
@@ -43,6 +43,7 @@ def ensure_authenticated(method: callable) -> callable:
     :param method: The method to call
     :return: callable The wrapped method
     """
+
     @catch_and_log_errors
     @wraps(method)
     async def wrapper(self, *args, **kwargs):
@@ -53,6 +54,7 @@ def ensure_authenticated(method: callable) -> callable:
                 log(f"An error occurred during authentication: {e}", level="ERROR")
                 return None
         return await method(self, *args, **kwargs)
+
     return wrapper
 
 
@@ -246,14 +248,15 @@ class TGAccount(TGFilters):
 
     @ensure_authenticated
     async def get_messages(self,
-                           limit: int = 100,
+                           limit: int | None = 100,
                            offset_id: int = 0,
                            offset_date: int = None,
                            search_str: str = None,
                            msg_filter: str = None,
                            min_id: int = 0,
                            max_id: int = 0,
-                           entity: str = None) -> list:
+                           entity: str = None,
+                           callback: callable = None) -> list:
         """
         Get messages from a channel.
         Args:
@@ -264,7 +267,9 @@ class TGAccount(TGFilters):
             msg_filter: The message filter to apply
             min_id: The min message ID
             max_id: The max message ID
-            entity: str | Entity object The entity to get messages from (channel name/id, user, etc)
+            entity: str | Entity object The entity to get messages from (channel name/id, user, etc.)
+            callback: callable The callback function to report how many messages have been retrieved.
+                RETURNS int The length of the messages list
 
         References: https://docs.telethon.dev/en/stable/modules/client.html#telethon.client.messages.MessageMethods.iter_messages
         Returns:
@@ -280,6 +285,8 @@ class TGAccount(TGFilters):
                                                    max_id=max_id,
                                                    entity=entity):
             messages.append(msg)
+            if callback:
+                callback(len(messages))
         return messages
 
     @ensure_authenticated
@@ -314,4 +321,3 @@ class TGAccount(TGFilters):
         if ch_name_id and not entity:
             entity = await self.get_peer(ch_name_id)
         return await self.client(GetFullChannelRequest(channel=entity))
-
