@@ -11,8 +11,6 @@ from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import MessageMediaDocument, InputChannel, InputPeerSelf
 from telethon.tl.types import InputMessagesFilterDocument, InputMessagesFilterPhotos, InputMessagesFilterVideo
 from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, InputMessagesFilterVoice
-from telethon import errors
-import sqlite3
 from tqdm import tqdm
 from .log_utils import log
 import pathlib

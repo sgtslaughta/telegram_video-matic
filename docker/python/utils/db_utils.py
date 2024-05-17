@@ -1,11 +1,14 @@
+from utils.log_utils import log
+from utils.tg_utils import catch_and_log_errors
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Text, Date
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
+from contextlib import contextmanager
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from utils.log_utils import log
 from os import environ
+from functools import wraps
 
 Base = declarative_base()
 
@@ -70,29 +73,6 @@ class MessageTags(Base):
     tag_id = Column(Integer, ForeignKey('tag.id'), primary_key=True)
 
 
-def create_database(database_url: str):
-    """
-    Create a database with 6 tables: videos, telegram_channel, and dl_folder,
-    topic, tags, and message_tags. The db will work with sqlite and mysql.
-
-    \n## Example usage ## \n
-    database_url = 'mysql+mysqlconnector://your_username:your_password@localhost:3306/your_database_name' \n
-    create_database(database_url) \n
-    :param database_url: str
-    :return:
-    """
-    try:
-        engine = create_engine(database_url)
-        Base.metadata.create_all(engine)
-        new_session = sessionmaker(bind=engine)
-        with new_session() as session:
-            # Commit the transaction
-            session.commit()
-            log(f"Database '{engine.url.database}': connected successfully.", level="SUCCESS")
-    except Exception as e:
-        log(f"Error connecting to database: {e}", level="ERROR")
-
-
 class DBHelper:
     def __init__(self, database_url: str,
                  pool_size: int = 15,
@@ -117,91 +97,94 @@ class DBHelper:
                                         pool_size=pool_size,
                                         max_overflow=max_overflow)
             self.new_session = sessionmaker(bind=self.engine)
+            self.create_database()
         except Exception as e:
             log(f"Error initializing database: {e}", level="ERROR")
 
-    def execute_db_command(self, database_url: str, execute_str: str):
+    def create_database(self):
         """
-        Execute a database command.
-        :param database_url:
-        :param execute_str:
+        Create a database with 6 tables: videos, telegram_channel, and dl_folder,
+        topic, tags, and message_tags. The db will work with sqlite and mysql.
+
+        \n## Example usage ## \n
+        database_url = 'mysql+mysqlconnector://your_username:your_password@localhost:3306/your_database_name' \n
+        create_database(database_url) \n
+        :param database_url: str
         :return:
         """
         try:
+            Base.metadata.create_all(self.engine)
             with self.new_session() as session:
-                # Execute the query
-                result = session.execute(text(execute_str))
-                # Fetch all rows from the result
-                result = result.fetchall()
-                # You can return rows or do further processing here
-                return result
-        except IntegrityError as e:
-            log(f"Error executing SQL: {e}", level="ERROR")
-        except Exception as e:
-            log(f"Error executing SQL: {e}", level="ERROR")
-        finally:
-            session.close()
-
-    def insert_into_table(self, table_cls: DeclarativeMeta,
-                          filter_column: str = None,
-                          filter_value: str = None,
-                          **kwargs):
-        try:
-            with self.new_session() as session:
-                if filter_column:
-                    # Check if a row with the same value in the filter column exists
-                    existing_row = session.query(table_cls).filter(getattr(table_cls, filter_column) == filter_value).first()
-                    if existing_row:
-                        log(f"Row with {filter_column} '{filter_value}' already exists in table.", level="WARNING")
-                        return
-
-                # Create a new instance of the table class
-                new_row = table_cls(**kwargs)
-                # Add the new_row to the session
-                session.add(new_row)
-                # Commit the transaction to persist the changes to the database
+                # Commit the transaction
                 session.commit()
-                log(f"Data inserted into: '{table_cls.__tablename__}' successfully.", level="SUCCESS")
-        except IntegrityError as e:
-            pass
+                log(f"Database '{self.engine.url.database}': connected successfully.", level="SUCCESS")
         except Exception as e:
-            log(f"Error inserting data into table: {e}", level="ERROR")
-        finally:
-            session.close()
+            log(f"Error connecting to database: {e}", level="ERROR")
 
-    def modify_row(self,
-                   table_cls: type,
-                   primary_key_value: int,
-                   **kwargs):
+    @contextmanager
+    async def new_async_session(self):
+        async_session = self.new_session
         try:
-            with self.new_session() as session:
-                # Retrieve the row to modify
-                row_to_modify = session.query(table_cls).filter(table_cls.id == primary_key_value).first()
-                # Update the attributes of the row
-                for key, value in kwargs.items():
-                    setattr(row_to_modify, key, value)
-                # Commit the transaction to persist the changes to the database
-                session.commit()
-                log("Row modified successfully.", level="SUCCESS")
-                session.close()
-        except Exception as e:
-            log(f"Error modifying row: {e}", level="ERROR")
+            yield async_session()
         finally:
-            session.close()
+            async_session.close()
 
-    def map_msg_ids(self) -> dict:
-        try:
-            with self.new_session() as session:
-                table = Base.metadata.tables[Message]
-                rows = session.query(table).all()
-                id_map = {row.msg_id: row.id for row in rows}
-                return id_map
-        except Exception as e:
-            log(f"Error mapping message IDs: {e}", level="ERROR")
-        finally:
-            session.close()
+    @catch_and_log_errors
+    async def execute_db_command(self, execute_str: str):
+        """
+        Execute a database command.
+        :param execute_str:
+        :return:
+        """
+        async with self.new_async_session() as session:
+            result = await session.execute(text(execute_str))
+            result = result.fetchall()
+            return result
 
-    def map_topic_ids(self) -> dict:
+    @catch_and_log_errors
+    async def insert_into_table(self, table_cls: DeclarativeMeta,
+                                filter_column: str = None,
+                                filter_value: str = None,
+                                **kwargs):
+        async with self.new_async_session() as session:
+            if filter_column:
+                # Check if a row with the same value in the filter column exists
+                existing_row = session.query(table_cls).filter(
+                    getattr(table_cls, filter_column) == filter_value).first()
+                if existing_row:
+                    log(f"Row with {filter_column} '{filter_value}' already exists in table.", level="INFO")
+                    return
+
+            new_row = table_cls(**kwargs)
+            session.add(new_row)
+            session.commit()
+            log(f"Data inserted into: '{table_cls.__name__}' successfully.", level="SUCCESS")
+
+    @catch_and_log_errors
+    async def modify_row(self,
+                         table_cls: DeclarativeMeta,
+                         primary_key_value: int,
+                         **kwargs):
+        async with self.new_async_session() as session:
+            # Retrieve the row to modify
+            row_to_modify = session.query(table_cls).filter(table_cls.id == primary_key_value).first()
+            # Update the attributes of the row
+            for key, value in kwargs.items():
+                setattr(row_to_modify, key, value)
+            # Commit the transaction to persist the changes to the database
+            session.commit()
+            log("Row modified successfully.", level="SUCCESS")
+
+    @catch_and_log_errors
+    async def map_msg_ids(self) -> dict:
+        async with self.new_async_session() as session:
+            table = Base.metadata.tables[Message]
+            rows = session.query(table).all()
+            id_map = {row.msg_id: row.id for row in rows}
+            return id_map
+
+    @catch_and_log_errors
+    async def map_topic_ids(self) -> dict:
         try:
             with self.new_session() as session:
                 table = Base.metadata.tables['tg_topic']
