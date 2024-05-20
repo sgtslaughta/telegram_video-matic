@@ -9,6 +9,7 @@ from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.types import MessageMediaDocument, InputChannel, InputPeerSelf
 from telethon.tl.types import InputMessagesFilterDocument, InputMessagesFilterPhotos, InputMessagesFilterVideo
 from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, InputMessagesFilterVoice
+from telethon.errors import SessionPasswordNeededError, PhoneNumberInvalidError, PhoneCodeInvalidError
 from tqdm import tqdm
 from .log_utils import log
 import pathlib
@@ -89,18 +90,21 @@ class TGAccount(TGFilters):
         self.api_hash = api_hash
         self.phone = phone
         self.session_location = os.path.abspath(session_location)
+        print(self.session_location)
         self.auth_callback = auth_callback
         self.client = None
+        self.code = None
+        self.phone_code_hash = None
 
     async def try_login(self):
         self.client = TelegramClient(self.session_location, self.api_id, self.api_hash)
-        await self.client.connect()
-        if not await self.client.is_user_authorized():
-            if self.auth_callback:
-                code = self.auth_callback()
-            else:
-                code = input('Enter the code: ')
-            await self.client.sign_in(phone=self.phone, code=code)
+        await self.client.start(phone=self.phone)
+        # if not await self.client.is_user_authorized():
+        #     if self.auth_callback:
+        #         code = self.auth_callback()
+        #     else:
+        #         code = input('Enter the code: ')
+        #     await self.client.sign_in(phone=self.phone, code=code)
 
     @ensure_authenticated
     async def get_channels(self, limit=200) -> dict | None:
