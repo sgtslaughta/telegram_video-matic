@@ -1,14 +1,13 @@
 services:
-  mariadb:
-    image: mariadb:latest
-    container_name: mariadb
+  postgres:
+    image: postgres:latest
+    container_name: postgres
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: moviesdb
-      MYSQL_USER: user
-      MYSQL_PASSWORD: password
+      POSTGRES_DB: moviesdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - ./data:/var/lib/mysql
+      - ./data:/var/lib/postgresql/data

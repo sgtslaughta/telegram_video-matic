@@ -64,7 +64,7 @@ class TGFilters:
     A class to hold the message filters.
     """
     FILTER_DOCUMENT = InputMessagesFilterDocument
-    FILTER_PHOTOS = InputMessagesFilterPhotos
+    FILTER_PHOTO = InputMessagesFilterPhotos
     FILTER_VIDEO = InputMessagesFilterVideo
     FILTER_MUSIC = InputMessagesFilterMusic
     FILTER_URL = InputMessagesFilterUrl
@@ -90,21 +90,20 @@ class TGAccount(TGFilters):
         self.api_hash = api_hash
         self.phone = phone
         self.session_location = os.path.abspath(session_location)
-        print(self.session_location)
         self.auth_callback = auth_callback
         self.client = None
         self.code = None
         self.phone_code_hash = None
 
     async def try_login(self):
-        self.client = TelegramClient(self.session_location, self.api_id, self.api_hash)
-        await self.client.start(phone=self.phone)
-        # if not await self.client.is_user_authorized():
-        #     if self.auth_callback:
-        #         code = self.auth_callback()
-        #     else:
-        #         code = input('Enter the code: ')
-        #     await self.client.sign_in(phone=self.phone, code=code)
+        self.client = await TelegramClient(self.session_location, self.api_id, self.api_hash).start(phone=self.phone)
+        # await self.client.start(phone=self.phone)
+        if not await self.client.is_user_authorized():
+            if self.auth_callback:
+                code = self.auth_callback()
+            else:
+                code = input('Enter the code: ')
+            await self.client.sign_in(phone=self.phone, code=code)
 
     @ensure_authenticated
     async def get_channels(self, limit=200) -> dict | None:
@@ -254,13 +253,14 @@ class TGAccount(TGFilters):
     async def get_messages(self,
                            limit: int | None = 100,
                            offset_id: int = 0,
-                           offset_date: int = None,
+                           offset_date: datetime = None,
                            search_str: str = None,
                            msg_filter: str = None,
                            min_id: int = 0,
                            max_id: int = 0,
                            entity: str = None,
-                           callback: callable = None) -> list:
+                           callback: callable = None,
+                           reverse=False) -> list:
         """
         Get messages from a channel.
         Args:
@@ -273,6 +273,7 @@ class TGAccount(TGFilters):
             max_id: The max message ID
             entity: str | Entity object The entity to get messages from (channel name/id, user, etc.)
             callback: callable The callback function to report how many messages have been retrieved.
+            reverse: bool Whether to reverse the order of the messages
                 RETURNS int The length of the messages list
 
         References: https://docs.telethon.dev/en/stable/modules/client.html#telethon.client.messages.MessageMethods.iter_messages
@@ -280,6 +281,8 @@ class TGAccount(TGFilters):
 
         """
         messages = []
+        step = 0
+
         async for msg in self.client.iter_messages(limit=limit,
                                                    offset_id=offset_id,
                                                    offset_date=offset_date,
@@ -287,10 +290,12 @@ class TGAccount(TGFilters):
                                                    filter=msg_filter,
                                                    min_id=min_id,
                                                    max_id=max_id,
-                                                   entity=entity):
+                                                   entity=entity,
+                                                   reverse=reverse):
             messages.append(msg)
+            step += 1
             if callback:
-                callback(len(messages))
+                callback(step, len(messages), f"Video #{step} downloaded")
         return messages
 
     @ensure_authenticated

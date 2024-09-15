@@ -1,6 +1,5 @@
 streamlit
 requests
-sqlalchemy
 telethon
 pandas
 SQLAlchemy

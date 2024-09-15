@@ -1,14 +1,23 @@
+# from scripts.run_emscripten_tests import driver
+# from utils.log_utils import log
+# from docker.python.message_test import db_url
 from utils.log_utils import log
+import asyncio
 from utils.tg_utils import catch_and_log_errors
+# from utils.tg_utils import catch_and_log_errors
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Text, Date
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, \
+    create_async_pool_from_url
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import sessionmaker
-from contextlib import contextmanager
+from sqlalchemy.future import select
+from sqlalchemy import text, Sequence
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.sql import update
 from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 from os import environ
-from functools import wraps
 
 Base = declarative_base()
 
@@ -16,15 +25,36 @@ Base = declarative_base()
 class Message(Base):
     __tablename__ = 'message'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255))
-    msg_id = Column(Integer, unique=True)
-    date_added = Column(Date)
-    date_posted = Column(Date)
-    raw_obj = Column(Text)
+    id = Column(Integer, primary_key=True, autoincrement=True, unique=True)
+    name = Column(String(255), nullable=False)
+    msg_id = Column(Integer, unique=True, nullable=False)
+    date_added = Column(Date, nullable=False)
+    date_posted = Column(Date, nullable=False)
+    raw_obj = Column(Text, nullable=False)
     thumb = Column(Text)
-    tg_ch_id = Column(Integer, ForeignKey('channel.id'))
+    tg_ch_id = Column(Integer, ForeignKey('channel.id'), nullable=False)
     topic_id = Column(Integer, ForeignKey('topic.id'))
+
+    def __repr__(self):
+        return (f"<Message(id={self.id}, name={self.name}, msg_id"
+                f"={self.msg_id}, date_added={self.date_added}, "
+                f"date_posted={self.date_posted}, raw_obj={self.raw_obj}, "
+                f"thumb={self.thumb}, tg_ch_id={self.tg_ch_id}, topic_id"
+                f"={self.topic_id})>")
+
+
+class MonitoredChannel(Base):
+    __tablename__ = 'monitored_channel'
+
+    ch_id = Column(Integer, ForeignKey('channel.id'), primary_key=True)
+    date_added = Column(Date)
+    date_last_updated = Column(Date)
+    is_active = Column(Integer)
+
+    def __repr__(self):
+        return (f"<MonitoredChannel(ch_id={self.ch_id}, date_added"
+                f"={self.date_added}, date_last_updated"
+                f"={self.date_last_updated}, is_active={self.is_active})>")
 
 
 class TelegramChannel(Base):
@@ -32,11 +62,17 @@ class TelegramChannel(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ch_name = Column(String(255))
-    ch_id = Column(Integer, unique=True)
+    ch_id = Column(Integer, unique=True, nullable=False)
     raw_obj = Column(Text)
     date_added = Column(Date)
     date_last_updated = Column(Date)
     last_msg_id = Column(Integer, ForeignKey('message.id'))
+
+    def __repr__(self):
+        return (f"<TelegramChannel(id={self.id}, ch_name={self.ch_name}, "
+                f"ch_id={self.ch_id}, raw_obj={self.raw_obj}, date_added"
+                f"={self.date_added}, date_last_updated"
+                f"={self.date_last_updated}, last_msg_id={self.last_msg_id})>")
 
 
 class Topic(Base):
@@ -49,6 +85,11 @@ class Topic(Base):
     raw_obj = Column(Text)
     tg_ch_id = Column(Integer, ForeignKey('channel.id'))
 
+    def __repr__(self):
+        return (f"<Topic(id={self.id}, topic_name={self.topic_name}, "
+                f"topic_id={self.topic_id}, date_added={self.date_added}, "
+                f"raw_obj={self.raw_obj}, tg_ch_id={self.tg_ch_id})>")
+
 
 class DLFolder(Base):
     __tablename__ = 'dl_folder'
@@ -58,12 +99,37 @@ class DLFolder(Base):
     date_added = Column(Date)
     tags = Column(Text)
 
+    def __repr__(self):
+        return (f"<DLFolder(id={self.id}, folder_path={self.folder_path}, "
+                f"date_added={self.date_added}, tags={self.tags})>")
+
+
+class DLFile(Base):
+    __tablename__ = 'dl_file'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255))
+    msg_id = Column(Integer, unique=True)
+    date_added = Column(Date)
+    path = Column(Text)
+    tg_ch_id = Column(Integer, ForeignKey('channel.id'))
+    topic_id = Column(Integer, ForeignKey('topic.id'))
+
+    def __repr__(self):
+        return (f"<DLFile(id={self.id}, name={self.name}, msg_id"
+                f"={self.msg_id}, "
+                f"date_added={self.date_added}, path={self.path}, tg_ch_id"
+                f"={self.tg_ch_id}, topic_id={self.topic_id})>")
+
 
 class Tags(Base):
     __tablename__ = 'tag'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     tag_name = Column(String(255), unique=True)
+
+    def __repr__(self):
+        return f"<Tags(id={self.id}, tag_name={self.tag_name})>"
 
 
 class MessageTags(Base):
@@ -76,138 +142,67 @@ class MessageTags(Base):
 class DBHelper:
     def __init__(self, database_url: str,
                  pool_size: int = 15,
-                 max_overflow: int = 25):
-        self.db_url = None
-        self.pool_size = None
-        self.max_overflow = None
-        self.engine = None
-        self.new_session = None
-        self._initialize(database_url, pool_size, max_overflow)
+                 max_overflow: int = 32):
+        self.db_url = database_url
+        self.pool_size = pool_size
+        self.max_overflow = max_overflow
+        self.engine = create_async_engine(database_url)
+        self.async_session = async_sessionmaker(
+            bind=self.engine, class_=AsyncSession, expire_on_commit=False
+        )
 
-    def _initialize(self, database_url: str, pool_size: int, max_overflow: int):
-        if not database_url:
-            log("Database URL not provided.", level="ERROR")
-            return
+    async def create_tables(self):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
+    async def drop_tables(self):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+
+    async def add_record(self, new_record):
         try:
-            self.db_url = database_url
-            self.pool_size = pool_size
-            self.max_overflow = max_overflow
-            self.engine = create_engine(database_url,
-                                        pool_size=pool_size,
-                                        max_overflow=max_overflow)
-            self.new_session = sessionmaker(bind=self.engine)
-            self.create_database()
-        except Exception as e:
-            log(f"Error initializing database: {e}", level="ERROR")
+            async with self.async_session() as session:
+                async with session.begin():
+                    session.add(new_record)
+                    await session.commit()
+        except IntegrityError as e:
+            log(f"Duplicate record attempt, ignored...", level="INFO")
 
-    def create_database(self):
-        """
-        Create a database with 6 tables: videos, telegram_channel, and dl_folder,
-        topic, tags, and message_tags. The db will work with sqlite and mysql.
+    async def get_record(self, table, record_id: int):
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(table).filter(table.id == record_id))
+            record = result.scalars().first()
+            return record
 
-        \n## Example usage ## \n
-        database_url = 'mysql+mysqlconnector://your_username:your_password@localhost:3306/your_database_name' \n
-        create_database(database_url) \n
-        :param database_url: str
-        :return:
-        """
-        try:
-            Base.metadata.create_all(self.engine)
-            with self.new_session() as session:
-                session.commit()
-                log(f"Database '{self.engine.url.database}': connected successfully.", level="SUCCESS")
-        except Exception as e:
-            log(f"Error connecting to database: {e}", level="ERROR")
+    async def update_record(self, table, record_id: int, new_name: str):
+        async with self.async_session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(table).filter(table.id == record_id))
+                record = result.scalars().first()
+                if record:
+                    record.name = new_name
+                    await session.commit()
 
-    @contextmanager
-    async def new_async_session(self):
-        async_session = self.new_session
-        try:
-            yield async_session()
-        finally:
-            async_session.close()
+    async def delete_record(self, table, record_id: int):
+        async with self.async_session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(table).filter(table.id == record_id))
+                record = result.scalars().first()
+                if record:
+                    await session.delete(record)
+                    await session.commit()
 
-    @catch_and_log_errors
-    async def execute_db_command(self, execute_str: str):
-        """
-        Execute a database command.
-        :param execute_str:
-        :return:
-        """
-        async with self.new_async_session() as session:
-            result = await session.execute(text(execute_str))
-            result = result.fetchall()
-            return result
+    async def list_records(self, table) -> Sequence[DeclarativeMeta]:
+        async with self.async_session() as session:
+            result = await session.execute(select(table))
+            records = result.scalars().all()
+            return records
 
-    @catch_and_log_errors
-    async def insert_into_table(self, table_cls: DeclarativeMeta,
-                                filter_column: str = None,
-                                filter_value: str = None,
-                                **kwargs):
-        async with self.new_async_session() as session:
-            if filter_column:
-                existing_row = session.query(table_cls).filter(
-                    getattr(table_cls, filter_column) == filter_value).first()
-                if existing_row:
-                    log(f"Row with {filter_column} '{filter_value}' already exists in table.", level="INFO")
-                    return
 
-            new_row = table_cls(**kwargs)
-            session.add(new_row)
-            session.commit()
-            log(f"Data inserted into: '{table_cls.__tablename__}' successfully.", level="SUCCESS")
 
-    @catch_and_log_errors
-    async def modify_row(self,
-                         table_cls: DeclarativeMeta,
-                         primary_key_value: int,
-                         **kwargs):
-        async with self.new_async_session() as session:
-            row_to_modify = session.query(table_cls).filter(table_cls.id == primary_key_value).first()
-            for key, value in kwargs.items():
-                setattr(row_to_modify, key, value)
-            session.commit()
-            log("Row modified successfully.", level="SUCCESS")
-
-    @catch_and_log_errors
-    async def map_msg_ids(self) -> dict:
-        async with self.new_async_session() as session:
-            table = Base.metadata.tables[Message]
-            rows = session.query(table).all()
-            id_map = {row.msg_id: row.id for row in rows}
-            return id_map
-
-    @catch_and_log_errors
-    async def map_topic_ids(self) -> dict:
-        try:
-            async with self.new_async_session() as session:
-                table = Base.metadata.tables['tg_topic']
-                rows = session.query(table).all()
-                id_map = {row.topic_id: row.id for row in rows}
-                return id_map
-        except Exception as e:
-            log(f"Error mapping topic IDs: {e}", level="ERROR")
-        finally:
-            session.close()
-
-    @catch_and_log_errors
-    async def map_channel_ids(self) -> dict:
-        async with self.new_async_session() as session:
-            table = Base.metadata.tables['tg_channel']
-            rows = session.query(table).all()
-            id_map = {}
-            for row in rows:
-                id_map[row.ch_id] = row.id
-            return id_map
-
-    @catch_and_log_errors
-    async def delete_rows(self, table_cls: type, where_clause: str):
-        async with self.new_async_session() as session:
-            delete_query = f"DELETE FROM {table_cls.__tablename__} WHERE {where_clause}"
-            session.execute(text(delete_query))
-            session.commit()
-            log("Rows deleted successfully.", level="SUCCESS")
 
 
 def init_db():
@@ -225,29 +220,33 @@ def init_db():
         log("MYSQL_DATABASE environment variable not set, using sqlite.", level="ERROR")
         database_url = 'sqlite:///../movie_db.sqlite'
     else:
-        if 'MYSQL_USER' not in environ:
-            log("REQUIRED: MYSQL_USER environment variable not set, quitting.", level="ERROR")
+        if 'DB_USER' not in environ:
+            log("REQUIRED: DB_USER environment variable not set, quitting.",
+                level="ERROR")
             exit(1)
-        user = environ['MYSQL_USER']
-        if 'MYSQL_PASSWORD' not in environ:
-            log("REQUIRED: MYSQL_PASSWORD environment variable not set, quitting.", level="ERROR")
+        user = environ['DB_USER']
+        if 'DB_PASSWORD' not in environ:
+            log("REQUIRED: DB_PASSWORD environment variable not set, "
+                "quitting.", level="ERROR")
             exit(1)
-        password = environ['MYSQL_PASSWORD']
-        if 'MYSQL_HOST' not in environ:
+        password = environ['DB_PASSWORD']
+        if 'DB_HOST' not in environ:
             log("REQUIRED: MYSQL_HOST environment variable not set, using localhost.", level="ERROR")
             host = 'localhost'
         else:
             host = environ['MYSQL_HOST']
-        if 'MYSQL_PORT' not in environ:
-            log("MYSQL_PORT environment variable not set, using 3306.", level="ERROR")
-            port = 3306
+        if 'DB_PORT' not in environ:
+            log("DB_PORT environment variable not set, using 3306.",
+                level="ERROR")
+            port = 5432
         else:
             port = environ['MYSQL_PORT']
-        if 'MYSQL_DATABASE' not in environ:
-            log("REQUIRED: MYSQL_DATABASE environment variable not set, quitting.", level="ERROR")
+        if 'DB_DATABASE' not in environ:
+            log("REQUIRED: DB_DATABASE environment variable not set, "
+                "quitting.", level="ERROR")
             exit(1)
         db = environ['MYSQL_DATABASE']
-        database_url = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{db}"
+        database_url = f"postgres://{user}:{password}@{host}:{port}/{db}"
     dbh = DBHelper(database_url)
     dbh.create_database()
     environ['DATABASE_URL'] = database_url
