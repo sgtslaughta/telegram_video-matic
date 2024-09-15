@@ -201,6 +201,19 @@ class DBHelper:
             records = result.scalars().all()
             return records
 
+    async def query_with_filter(self, table, filter_condition) -> Sequence[
+        DeclarativeMeta]:
+        """
+        Query the table with a filter condition.
+
+        :param filter_condition: A SQLAlchemy filter condition (e.g., MyModel.name == 'some_name')
+        :return: A list of records matching the filter condition
+        """
+        async with self.async_session() as session:
+            stmt = select(table).filter(filter_condition)
+            result = await session.execute(stmt)
+            records = result.scalars().all()
+            return records
 
 
 

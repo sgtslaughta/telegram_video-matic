@@ -3,10 +3,11 @@ from sys import thread_info
 
 import os
 
-from utils.db_utils import TelegramChannel
+from utils.db_utils import TelegramChannel, Topic, Message
 from utils.tg_utils import TGAccount
 from utils.db_utils import DBHelper
 from utils import data_utils as du
+from sqlalchemy import or_
 import streamlit as st
 import asyncio
 import pandas as pd
@@ -121,26 +122,17 @@ async def get_topics_from_tg():
     tg = TGAccount(api_id=st.session_state.api_id,
                    api_hash=st.session_state.api_hash,
                    phone=st.session_state.phone)
-    await du.pull_topics(tg, st.session_state.dbh, channel_name=st.session_state.channel_select[1])
-    db_channel_id = st.session_state.channel_select[0]
-    query = f"SELECT * FROM topic WHERE tg_ch_id='{db_channel_id}'"
-    st.session_state.topics = await st.session_state.dbh.execute_db_command(
-        query)
+    dbh = DBHelper(db_url)
+    await du.pull_topics(tg, dbh,
+                         channel_id=st.session_state.channel_select.ch_id,
+                         callback=progress_callback)
+    db_channel_id = st.session_state.channel_select.ch_id
+    stmt = or_(Topic.tg_ch_id == db_channel_id)
+    st.session_state.topics = await DBHelper(db_url).query_with_filter(Topic, stmt)
 
-
-async def get_topics():
-    if st.session_state.channel_select is None:
-        return
-    db_channel_id = st.session_state.channel_select[0]
-    query = f"SELECT * FROM topic WHERE tg_ch_id='{db_channel_id}'"
-    topics = await st.session_state.dbh.execute_db_command(query)
-    if not topics:
-        st.write("No topics found in database, attempt to pull from Telegram?")
-        pull_topics = st.button("Pull Topics")
-        if pull_topics:
-            await get_topics_from_tg()
-    else:
-        st.session_state.topics = topics
+async def get_topics_from_db():
+    data = await DBHelper(db_url).list_records(Topic)
+    st.session_state.topics = data
 
 async def get_videos():
     topic_id = st.session_state.topic_select[0][0]
@@ -264,20 +256,20 @@ def show_page():
             st.rerun()
 
     else:
+        col1, col2 = st.columns(2)
         channel_list = [channel.ch_name for channel in st.session_state.channels]
-        channel_select = st.selectbox("Select a channel", channel_list)
-    # if not st.session_state.channels:
-    #     st.write("No channels found in database, attempt to pull from Telegram?")
-    #     pull_ch_b = st.button("Pull Channels")
-    #     if pull_ch_b:
-    #         await get_channels_from_tg()
-    # if st.session_state.channels:
-    #     print(st.session_state.channels)
-    #     # channel_names = [channel[1] for channel in st.session_state.channels]
-    #     # channel_select = col2.selectbox("Select a channel", channel_names)
-    #     # st.session_state.channel_select = [channel for channel in st.session_state.channels if channel[1] == channel_select][0]
-    # if st.session_state.topics is None:
-    #     await get_topics()
+        channel_select = col1.selectbox("Select a channel", channel_list)
+        st.session_state.channel_select = [channel for channel in st.session_state.channels if channel.ch_name == channel_select][0]
+        if st.session_state.topics is None:
+            asyncio.run(get_topics_from_db())
+        if not st.session_state.topics:
+            st.write("No topics found in database, attempt to pull from Telegram?")
+            pull_topics = col2.button("Pull Topics")
+            if pull_topics:
+                asyncio.run(get_topics_from_tg())
+                time.sleep(1)
+                st.rerun()
+
     # if st.session_state.topics:
     #     print(st.session_state.topics)
     #     # topic_names = [topic[1] for topic in st.session_state.topics]

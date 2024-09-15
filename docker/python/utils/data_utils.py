@@ -6,6 +6,7 @@ import base64
 import asyncio
 from datetime import datetime
 from mysql.connector.errors import IntegrityError
+from sqlalchemy import or_
 from psycopg2 import pool
 
 
@@ -87,7 +88,8 @@ async def pull_topics(tg_a: TGAccount,
         return
     if channel_name and not channel_id:
         q_str = f"SELECT id, ch_id, ch_name FROM channel WHERE ch_name='{channel_name}';"
-        channel = await dbh.execute_db_command(q_str)
+        stmt = or_(TelegramChannel.ch_name == channel_name)
+        channel = await dbh.query_with_filter(TelegramChannel, stmt)
         if not channel:
             log("Cannot pull topics, channel not found in database.", level="ERROR")
             if callback:
@@ -95,12 +97,11 @@ async def pull_topics(tg_a: TGAccount,
             return
         if len(channel) > 1:
             log("Cannot pull topics using channel_name, multiple channels found in database.", level="ERROR")
-        db_ch_id = channel[0][0]
-        ch_id = channel[0][1]
-        ch_name = channel[0][2]
+            return
+
     if channel_id and not channel_name:
-        q_str = f"SELECT id, ch_name FROM channel WHERE ch_id={channel_id};"
-        channel = dbh.execute_db_command(q_str)
+        stmt = or_(TelegramChannel.ch_id == channel_id)
+        channel = await dbh.query_with_filter(TelegramChannel, stmt)
         if not channel:
             log("Cannot pull topics, channel not found in database.", level="ERROR")
             if callback:
@@ -108,9 +109,10 @@ async def pull_topics(tg_a: TGAccount,
             return
         if len(channel) > 1:
             log("Cannot pull topics using channel_id, multiple channels found in database.", level="ERROR")
-        db_ch_id = channel[0][0]
-        ch_name = channel[0][1]
-        ch_id = channel_id
+            return
+    db_ch_id = channel[0].id
+    ch_name = channel[0].ch_name
+    ch_id = channel[0].ch_id
     if not tg_a:
         log("Cannot pull topics, no TGAccount provided.", level="ERROR")
         if callback:
@@ -120,7 +122,7 @@ async def pull_topics(tg_a: TGAccount,
     if callback:
         callback(step, total_steps, "2: Pulling topics from Telegram...")
     log("Pulling topics...", level="INFO")
-    entity = await tg_a.get_peer(channel_name)
+    entity = await tg_a.get_peer(ch_name)
     topics = await tg_a.get_topics(channel_name=entity)
     log(f"Found {len(topics)} topics.", level="INFO")
     step += 1
@@ -133,10 +135,11 @@ async def pull_topics(tg_a: TGAccount,
             'topic_name': t['title'],
             'topic_id': t['id'],
             'raw_obj': t['raw_obj'].stringify(),
-            'date_added': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'date_added': datetime.now(),
             'tg_ch_id': db_ch_id
         }
-        dbh.insert_into_table(Topic, filter_column='topic_id', filter_value=x['topic_id'], **x)
+        topic = Topic(**x)
+        await dbh.add_record(topic)
         t_step += 1
 
 
