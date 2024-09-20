@@ -1,12 +1,16 @@
+from operator import index
+
 from utils.db_utils import DBHelper, TelegramChannel, Topic
 from utils.data_utils import TGAccount
-from utils.sportsDB import SportsDBClient
+from utils.sport_details import display_channel
 import thesportsdb as tsdb
 # https://github.com/TralahM/thesportsdb
 import streamlit as st
 from streamlit_marquee import streamlit_marquee as marquee
 from streamlit_js_eval import streamlit_js_eval as js
 import asyncio
+import pandas as pd
+
 
 db_url = "postgresql+asyncpg://user:password@localhost:5432/moviesdb"
 
@@ -14,14 +18,6 @@ st.set_page_config(layout='wide',
                    page_icon=':tv:',
                    page_title='Telegram Video Manager')
 
-topic_names = {
-    'Gallagher Premiership': 'English Premiership Rugby',
-    'URC': 'United Rugby Championship',
-    '6 Nations': 'Six Nations Championship',
-    'Top 14': 'French Top 14',
-    '2019 World Cup': 'Rugby World Cup',
-    'Super Rugby Americas': 'Super Liga Americana',
-}
 
 def config():
     if 'api_id' not in st.session_state:
@@ -36,6 +32,12 @@ def config():
         st.session_state.channels = None
     if 'topics' not in st.session_state:
         st.session_state.topics = None
+    if 'teams' not in st.session_state:
+        st.session_state.teams = None
+    if 'selected_team' not in st.session_state:
+        st.session_state.selected_team = None
+    if 'selected_topic' not in st.session_state:
+        st.session_state.selected_topic = None
 
 @st.dialog("Enter Telegram API Details")
 def gather_tg_details():
@@ -63,10 +65,9 @@ def gather_tg_details():
         st.rerun()
 
 
-def menu(cont):
-    button_cont = cont.container(border=True, height=500)
-    button_cont.button('Click Me', use_container_width=True)
-    button_cont.button(':material/key: API Information',
+def menu():
+    st.sidebar.button('Click Me', use_container_width=True)
+    st.sidebar.button(':material/key: API Information',
                        use_container_width=True,
                        on_click=gather_tg_details)
 
@@ -84,16 +85,15 @@ def make_marguee(text=None):
         marquee(**ops)
 
 def core():
-    # make_marguee("Welcome to the Telegram Video Manager")
+
     img_col, title_col = st.columns([1, 5])
-    img_col.image('https://media.tenor.com/9ZsRZ-PXPlwAAAAi/telegram-gif.gif',
+    st.sidebar.image('https://media.tenor.com/9ZsRZ-PXPlwAAAAi/telegram-gif'
+                    '.gif',
             width=100)
-    title_col.title(':green[:material/movie:] :blue[Telegram] Video Manager',
+    st.title(':green[:material/movie:] :blue[Telegram] Video Manager',
                     help='Manage your videos with ease.')
-    col_a, col_b = st.columns([1, 5])
-    menu(col_a)
-    tab1, tab2 = col_b.tabs(['Main Tabs', 'Other Tabs'])
-    choose_channel(tab1)
+    menu()
+    choose_channel()
 
 def load_page():
     config()
@@ -117,9 +117,7 @@ async def get_channels_from_db():
         ch_objs.append(ch)
     st.session_state.channels = ch_objs
 
-async def get_topics_from_db():
-    data = await DBHelper(db_url).list_records(Topic)
-    st.session_state.topics = data
+
 
 async def grab_topic(channel, topic_id):
     tg = TGAccount(st.session_state.api_id,
@@ -137,76 +135,19 @@ async def get_message(channel, msg_id):
                                       msg_id=msg_id)
     return msg
 
-def display_channel(cont, channel):
-    col_cont = cont.container(border=True)
-    col1, col2 = col_cont.columns([.1, 1])
-    if channel.logo:
-        col1.image(channel.logo, width=100)
-    else:
-        col1.title(':material/privacy_tip:')
-    col2.title(channel.ch_name)
-    col_cont.divider()
-    if not st.session_state.topics:
-        asyncio.run(get_topics_from_db())
-    topics = st.session_state.topics
-    topic_list = sorted([topic.topic_name for topic in topics])
-    col3, col4 = col_cont.columns([.2, 1])
-    topic_cont = col3.container(border=True)
-    topic_sel = topic_cont.selectbox('Choose Topic',
-                                   topic_list,
-                                   index=None)
-    if topic_sel:
-        topic_detail_cont = col4.container(border=True)
-        topic = [topic for topic in topics if topic.topic_name == topic_sel][0]
-        topic_detail_cont.subheader(topic.topic_name)
-        tg = TGAccount(st.session_state.api_id,
-                         st.session_state.api_hash,
-                         st.session_state.phone)
-        # top_messages = asyncio.run(tg.get_messages(entity=channel.chat,
-        #                                            limit=10,
-        #                                            reply_to=topic.topic_id))
-        # for msg in top_messages:
-        #     topic_detail_cont.write(msg)
-        if topic.topic_name in topic_names:
-            name = topic_names[topic.topic_name]
-        else:
-            name = topic.topic_name
-        sdb_client = SportsDBClient(st.session_state.sportsdb_api)
-        data = sdb_client.list_teams_in_league(name.strip('The '
-                                                                      'the'))
 
-        if data.json()['teams']:
-            team_name_list = [team['strTeam'] for team in data.json()['teams']]
-            team = topic_detail_cont.selectbox('Choose Team', team_name_list)
-            if team:
-                for t in data.json()['teams']:
-                    if t['strTeam'] == team:
-                        sel_team = t
-                        break
-                print(sel_team)
-                try:
-                    topic_detail_cont.image(sel_team['strBadge'], width=150)
-                    topic_detail_cont.markdown(f"""
-                    | Year Formed | Stadium | Location | Website |
-                    |-------------|---------|----------|---------|
-                    | {sel_team['intFormedYear']} | {sel_team['strStadium']} | {sel_team['strLocation']} | {sel_team['strWebsite']} |
-                    """)
 
-                    topic_detail_cont.write(sel_team['strDescriptionEN'])
-                    topic_detail_cont.image(sel_team['strEquipment'], width=150)
-                    topic_detail_cont.image(sel_team['strBanner'], width=150)
-                    print(sel_team['strYoutube'])
-                    topic_detail_cont.markdown(sel_team['strYoutube'])
-                except BaseException as e:
-                    pass
+def color_winner_cell(row):
+    color_home = 'color: green' if row['home_score'] > row['away_score'] else ''
+    color_away = 'color: green' if row['away_score'] > row['home_score'] else ''
+    # Return list for both columns
+    return [color_home, color_away]
 
 
 
 
-
-
-def choose_channel(cont):
-    col1, col2, col3 = cont.columns(3)
+def choose_channel():
+    col1, col2, col3 = st.columns(3)
     if not st.session_state.channels:
         asyncio.run(get_channels_from_db())
     if st.session_state.channels:
@@ -216,7 +157,8 @@ def choose_channel(cont):
                                      index=None)
         if selected_ch:
             ch = [ch for ch in st.session_state.channels if ch.ch_name == selected_ch][0]
-            display_channel(cont, ch)
+
+            display_channel(ch)
 
 if __name__ == '__main__':
     load_page()
