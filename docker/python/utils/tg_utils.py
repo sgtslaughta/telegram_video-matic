@@ -5,8 +5,9 @@ The functions in this file are used to interact with the Telegram API using the 
 
 from telethon.sync import TelegramClient, functions, types
 from telethon.tl.functions.messages import GetDialogsRequest
-from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.tl.types import MessageMediaDocument, InputChannel, InputPeerSelf
+from telethon.tl.functions.channels import GetFullChannelRequest, GetMessagesRequest
+from telethon.tl.types import (MessageMediaDocument, InputChannel,
+                               InputPeerSelf)
 from telethon.tl.types import InputMessagesFilterDocument, InputMessagesFilterPhotos, InputMessagesFilterVideo
 from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, InputMessagesFilterVoice
 from telethon.errors import SessionPasswordNeededError, PhoneNumberInvalidError, PhoneCodeInvalidError
@@ -221,18 +222,18 @@ class TGAccount(TGFilters):
         dl_path = os.path.abspath(dl_path)
         path = await self.client.download_media(message, dl_path, progress_callback=callback)
 
-    @ensure_authenticated
-    async def get_messages_by_id(self, msg_ids: list, channel_name: str) -> list:
+    # @ensure_authenticated
+    async def get_messages_by_id(self, msg_id: int, channel_name: str) -> list:
         """
         Get a telethon Telegram message object by ID.
         :param msg_ids: list - the message IDs
         :param channel_name: str - the channel name
         :return: None
         """
-        messages = []
-        async for msg in self.client.iter_messages(channel_name, ids=msg_ids):
-            messages.append(msg)
-        return messages
+        print(f"Getting message {msg_id} from {channel_name}")
+        peer = await self.get_peer(channel_name)
+        msg = await self.client(GetMessagesRequest(channel=peer, id=msg_id))
+        return msg
 
     @ensure_authenticated
     async def multi_download(self, message_list: list, dl_path: str = './') -> None:
@@ -260,7 +261,8 @@ class TGAccount(TGFilters):
                            max_id: int = 0,
                            entity: str = None,
                            callback: callable = None,
-                           reverse=False) -> list:
+                           reverse=False,
+                           reply_to=None) -> list:
         """
         Get messages from a channel.
         Args:
@@ -280,6 +282,7 @@ class TGAccount(TGFilters):
         Returns:
 
         """
+        entity = await self.get_peer(entity)
         messages = []
         step = 0
 
@@ -291,7 +294,8 @@ class TGAccount(TGFilters):
                                                    min_id=min_id,
                                                    max_id=max_id,
                                                    entity=entity,
-                                                   reverse=reverse):
+                                                   reverse=reverse,
+                                                   reply_to=reply_to):
             messages.append(msg)
             step += 1
             if callback:
@@ -310,11 +314,12 @@ class TGAccount(TGFilters):
         """
         dialogs = await self.client.get_dialogs()
         for dialog in dialogs:
-            if dialog.name == entity:
+            if dialog.name == entity or dialog.id == entity:
                 return await self.client.get_entity(dialog)
 
     @ensure_authenticated
-    async def get_channel_full(self, entity: InputChannel, ch_name_id: str | int = None) -> dict | None:
+    async def get_channel_full(self, entity: InputChannel = None,
+                               ch_name_id: str | int = None) -> dict | None:
         """
         Get the full channel object. Use the read_outbox_max_id to get the latest message ID/ count.
         Args:
@@ -329,4 +334,29 @@ class TGAccount(TGFilters):
             return None
         if ch_name_id and not entity:
             entity = await self.get_peer(ch_name_id)
+            return await self.client(GetFullChannelRequest(channel=entity))
         return await self.client(GetFullChannelRequest(channel=entity))
+
+
+    @ensure_authenticated
+    async def get_logo_photo(self, channel: InputChannel) -> bytes | None:
+        """
+        Get the logo of a channel.
+        Args:
+            channel: InputChannel The channel entity
+
+        Returns: bytes The logo of the channel
+
+        """
+        if not channel:
+            log("No channel provided", level="ERROR")
+            return None
+        return await self.client.download_profile_photo(channel, file=bytes)
+
+    @ensure_authenticated
+    async def get_forumntopic(self, channel, topic_id):
+        channel = await self.get_peer(channel)
+        return await self.client(functions.channels.GetForumTopicsByIDRequest(
+            channel=channel,
+            topics=[topic_id]
+        ))

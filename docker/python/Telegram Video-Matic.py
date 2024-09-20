@@ -3,6 +3,9 @@ from sys import thread_info
 
 import os
 
+from altair.vegalite.v5.theme import theme
+from pygments.styles.dracula import background
+from streamlit_elements import elements, html, mui, dashboard, editor, lazy, sync
 from utils.db_utils import TelegramChannel, Topic, Message
 from utils.tg_utils import TGAccount
 from utils.db_utils import DBHelper
@@ -133,6 +136,7 @@ async def get_topics_from_tg():
 async def get_topics_from_db():
     data = await DBHelper(db_url).list_records(Topic)
     st.session_state.topics = data
+    print(data)
 
 async def get_videos():
     topic_id = st.session_state.topic_select[0][0]
@@ -202,14 +206,44 @@ def make_folder(path, name):
     except Exception as e:
         st.write(f"Error {e}")
 
+def init_db():
+    asyncio.run(DBHelper(db_url).create_tables())
+
 def main():
     setup()
     how_to()
     api_entry()
     if st.session_state.api_id and st.session_state.api_hash and st.session_state.phone:
+        init_db()
         show_page()
 
+def make_dashboard():
+    from streamlit_file_browser import st_file_browser
+    event = st_file_browser(path='.',
+                    show_download_file=True,
+                    show_preview=False,
+                    show_choose_file=True)
+    if event:
+        try:
+            print(event)
+            create_time = event['target']['create_time']
+            # convert the timestamp to datetime
+            timestamp_s = create_time / 1000.0
+            import datetime
+            datetime = datetime.datetime.fromtimestamp(timestamp_s)
+            col1, col2 = st.columns(2)
+            col1.date_input("Date", value=datetime.date())
+            col2.time_input("Time", value=datetime.time())
+            # get cwd and combine with event path to get full path
+            path = os.getcwd() + '/' + event['target']['path']
+            print(path)
+            data = open(path, 'rb').read()
+            st.download_button(label="Download", file_name=event['target']['path'], data=data)
+        except KeyError:
+            pass
+
 def show_page():
+    make_dashboard()
     if st.session_state.dbh is False:
         asyncio.run(DBHelper(db_url).create_tables())
         st.session_state.dbh = True
@@ -265,10 +299,19 @@ def show_page():
         if not st.session_state.topics:
             st.write("No topics found in database, attempt to pull from Telegram?")
             pull_topics = col2.button("Pull Topics")
+            st.write(f"Channel: {st.session_state.topics}")
             if pull_topics:
                 asyncio.run(get_topics_from_tg())
                 time.sleep(1)
                 st.rerun()
+        elif len(st.session_state.topics) > 0:
+            st.write(f"Topics: {st.session_state.channel_select.ch_name}")
+            topic_names = [topic.topic_name for topic in st.session_state.topics]
+            topic_names = sorted(topic_names)
+            topic_select = st.selectbox("Select a topic", topic_names)
+            selected_topic = [topic for topic in st.session_state.topics if topic.topic_name == topic_select]
+            st.session_state.topic_select = selected_topic
+            st.write(f"Videos: {topic_select}")
 
     # if st.session_state.topics:
     #     print(st.session_state.topics)

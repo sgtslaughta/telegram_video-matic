@@ -79,8 +79,8 @@ class Topic(Base):
     __tablename__ = 'topic'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    topic_name = Column(String(255))
-    topic_id = Column(Integer)
+    topic_name = Column(String(255), unique=True)
+    topic_id = Column(Integer, unique=True)
     date_added = Column(Date)
     raw_obj = Column(Text)
     tg_ch_id = Column(Integer, ForeignKey('channel.id'))
@@ -95,9 +95,9 @@ class DLFolder(Base):
     __tablename__ = 'dl_folder'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    folder_path = Column(Text)
+    folder_path = Column(Text, unique=True, nullable=False)
     date_added = Column(Date)
-    tags = Column(Text)
+    tags = Column(Text, ForeignKey('tag.id'))
 
     def __repr__(self):
         return (f"<DLFolder(id={self.id}, folder_path={self.folder_path}, "
@@ -108,10 +108,10 @@ class DLFile(Base):
     __tablename__ = 'dl_file'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255))
-    msg_id = Column(Integer, unique=True)
+    name = Column(String(255), nullable=False, unique=True)
+    msg_id = Column(Integer, unique=True, nullable=False)
     date_added = Column(Date)
-    path = Column(Text)
+    path = Column(Text, nullable=False, unique=True)
     tg_ch_id = Column(Integer, ForeignKey('channel.id'))
     topic_id = Column(Integer, ForeignKey('topic.id'))
 
