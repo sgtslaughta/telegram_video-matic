@@ -50,11 +50,9 @@ async def pull_channels(tg_a: TGAccount, dbh: DBHelper, callback=None):
         if callback:
             callback(step, total_steps, f"3: Inserting channel {ch_step}/{len(channels)} into database...")
         ch = channels[channel]
-        ch['raw_obj'] = ch['raw_obj'].stringify() if ch['raw_obj'] else None
         x = {
             'ch_name': ch['name'],
             'ch_id': ch['id'],
-            'raw_obj': ch['raw_obj'],
             'date_added': datetime.now(),
             'date_last_updated': datetime.now()
         }
@@ -134,7 +132,6 @@ async def pull_topics(tg_a: TGAccount,
         x = {
             'topic_name': t['title'],
             'topic_id': t['id'],
-            'raw_obj': t['raw_obj'].stringify(),
             'date_added': datetime.now(),
             'tg_ch_id': db_ch_id
         }

@@ -1,13 +1,16 @@
 import streamlit as st
+
 from .sportsDB import SportsDBClient
 from .db_utils import DBHelper, TelegramChannel, Topic
-from .data_utils import TGAccount
+from .data_utils import TGAccount, pull_topics
+from .monitor_utils import is_monitored, add_monitored, remove_monitored
+from .log_utils import log
 import pandas as pd
 import asyncio
 import json
 
 db_url = "postgresql+asyncpg://user:password@localhost:5432/moviesdb"
-topic_names = {
+TOPIC_NAMES = {
     'Gallagher Premiership': 'English Premiership Rugby',
     'URC': 'United Rugby Championship',
     '6 Nations': 'Six Nations Championship',
@@ -16,14 +19,60 @@ topic_names = {
     'Super Rugby Americas': 'Super Liga Americana',
     'The Rugby Championship': 'Rugby Championship',
     'Pro D2': 'French Pro D2',
+    'Summer/Autumn Nations': 'Autumn Nations Cup',
+    'NPC/Farah Palmer Cup': 'New Zealand National Provincial Championship',
 }
+LEAGUE_IDS = {
+    'English Premiership Rugby': '4414',
+    'United Rugby Championship': '4446',
+    'Six Nations Championship': '4714',
+    'French Top 14': '4370',
+    'Rugby World Cup': '4574',
+    'Super Liga Americana': '4374',
+    'Rugby Championship': '4986',
+    'French Pro D2': '5172',
+    'Autumn Nations Cup': '4375',
+    'New Zealand National Provincial Championship': '5278',
+}
+TEAM_IDS = {
+    'Ireland Rugby': '137130',
+    'England Rugby': '137123',
+    'Wales Rugby': '137141',
+    'Scotland Rugby': '137136',
+    'France Rugby': '137128',
+    'Italy Rugby': '137175',
+    'South Africa Rugby': '137137',
+}
+
+ROUND_CODES = {
+    '125': 'Quarter-Final',
+    '150': 'Semi-Final',
+    '160': 'Playoff',
+    '170': 'Playoff Semi-Final',
+    '180': 'Playoff Final',
+    '200': 'Final',
+    '500': 'Pre-Season',
+}
+
+if 'ch_monitored' not in st.session_state:
+    st.session_state.ch_monitored = False
+
+def progress_callback(current, total, message):
+    st.session_state.pbar.progress(current / total, message)
 
 async def get_topics_from_db():
     data = await DBHelper(db_url).list_records(Topic)
     st.session_state.topics = data
 
-def display_channel(channel):
-    col_cont = st.container(border=True)
+def monitor_callback():
+    if st.session_state.ch_monitored:
+        remove_monitored(st.session_state.selected_topic.topic_name, db_url)
+    else:
+        add_monitored(st.session_state.selected_topic.topic_name, db_url,
+                      st.session_state.root_dl_path)
+
+def display_channel(channel, tab):
+    col_cont = tab.container(border=True)
     col1, col2 = col_cont.columns([.1, 1])
     if channel.logo:
         col1.image(channel.logo, width=100)
@@ -33,18 +82,150 @@ def display_channel(channel):
     col_cont.divider()
     if not st.session_state.topics:
         asyncio.run(get_topics_from_db())
+    if not st.session_state.topics:
+        get = st.button('Get Topics from Telegram?')
+        tgc = TGAccount(st.session_state.api_id,
+                        st.session_state.api_hash,
+                        st.session_state.phone)
+        dbh = DBHelper(db_url)
+        if get:
+            asyncio.run(pull_topics(tgc, dbh, channel_name=channel.ch_name,
+                                    callback=progress_callback))
+            st.rerun()
     topics = st.session_state.topics
     topic_list = sorted([topic.topic_name for topic in topics])
 
-
-
-    topic_sel = col_cont.selectbox('Choose Topic',
+    col1, col2 = col_cont.columns([.6, .4])
+    topic_sel = col1.selectbox('Choose Topic',
                                    topic_list,
                                    index=None)
+
+    if topic_sel:
+        is_mon = is_monitored(topic_sel, db_url)
+        st.session_state.ch_monitored = is_mon
+        monitor_topic = col2.checkbox('Monitor Topic',
+                                      value=is_mon,
+                                      on_change=monitor_callback)
     if topic_sel:
         tab1, tab2 = col_cont.tabs(['League', 'Teams'])
         draw_league(tab1, topic_sel, topics)
         draw_team(tab2, topic_sel, topics)
+
+def draw_players(cont, team_name, team_id):
+    players_tab = cont.container(border=True)
+    sdb_client = SportsDBClient(st.session_state.sportsdb_api)
+
+    players = sdb_client.search_player_by_name_or_team(team=team_name)
+
+    if players.status_code == 200 and players.json()['player']:
+        player_list = [player['strPlayer'] for player in
+                       players.json()['player']]
+        player = players_tab.selectbox('Choose Player',
+                                       player_list, index=None)
+
+        if player:
+            for p in players.json()['player']:
+                if p['strPlayer'] == player:
+                    sel_player = p
+                    break
+            col1, col2 = players_tab.columns([.2, 1])
+            img = sel_player['strCutout'] if sel_player[
+                'strCutout'] else sel_player['strThumb']
+            if img:
+                col1.image(img, width=200)
+            else:
+                col1.write('No Image')
+            col2.title(sel_player['strPlayer'])
+            desc = sel_player['strDescriptionEN'] if sel_player[
+                'strDescriptionEN'] else 'No Description'
+            col2.text_area("Description", desc, height=200)
+            cont = players_tab.container(border=True)
+            cont.subheader('Player Details')
+            player_stats = {}
+            for key, value in sel_player.items():
+                if (key == 'strDescriptionEN' or
+                        'id' in key):
+                    continue
+                if value:
+                    player_stats[key.replace('str', '')] = value
+
+            cont.table(player_stats)
+
+def draw_old_events(cont, team_id):
+    sdb_client = SportsDBClient(st.session_state.sportsdb_api)
+    old_events = sdb_client.get_last_events_by_team(team_id)
+    if old_events.status_code == 200:
+        cont.subheader('Past Events:')
+        results = {}
+        for event in old_events.json()['results']:
+            if event['intRound'] in ROUND_CODES:
+                rnd = ROUND_CODES[event['intRound']]
+            else:
+                rnd = event['intRound']
+            league_id = event['idLeague']
+            league = sdb_client.lookup_league_by_id(league_id)
+            league_name = league.json()['leagues'][0]['strLeague']
+
+            results[event['strEvent']] = {
+                'league': league_name,
+                'thumb': event['strThumb'],
+                'date': event['dateEvent'],
+                'time': event['strTime'],
+                'venue': event['strVenue'],
+                'round': rnd,
+                'home_team': event['strHomeTeam'],
+                'home_score': event['intHomeScore'],
+                'away_team': event['strAwayTeam'],
+                'away_score': event['intAwayScore'],
+            }
+        # Convert to a dataframe
+        df = pd.DataFrame(results).transpose()
+        dfe = cont.data_editor(df,
+                                   column_config={
+                                       'thumb':
+                                           st.column_config.ImageColumn(
+                                               "Thumbnail",
+                                               help="Event Thumbnail"
+                                           ),
+                                   },
+                                   )
+
+def draw_new_events(cont, team_id):
+    sdb_client = SportsDBClient(st.session_state.sportsdb_api)
+    new_events = sdb_client.get_next_events_by_team(team_id)
+
+    if new_events.status_code == 200:
+        cont.subheader('Upcoming Team Events:')
+        results = {}
+        if new_events.json()['events']:
+            for event in new_events.json()['events']:
+                if event['intRound'] in ROUND_CODES:
+                    rnd = ROUND_CODES[event['intRound']]
+                else:
+                    rnd = event['intRound']
+                results[event['strEvent']] = {
+                    'thumb': event['strThumb'],
+                    'date': event['dateEvent'],
+                    'time': event['strTime'],
+                    'venue': event['strVenue'],
+                    'round': rnd,
+                    'home_team': event['strHomeTeam'],
+                    'away_team': event['strAwayTeam'],
+                }
+            # Convert to a dataframe
+            df = pd.DataFrame(results).transpose()
+            dfe = cont.data_editor(df,
+                                       column_config={
+                                           'thumb':
+                                               st.column_config.ImageColumn(
+                                                   "Thumbnail",
+                                                   help="Event Thumbnail"
+                                               ),
+                                       },
+                                       )
+    else:
+        cont.write(new_events.text)
+
 
 
 def draw_team(cont, topic_sel, topics):
@@ -53,125 +234,43 @@ def draw_team(cont, topic_sel, topics):
             team_name_list = [team['strTeam'] for team in data]
             team = cont.selectbox('Choose Team',
                                                team_name_list, index=None)
-            if team:
+            sel_team = None
+            if team in TEAM_IDS:
+                team_id = TEAM_IDS[team]
+                sdb_client = SportsDBClient(st.session_state.sportsdb_api)
+                sel_team = sdb_client.lookup_team_by_id(team_id)
+                sel_team = sel_team.json()['teams'][0]
+
+            else:
                 for t in data:
                     if t['strTeam'] == team:
                         sel_team = t
                         break
-                # print(sel_team)
-                try:
+            if team:
+                print(sel_team)
+                cont.image(sel_team['strBadge'], width=150)
+                cont.markdown(f"""
+                | Year Formed | Stadium | Location | Website |
+                |-------------|---------|----------|---------|
+                | {sel_team['intFormedYear']} | {sel_team['strStadium']} | {sel_team['strLocation']} | {sel_team['strWebsite']} |
+                """)
 
-                    cont.image(sel_team['strBadge'], width=150)
-                    cont.markdown(f"""
-                    | Year Formed | Stadium | Location | Website |
-                    |-------------|---------|----------|---------|
-                    | {sel_team['intFormedYear']} | {sel_team['strStadium']} | {sel_team['strLocation']} | {sel_team['strWebsite']} |
-                    """)
+                cont.write(sel_team['strDescriptionEN'])
+                cont.image(sel_team['strEquipment'], width=150)
+                cont.image(sel_team['strBanner'], width=150)
+                cont.markdown(sel_team['strYoutube'])
 
-                    cont.write(sel_team['strDescriptionEN'])
-                    cont.image(sel_team['strEquipment'], width=150)
-                    cont.image(sel_team['strBanner'], width=150)
-                    # print(sel_team['strYoutube'])
-                    cont.markdown(sel_team['strYoutube'])
+                cont.divider()
+                players_tab, past_tab, next_tab = cont.tabs(['Players', 'Past '
+                                                             'Events', 'Upcoming Events'])
 
-                    cont.divider()
-                    ##############################
+                draw_players(players_tab, sel_team['strTeam'], sel_team['idTeam'])
+                draw_old_events(past_tab, sel_team['idTeam'])
+                draw_new_events(next_tab, sel_team['idTeam'])
+        else:
+            cont.write("No teams found")
+            st.stop()
 
-                    players_tab, past_tab, next_tab = cont.tabs([
-                        'Players', 'Past '
-                                                                 'Events', 'Upcoming Events'])
-                    next_tab.subheader('Upcoming Team Events:')
-                    sdb_client = SportsDBClient(st.session_state.sportsdb_api)
-                    team_details = sdb_client.lookup_team_by_id(sel_team[
-                                                                    'idTeam'])
-                    new_events = sdb_client.get_next_events_by_team(sel_team[
-                                                                 'idTeam'])
-                    old_events = sdb_client.get_last_events_by_team(sel_team[
-                                                                 'idTeam'])
-                    players = sdb_client.lookup_players_by_team(sel_team[
-                                                                    'idTeam'])
-                    if players.status_code == 200:
-                        print(json.dumps(players.json(), indent=4))
-                        player_list = [player['strPlayer'] for player in players.json()['player']]
-                        player = players_tab.selectbox('Choose Player',
-                                                         player_list, index=None)
-                        if player:
-                            for p in players.json()['player']:
-                                if p['strPlayer'] == player:
-                                    sel_player = p
-                                    break
-                            # print(sel_player)
-                            col1, col2 = players_tab.columns([.2, 1])
-                            col1.image(sel_player['strCutout'], width=200)
-                            col2.title(sel_player['strPlayer'])
-                            col2.text_area("Description", sel_player[
-                                'strDescriptionEN'], height=200)
-                            cont = players_tab.container(border=True)
-                            cont.subheader('Player Details')
-                            player_stats = {}
-                            for key, value in sel_player.items():
-                                if (key == 'strDescriptionEN' or
-                                        'id' in key):
-                                    continue
-                                if value:
-                                    player_stats[key.replace('str', '')] = value
-                            cont.table(player_stats)
-                    # print(players.json())
-                    if new_events.status_code == 200:
-                        results = {}
-                        for event in new_events.json()['events']:
-                            results[event['strEvent']] = {
-                                'thumb': event['strThumb'],
-                                'date': event['dateEvent'],
-                                'time': event['strTime'],
-                                'venue': event['strVenue'],
-                                'round': event['intRound'],
-                                'home_team': event['strHomeTeam'],
-                                'away_team': event['strAwayTeam'],
-                            }
-                        # Convert to a dataframe
-                        df = pd.DataFrame(results).transpose()
-                        dfe = next_tab.data_editor(df,
-                                                         column_config={
-                                                             'thumb':
-                                                             st.column_config.ImageColumn(
-                                                                    "Thumbnail",
-                                                                    help="Event Thumbnail"
-                                                                ),
-                                                         },
-                                                           )
-                    else:
-                        next_tab.write(new_events.text)
-                    if old_events.status_code == 200:
-                        results = {}
-                        for event in old_events.json()['results']:
-                            results[event['strEvent']] = {
-                                'thumb': event['strThumb'],
-                                'date': event['dateEvent'],
-                                'time': event['strTime'],
-                                'venue': event['strVenue'],
-                                'round': event['intRound'],
-                                'home_team': event['strHomeTeam'],
-                                'away_team': event['strAwayTeam'],
-                            }
-                        # Convert to a dataframe
-                        df = pd.DataFrame(results).transpose()
-                        dfe = past_tab.data_editor(df,
-                                                         column_config={
-                                                             'thumb':
-                                                             st.column_config.ImageColumn(
-                                                                    "Thumbnail",
-                                                                    help="Event Thumbnail"
-                                                                ),
-                                                         },
-                                                           )
-                    # schedule = (
-                    #     sdb_client.get_schedule_next_events_by_league(
-                    #         sel_team['idLeague']))
-                    # print(schedule.json())
-                    # topic_detail_cont.write(schedule.json())
-                except BaseException as e:
-                    pass
 
 def draw_league(cont, topic_sel, topics):
 
@@ -180,35 +279,47 @@ def draw_league(cont, topic_sel, topics):
     if topic:
         st.session_state.selected_topic = topic
     topic_detail_cont.subheader(topic.topic_name)
-    # tg = TGAccount(st.session_state.api_id,
-    #                st.session_state.api_hash,
-    #                st.session_state.phone)
-    # top_messages = asyncio.run(tg.get_messages(entity=channel.chat,
-    #                                            limit=10,
-    #                                            reply_to=topic.topic_id))
-    # for msg in top_messages:
-    #     topic_detail_cont.write(msg)
-    if topic.topic_name in topic_names:
-        name = topic_names[topic.topic_name]
+    if topic.topic_name in TOPIC_NAMES:
+        name = TOPIC_NAMES[topic.topic_name]
     else:
         name = topic.topic_name
     sdb_client = SportsDBClient(st.session_state.sportsdb_api)
     data = sdb_client.list_teams_in_league(name)
-    if data.json():
-        st.session_state.teams = data.json()['teams']
-    league_id = data.json()['teams'][0]['idLeague']
-    league_detail = sdb_client.lookup_league_by_id(league_id)
-    topic_detail_cont.image(league_detail.json()['leagues'][0]['strBadge'],
-                            width=150)
+
+    league_detail = sdb_client.lookup_league_by_id(LEAGUE_IDS[name])
+    league_id = LEAGUE_IDS[name]
+
+
+    if data.status_code == 200:
+        if data.json()['teams']:
+            st.session_state.teams = data.json()['teams']
+        else:
+            topic_detail_cont.write("No league found")
+            st.stop()
+
     league_detail = league_detail.json()['leagues'][0]
+    topic_detail_cont.image(league_detail['strLogo'],
+                            width=800)
+
     topic_detail_cont.markdown(f"""
             | Name | Country | Sport | Website |
             |------|---------|-------|---------|
-            | {league_detail['strLeague']} | {league_detail['strCountry']} | {league_detail['strSport']} | [Website]({league_detail['strWebsite']}) |
+            | {league_detail['strLeague']} | {league_detail['strCountry']} | {league_detail['strSport']} | {league_detail['strWebsite']} |
             """)
     topic_detail_cont.write(league_detail['strDescriptionEN'])
+    col1, col2 = topic_detail_cont.columns([.8, .2])
+    col1.image(league_detail['strBanner'],
+                            width=800)
+    col2.image(league_detail['strTrophy'],
+                            width=150, caption='Trophy')
 
-    past_tab, next_tab = topic_detail_cont.tabs(['Past Events', 'Upcoming Events'])
+
+
+    col1, col2 = topic_detail_cont.columns([.1, 1])
+    col1.image(league_detail['strBadge'],
+               width=100, caption='Badge')
+
+    past_tab, next_tab = col2.tabs(['Past Events', 'Upcoming Events'])
     schedule = sdb_client.get_next_events_by_league(league_id)
     # past_games = sdb_client.get_league_events_by_season(league_id,
     #                                                     '2023-2024')
@@ -217,16 +328,41 @@ def draw_league(cont, topic_sel, topics):
     season = past_tab.selectbox('Choose Season', season_list, index=None)
     if season:
         past_games = sdb_client.get_league_events_by_season(league_id, season)
+        season_final = None
+        for i in past_games.json()['events']:
+            if i['intRound'] == '200':
+                season_final = i
+                break
+        if season_final:
+            winner = season_final['strHomeTeam'] if season_final['intHomeScore'] > season_final['intAwayScore'] else season_final['strAwayTeam']
+            winner_detail = sdb_client.search_team_by_name(winner)
+            winner_detail = winner_detail.json()['teams'][0]
+            winner_logo = (f"![Winner Logo]("
+                           f"{winner_detail['strBadge']}/tiny)")
+            score = f"{season_final['intHomeScore']} - {season_final['intAwayScore']}"
+            venue = season_final['strVenue']
+            date = season_final['dateEvent']
+            past_tab.markdown(f"""
+            | {season} Winner |  Venue | Date | Score |
+            |-----------------|--------|------|-------|
+            | {winner_logo}{winner} | {venue} | {date} | {score} |
+            """)
+        # with open('data.json', 'w') as f:
+        #     f.write(json.dumps(past_games.json(), indent=4))
         if past_games.status_code == 200:
             past_tab.subheader('Past League Events:')
             results = {}
 
             for event in past_games.json()['events']:
+                if event['intRound'] in ROUND_CODES:
+                    rnd = ROUND_CODES[event['intRound']]
+                else:
+                    rnd = event['intRound']
                 results[event['strEvent']] = {
                     'thumb': event['strThumb'],
                     'date': event['dateEvent'],
                     'time': event['strTime'],
-                    'round': event['intRound'],
+                    'round': rnd,
                     'home_team_logo': event['strHomeTeamBadge'],
                     'home_team': event['strHomeTeam'],
                     'away_team_logo': event['strAwayTeamBadge'],
@@ -271,11 +407,15 @@ def draw_league(cont, topic_sel, topics):
         next_tab.subheader('Upcoming League Events:')
         results = {}
         for event in schedule.json()['events']:
+            if event['intRound'] in ROUND_CODES:
+                rnd = ROUND_CODES[event['intRound']]
+            else:
+                rnd = event['intRound']
             results[event['strEvent']] = {
                 'thumb': event['strThumb'],
                 'date': event['dateEvent'],
                 'time': event['strTime'],
-                'round': event['intRound'],
+                'round': rnd,
                 'home_team': event['strHomeTeam'],
                 'away_team': event['strAwayTeam'],
             }
@@ -290,24 +430,3 @@ def draw_league(cont, topic_sel, topics):
                                                     ),
                                             },
                                             )
-
-
-
-
-    # fb_icon = "https://img.icons8.com/color/48/facebook-new.png"
-    # tw_icon = "https://img.icons8.com/color/48/twitter--v1.png"
-    # inst_icon = "https://img.icons8.com/fluency/48/instagram-new.png"
-    # yt_icon = "https://img.icons8.com/color/48/youtube-play.png"
-    #
-    # fb_link = str(league_detail['strFacebook'])
-    # topic_detail_cont.html(f"<a href='"
-    #                        f"{fb_link}' "
-    #                        f"target='_blank'><img "
-    #                        f"src='{fb_icon}'></a>")
-    #
-    # topic_detail_cont.markdown(f"""
-    #         [![Title]({fb_icon})]({league_detail['strFacebook']})
-    #         [![Title]({tw_icon})]({league_detail['strTwitter']})
-    #         [![Title]({inst_icon})]({league_detail['strInstagram']})
-    #         [![Title]({yt_icon})]({league_detail['strYoutube']})
-    #         """, unsafe_allow_html=True)

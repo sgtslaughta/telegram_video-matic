@@ -5,19 +5,16 @@ from utils.log_utils import log
 import asyncio
 from utils.tg_utils import catch_and_log_errors
 # from utils.tg_utils import catch_and_log_errors
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Text, Date
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, \
-    create_async_pool_from_url
+from sqlalchemy import (create_engine, Column, Integer, String, ForeignKey,
+                        Text, DateTime, Boolean, Sequence, event, func)
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
-from sqlalchemy import text, Sequence
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.sql import update
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import text
 from os import environ
+from datetime import datetime as dt
 
 Base = declarative_base()
 
@@ -28,33 +25,38 @@ class Message(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, unique=True)
     name = Column(String(255), nullable=False)
     msg_id = Column(Integer, unique=True, nullable=False)
-    date_added = Column(Date, nullable=False)
-    date_posted = Column(Date, nullable=False)
-    raw_obj = Column(Text, nullable=False)
-    thumb = Column(Text)
+    date_added = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    date_posted = Column(DateTime(timezone=True), nullable=False)
+    is_media = Column(Boolean, nullable=False)
     tg_ch_id = Column(Integer, ForeignKey('channel.id'), nullable=False)
     topic_id = Column(Integer, ForeignKey('topic.id'))
 
     def __repr__(self):
         return (f"<Message(id={self.id}, name={self.name}, msg_id"
                 f"={self.msg_id}, date_added={self.date_added}, "
-                f"date_posted={self.date_posted}, raw_obj={self.raw_obj}, "
-                f"thumb={self.thumb}, tg_ch_id={self.tg_ch_id}, topic_id"
+                f"date_posted={self.date_posted}, is_media={self.is_media}, tg_ch_"
+                f"id={self.tg_ch_id}, topic_id"
                 f"={self.topic_id})>")
 
 
-class MonitoredChannel(Base):
-    __tablename__ = 'monitored_channel'
+class MonitoredItem(Base):
+    __tablename__ = 'monitored_item'
 
-    ch_id = Column(Integer, ForeignKey('channel.id'), primary_key=True)
-    date_added = Column(Date)
-    date_last_updated = Column(Date)
-    is_active = Column(Integer)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic_id = Column(Integer, ForeignKey('topic.id'), primary_key=True,
+                      unique=True)
+    date_added = Column(DateTime(timezone=True), default=func.now())
+    date_last_updated = Column(DateTime(timezone=True), default=func.now())
+    is_monitored = Column(Boolean, nullable=False)
 
     def __repr__(self):
-        return (f"<MonitoredChannel(ch_id={self.ch_id}, date_added"
+        return (f"<MonitoredChannel(ch_id={self.topic_id}, date_added"
                 f"={self.date_added}, date_last_updated"
-                f"={self.date_last_updated}, is_active={self.is_active})>")
+                f"={self.date_last_updated}, is_active={self.is_monitored})>")
+
+@event.listens_for(MonitoredItem, 'before_update')
+def receive_before_update(mapper, connection, target):
+    target.date_last_updated = dt.now()
 
 
 class TelegramChannel(Base):
@@ -63,17 +65,20 @@ class TelegramChannel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     ch_name = Column(String(255))
     ch_id = Column(Integer, unique=True, nullable=False)
-    raw_obj = Column(Text)
-    date_added = Column(Date)
-    date_last_updated = Column(Date)
+    date_added = Column(DateTime(timezone=True), default=func.now())
+    date_last_updated = Column(DateTime(timezone=True), default=func.now(),
+                               onupdate=func.now())
     last_msg_id = Column(Integer, ForeignKey('message.id'))
 
     def __repr__(self):
         return (f"<TelegramChannel(id={self.id}, ch_name={self.ch_name}, "
-                f"ch_id={self.ch_id}, raw_obj={self.raw_obj}, date_added"
+                f"ch_id={self.ch_id}, date_added"
                 f"={self.date_added}, date_last_updated"
                 f"={self.date_last_updated}, last_msg_id={self.last_msg_id})>")
 
+@event.listens_for(TelegramChannel, 'before_update')
+def receive_before_update(mapper, connection, target):
+    target.date_last_updated = dt.now()
 
 class Topic(Base):
     __tablename__ = 'topic'
@@ -81,14 +86,13 @@ class Topic(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     topic_name = Column(String(255), unique=True)
     topic_id = Column(Integer, unique=True)
-    date_added = Column(Date)
-    raw_obj = Column(Text)
+    date_added = Column(DateTime(timezone=True), default=func.now())
     tg_ch_id = Column(Integer, ForeignKey('channel.id'))
 
     def __repr__(self):
         return (f"<Topic(id={self.id}, topic_name={self.topic_name}, "
                 f"topic_id={self.topic_id}, date_added={self.date_added}, "
-                f"raw_obj={self.raw_obj}, tg_ch_id={self.tg_ch_id})>")
+                f"tg_ch_id={self.tg_ch_id})>")
 
 
 class DLFolder(Base):
@@ -96,12 +100,14 @@ class DLFolder(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     folder_path = Column(Text, unique=True, nullable=False)
-    date_added = Column(Date)
-    tags = Column(Text, ForeignKey('tag.id'))
+    date_added = Column(DateTime(timezone=True), default=func.now())
+    topic_id = Column(Integer, ForeignKey('topic.id'))
+    ch_id = Column(Integer, ForeignKey('channel.id'))
 
     def __repr__(self):
         return (f"<DLFolder(id={self.id}, folder_path={self.folder_path}, "
-                f"date_added={self.date_added}, tags={self.tags})>")
+                f"date_added={self.date_added}, topic_id={self.topic_id},"
+                f"ch_id={self.ch_id})>")
 
 
 class DLFile(Base):
@@ -110,7 +116,7 @@ class DLFile(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False, unique=True)
     msg_id = Column(Integer, unique=True, nullable=False)
-    date_added = Column(Date)
+    date_added = Column(DateTime(timezone=True), default=func.now())
     path = Column(Text, nullable=False, unique=True)
     tg_ch_id = Column(Integer, ForeignKey('channel.id'))
     topic_id = Column(Integer, ForeignKey('topic.id'))
@@ -137,6 +143,29 @@ class MessageTags(Base):
 
     message_id = Column(Integer, ForeignKey('message.id'), primary_key=True)
     tag_id = Column(Integer, ForeignKey('tag.id'), primary_key=True)
+
+class FolderTags(Base):
+    __tablename__ = 'folder_tag'
+
+    folder_id = Column(Integer, ForeignKey('dl_folder.id'), primary_key=True)
+    tag_id = Column(Integer, ForeignKey('tag.id'), primary_key=True)
+
+class FileTags(Base):
+    __tablename__ = 'file_tag'
+
+    file_id = Column(Integer, ForeignKey('dl_file.id'), primary_key=True)
+    tag_id = Column(Integer, ForeignKey('tag.id'), primary_key=True)
+
+class ServerSettings(Base):
+    __tablename__ = 'svr_settings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    setting_name = Column(String(255), unique=True)
+    setting_value = Column(Text)
+
+    def __repr__(self):
+        return (f"<ServerSettings(id={self.id}, setting_name={self.setting_name}, "
+                f"setting_value={self.setting_value})>")
 
 
 class DBHelper:
@@ -175,21 +204,22 @@ class DBHelper:
             record = result.scalars().first()
             return record
 
-    async def update_record(self, table, record_id: int, new_name: str):
+    async def update_record(self, table, new_name: str,
+                            filter_condition=None):
         async with self.async_session() as session:
             async with session.begin():
                 result = await session.execute(
-                    select(table).filter(table.id == record_id))
+                    select(table).filter(filter_condition))
                 record = result.scalars().first()
                 if record:
                     record.name = new_name
                     await session.commit()
 
-    async def delete_record(self, table, record_id: int):
+    async def delete_record(self, table, filter_condition=None):
         async with self.async_session() as session:
             async with session.begin():
                 result = await session.execute(
-                    select(table).filter(table.id == record_id))
+                    select(table).filter(filter_condition))
                 record = result.scalars().first()
                 if record:
                     await session.delete(record)
@@ -220,46 +250,42 @@ class DBHelper:
 
 def init_db():
     """
-    Initialize the database based on the environment variables
-        MYSQL_USER,
-        MYSQL_PASSWORD,
-        MYSQL_HOST,
-        MYSQL_PORT, and
-        MYSQL_DATABASE.
-    If the mysql environment variables are not set, the database will default to sqlite.
-    Returns: None
+    Initialize the database connection and create the tables.
+
+    Returns:
+
     """
-    if 'MYSQL_DATABASE' not in environ:
-        log("MYSQL_DATABASE environment variable not set, using sqlite.", level="ERROR")
-        database_url = 'sqlite:///../movie_db.sqlite'
+    if 'DB_NAME' not in environ:
+        log("DB_NAME required, quitting.", level="ERROR")
+        exit(1)
+    if 'DB_USER' not in environ:
+        log("REQUIRED: DB_USER environment variable not set, quitting.",
+            level="ERROR")
+        exit(1)
+    user = environ['DB_USER']
+    if 'DB_PASSWORD' not in environ:
+        log("REQUIRED: DB_PASSWORD environment variable not set, "
+            "quitting.", level="ERROR")
+        exit(1)
+    password = environ['DB_PASSWORD']
+    if 'DB_HOST' not in environ:
+        log("REQUIRED: DB_HOST environment variable not set, "
+            "using localhost.", level="ERROR")
+        host = 'localhost'
     else:
-        if 'DB_USER' not in environ:
-            log("REQUIRED: DB_USER environment variable not set, quitting.",
-                level="ERROR")
-            exit(1)
-        user = environ['DB_USER']
-        if 'DB_PASSWORD' not in environ:
-            log("REQUIRED: DB_PASSWORD environment variable not set, "
-                "quitting.", level="ERROR")
-            exit(1)
-        password = environ['DB_PASSWORD']
-        if 'DB_HOST' not in environ:
-            log("REQUIRED: MYSQL_HOST environment variable not set, using localhost.", level="ERROR")
-            host = 'localhost'
-        else:
-            host = environ['MYSQL_HOST']
-        if 'DB_PORT' not in environ:
-            log("DB_PORT environment variable not set, using 3306.",
-                level="ERROR")
-            port = 5432
-        else:
-            port = environ['MYSQL_PORT']
-        if 'DB_DATABASE' not in environ:
-            log("REQUIRED: DB_DATABASE environment variable not set, "
-                "quitting.", level="ERROR")
-            exit(1)
-        db = environ['MYSQL_DATABASE']
-        database_url = f"postgres://{user}:{password}@{host}:{port}/{db}"
+        host = environ['MYSQL_HOST']
+    if 'DB_PORT' not in environ:
+        log("DB_PORT environment variable not set, using 3306.",
+            level="ERROR")
+        port = 5432
+    else:
+        port = environ['DB_PORT']
+    if 'DB_DATABASE' not in environ:
+        log("REQUIRED: DB_DATABASE environment variable not set, "
+            "quitting.", level="ERROR")
+        exit(1)
+    db = environ['DB_NAME']
+    database_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
     dbh = DBHelper(database_url)
-    dbh.create_database()
-    environ['DATABASE_URL'] = database_url
+    dbh.create_tables()
+    environ['DB_URL'] = database_url
