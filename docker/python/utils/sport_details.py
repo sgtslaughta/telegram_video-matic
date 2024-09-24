@@ -8,8 +8,6 @@ from .db_utils import DBHelper, Topic
 from .monitor_utils import is_monitored, add_monitored, remove_monitored
 from .sportsDB import SportsDBClient
 
-db_url = st.session_state.db_url
-
 TOPIC_NAMES = {
     'Gallagher Premiership': 'English Premiership Rugby',
     'URC': 'United Rugby Championship',
@@ -63,15 +61,17 @@ def progress_callback(current, total, message):
 
 
 async def get_topics_from_db():
-    data = await DBHelper(db_url).list_records(Topic)
+    data = await DBHelper(st.session_state.db_url).list_records(Topic)
     st.session_state.topics = data
 
 
 def monitor_callback():
     if st.session_state.ch_monitored:
-        remove_monitored(st.session_state.selected_topic.topic_name, db_url)
+        remove_monitored(st.session_state.selected_topic.topic_name,
+                         st.session_state.db_url)
     else:
-        add_monitored(st.session_state.selected_topic.topic_name, db_url,
+        add_monitored(st.session_state.selected_topic.topic_name,
+                      st.session_state.db_url,
                       st.session_state.root_dl_path)
 
 
@@ -91,7 +91,7 @@ def display_channel(channel, tab):
         tgc = TGAccount(st.session_state.api_id,
                         st.session_state.api_hash,
                         st.session_state.phone)
-        dbh = DBHelper(db_url)
+        dbh = DBHelper(st.session_state.db_url)
         if get:
             asyncio.run(pull_topics(tgc, dbh, channel_name=channel.ch_name,
                                     callback=progress_callback))
@@ -105,7 +105,7 @@ def display_channel(channel, tab):
                                index=None)
 
     if topic_sel:
-        is_mon = is_monitored(topic_sel, db_url)
+        is_mon = is_monitored(topic_sel, st.session_state.db_url)
         st.session_state.ch_monitored = is_mon
         monitor_topic = col2.checkbox('Monitor Topic',
                                       value=is_mon,

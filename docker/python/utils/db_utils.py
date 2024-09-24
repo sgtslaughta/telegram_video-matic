@@ -1,20 +1,19 @@
 # from scripts.run_emscripten_tests import driver
 # from utils.log_utils import log
 # from docker.python.message_test import db_url
-from utils.log_utils import log
-import asyncio
-from utils.tg_utils import catch_and_log_errors
+from datetime import datetime as dt
+from os import environ
+
 # from utils.tg_utils import catch_and_log_errors
-from sqlalchemy import (create_engine, Column, Integer, String, ForeignKey,
-                        Text, DateTime, Boolean, Sequence, event, func)
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy import (Column, Integer, String, ForeignKey,
+                        Text, DateTime, Boolean, Sequence, event, func, delete)
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.future import select
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.ext.declarative import DeclarativeMeta
-from sqlalchemy.exc import IntegrityError
-from os import environ
-from datetime import datetime as dt
+from utils.log_utils import log
 
 Base = declarative_base()
 
@@ -38,6 +37,23 @@ class Message(Base):
                 f"id={self.tg_ch_id}, topic_id"
                 f"={self.topic_id})>")
 
+
+class ServerTasks(Base):
+    __tablename__ = 'svr_tasks'
+
+    id = Column(Integer, primary_key=True, autoincrement=True, unique=True)
+    func_name = Column(String(255), nullable=False)
+    args = Column(Text)
+    interval_s = Column(Integer, nullable=False)
+    next_run_time = Column(DateTime(timezone=True), nullable=False)
+    is_complete = Column(Boolean, nullable=False)
+    is_oneshot = Column(Boolean, nullable=False)
+
+    def __repr__(self):
+        return (f"<ServerTasks(id={self.id}, func_name={self.func_name}, args"
+                f"={self.args}, interval_s={self.interval_s}, next_run_time"
+                f"={self.next_run_time}, is_complete={self.is_complete},"
+                f"is_oneshot={self.is_oneshot})>")
 
 class MonitoredItem(Base):
     __tablename__ = 'monitored_item'
@@ -183,10 +199,20 @@ class DBHelper:
     async def create_tables(self):
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(Base.metadata.create_all)
 
-    async def drop_tables(self):
+    async def drop_all_tables(self):
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
+
+    async def drop_table(self, table):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(table.__table__.drop)
+
+    async def clear_table(self, table):
+        async with self.engine.begin() as conn:
+            stmt = delete(table)
+            await conn.execute(stmt)
 
     async def add_record(self, new_record):
         try:
@@ -204,16 +230,31 @@ class DBHelper:
             record = result.scalars().first()
             return record
 
-    async def update_record(self, table, new_name: str,
-                            filter_condition=None):
+    async def update_record(self, table, new_record, filter_condition=None):
+        """
+        Update a record in the database based on the filter_condition.
+        If a record with the same id exists, update it with the values from new_record.
+        """
         async with self.async_session() as session:
             async with session.begin():
+                # Fetch the existing record
                 result = await session.execute(
                     select(table).filter(filter_condition))
-                record = result.scalars().first()
-                if record:
-                    record.name = new_name
+                existing_record = result.scalars().first()
+
+                # Check if the record exists
+                if existing_record:
+                    # Update the existing record with values from new_record
+                    for attr, value in vars(new_record).items():
+                        if hasattr(existing_record,
+                                   attr) and attr != 'id':  # Ignore updating the 'id'
+                            setattr(existing_record, attr, value)
+                    # Commit the changes
                     await session.commit()
+                    return existing_record
+                else:
+                    # Handle case where no record is found
+                    return None
 
     async def delete_record(self, table, filter_condition=None):
         async with self.async_session() as session:

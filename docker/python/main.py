@@ -4,19 +4,19 @@ from time import sleep
 
 import streamlit as st
 
+from utils.data_utils import TGAccount
+from utils.data_utils import pull_channels
+# try:
+from utils.db_utils import DBHelper, TelegramChannel
+from utils.file_page import draw_files_page
 from utils.log_utils import log
+from utils.sport_details import display_channel
 
-try:
-    from utils.db_utils import DBHelper, TelegramChannel, Topic
-    from utils.data_utils import TGAccount
-    from utils.sport_details import display_channel
-    from utils.data_utils import pull_channels, pull_topics
-    from utils.file_page import draw_files_page
-except Exception as e:
-    print(e)
-    import os, signal
+# except Exception as e:
+#     print(e)
+#     import os, signal
 
-    os.kill(os.getpid(), signal.SIGKILL)
+# os.kill(os.getpid(), signal.SIGKILL)
 
 st.set_page_config(layout='wide',
                    page_icon=':tv:',
@@ -47,7 +47,18 @@ def get_vars():
         log(str(e), 'error')
 
 
+def get_or_create_eventloop():
+    try:
+        return asyncio.get_event_loop()
+    except RuntimeError as ex:
+        if "There is no current event loop in thread" in str(ex):
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return asyncio.get_event_loop()
+
 def config():
+    if "loop" not in st.session_state:
+        st.session_state.loop = asyncio.new_event_loop()
     if 'init_vars' not in st.session_state:
         st.session_state.init_vars = True
         get_vars()
@@ -96,7 +107,67 @@ def config():
         st.session_state.channel_changed = False
     if 'var_name' not in st.session_state:
         st.session_state.var_name = 'Telegram'
+    if 'tg_logged_in' not in st.session_state:
+        st.session_state.tg_logged_in = False
+    if 'getting_code' not in st.session_state:
+        st.session_state.getting_code = False
+    if 'code_sent' not in st.session_state:
+        st.session_state.code_sent = False
 
+
+# client_lock = Lock()
+#
+# async def try_login():
+#     if not st.session_state.get("getting_code"):
+#         st.session_state.getting_code = True
+#         st.session_state.tg_logged_in = False  # Track if user is authenticated
+#
+#     client = TelegramClient('name', st.session_state.api_id,
+#                             st.session_state.api_hash)
+#
+#     try:
+#         # Connect to the client
+#         await client.connect()
+#
+#         if not await client.is_user_authorized():
+#             # Send the code request only if we haven't already
+#             if not st.session_state.get("code_sent"):
+#                 await client.send_code_request(st.session_state.phone)
+#                 st.session_state.code_sent = True
+#                 st.success("Code sent! Please check your Telegram.")
+#
+#             # Input for the user to enter the code
+#             code = st.text_input('Auth Code',
+#                                  help='Enter the code sent to your Telegram account')
+#
+#             if st.button("Submit Code") and code:
+#                 # Use the code entered by the user to log in
+#                 try:
+#                     await client.sign_in(phone=st.session_state.phone,
+#                                          code=code)
+#                     st.session_state.authenticated = True
+#                     st.success("Successfully logged in!")
+#                 except Exception as e:
+#                     st.error(f"Login failed: {str(e)}")
+#
+#         else:
+#             st.session_state.authenticated = True
+#             st.success("Already logged in!")
+#     except Exception as e:
+#         st.error(f"An error occurred: {str(e)}")
+#
+# @st.dialog("Enter Telegram Auth Code")
+# async def gather_auth_code():
+#     with st.form(key='auth_code_form'):
+#         code = st.number_input('Auth Code',
+#                              help='Enter the code sent to your Telegram account',
+#                                min_value=0, max_value=999999)
+#         submit = st.form_submit_button('Submit')
+#         if submit:
+#             st.session_state.auth_code = code
+#             st.session_state.getting_code = False
+#             return code
+#         return False
 
 @st.dialog("Enter Telegram API Details")
 def gather_tg_details():
@@ -212,6 +283,7 @@ def menu():
 
 def load_page():
     config()
+    asyncio.set_event_loop(st.session_state.loop)
     if (not st.session_state.api_id
             or not st.session_state.api_hash
             or not st.session_state.phone):
@@ -219,6 +291,8 @@ def load_page():
         st.write('Please enter your Telegram API details to continue...')
         st.button('Refresh')
     else:
+        # if not st.session_state.getting_code:
+        #     asyncio.run(try_login())
         img_col, title_col = st.columns([1, 5])
         st.sidebar.image(
             'https://media.tenor.com/9ZsRZ-PXPlwAAAAi/telegram-gif'

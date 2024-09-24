@@ -3,22 +3,26 @@ The functions in this file are used to interact with the Telegram API using the 
 
 """
 
-from telethon.sync import TelegramClient, functions, types
-from telethon.tl.functions.messages import GetDialogsRequest
-from telethon.tl.functions.channels import GetFullChannelRequest, GetMessagesRequest
-from telethon.tl.types import (MessageMediaDocument, InputChannel,
-                               InputPeerSelf)
-from telethon.tl.types import InputMessagesFilterDocument, InputMessagesFilterPhotos, InputMessagesFilterVideo
-from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, InputMessagesFilterVoice
-from telethon.errors import SessionPasswordNeededError, PhoneNumberInvalidError, PhoneCodeInvalidError
-from tqdm import tqdm
-from .log_utils import log
-import pathlib
 import asyncio
 import base64
+import os.path
+import pathlib
 from datetime import datetime
 from functools import wraps
-import os.path
+
+from telethon.sync import TelegramClient, functions, types
+from telethon.tl.functions.channels import GetFullChannelRequest, \
+    GetMessagesRequest
+from telethon.tl.functions.messages import GetDialogsRequest
+from telethon.tl.types import InputMessagesFilterDocument, \
+    InputMessagesFilterPhotos, InputMessagesFilterVideo
+from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, \
+    InputMessagesFilterVoice
+from telethon.tl.types import (MessageMediaDocument, InputChannel,
+                               InputPeerSelf)
+from tqdm import tqdm
+
+from .log_utils import log
 
 
 def catch_and_log_errors(method: callable) -> callable:
@@ -96,12 +100,14 @@ class TGAccount(TGFilters):
         self.code = None
         self.phone_code_hash = None
 
-    async def try_login(self):
-        self.client = await TelegramClient(self.session_location, self.api_id, self.api_hash).start(phone=self.phone)
-        # await self.client.start(phone=self.phone)
+    async def try_login(self, callback=None):
+        self.client = TelegramClient(self.session_location, self.api_id,
+                                     self.api_hash)
+        await self.client.start(phone=self.phone, code_callback=callback)
         if not await self.client.is_user_authorized():
+            print(self.auth_callback)
             if self.auth_callback:
-                code = self.auth_callback()
+                code = await self.auth_callback()
             else:
                 code = input('Enter the code: ')
             await self.client.sign_in(phone=self.phone, code=code)
