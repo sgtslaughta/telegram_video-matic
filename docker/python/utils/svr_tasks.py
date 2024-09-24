@@ -1,5 +1,5 @@
+import asyncio
 import multiprocessing
-import time
 from datetime import datetime, timedelta, timezone
 
 import utils.registered_funcs as reg_funcs
@@ -91,7 +91,7 @@ class TaskQueue:
                     else:
                         log(f"Task gloabal function: '{task.func_name}' not "
                             f"found", 'error')
-            time.sleep(5)  # Check every 5 second
+            await asyncio.sleep(5)  # Check every 5 second
 
     async def clear_tasks(self):
         """Clear all tasks from the queue."""
@@ -99,6 +99,7 @@ class TaskQueue:
 
     def start(self):
         """Start the task queue as a subprocess."""
-        process = multiprocessing.Process(target=self.run_tasks)
+        process = multiprocessing.Process(target=asyncio.run,
+                                          args=[self.run_tasks()])
         process.start()
         return process

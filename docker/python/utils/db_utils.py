@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.future import select
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool
 from utils.log_utils import log
 
 Base = declarative_base()
@@ -191,7 +192,7 @@ class DBHelper:
         self.db_url = database_url
         self.pool_size = pool_size
         self.max_overflow = max_overflow
-        self.engine = create_async_engine(database_url)
+        self.engine = create_async_engine(database_url, poolclass=NullPool)
         self.async_session = async_sessionmaker(
             bind=self.engine, class_=AsyncSession, expire_on_commit=False
         )

@@ -4,6 +4,7 @@ from time import sleep
 
 import streamlit as st
 
+import utils.registered_funcs as rf
 from utils.data_utils import TGAccount
 from utils.data_utils import pull_channels
 # try:
@@ -11,6 +12,7 @@ from utils.db_utils import DBHelper, TelegramChannel
 from utils.file_page import draw_files_page
 from utils.log_utils import log
 from utils.sport_details import display_channel
+from utils.svr_tasks import TaskQueue
 
 # except Exception as e:
 #     print(e)
@@ -113,6 +115,8 @@ def config():
         st.session_state.getting_code = False
     if 'code_sent' not in st.session_state:
         st.session_state.code_sent = False
+    if 'task_queue' not in st.session_state:
+        st.session_state.task_queue = TaskQueue(st.session_state.db_url)
 
 
 # client_lock = Lock()
@@ -281,9 +285,18 @@ def menu():
                       on_click=gather_tg_details)
 
 
+async def run_tasks():
+    task_queue = st.session_state.task_queue
+    await task_queue.clear_tasks()
+    await task_queue.add_task(rf.print_thing, 'task1', 5, is_oneshot=True)
+    await task_queue.add_task(rf.test_func, 'MY_TASK', 10, is_oneshot=True)
+
+
 def load_page():
     config()
     asyncio.set_event_loop(st.session_state.loop)
+    asyncio.run(run_tasks())
+    # print(f"Task process: {proc}")
     if (not st.session_state.api_id
             or not st.session_state.api_hash
             or not st.session_state.phone):
