@@ -1,13 +1,12 @@
+import asyncio
+
+import pandas as pd
 import streamlit as st
 
-from .sportsDB import SportsDBClient
-from .db_utils import DBHelper, TelegramChannel, Topic
 from .data_utils import TGAccount, pull_topics
+from .db_utils import DBHelper, Topic
 from .monitor_utils import is_monitored, add_monitored, remove_monitored
-from .log_utils import log
-import pandas as pd
-import asyncio
-import json
+from .sportsDB import SportsDBClient
 
 db_url = "postgresql+asyncpg://user:password@localhost:5432/moviesdb"
 TOPIC_NAMES = {
@@ -247,7 +246,6 @@ def draw_team(cont, topic_sel, topics):
                         sel_team = t
                         break
             if team:
-                print(sel_team)
                 cont.image(sel_team['strBadge'], width=150)
                 cont.markdown(f"""
                 | Year Formed | Stadium | Location | Website |

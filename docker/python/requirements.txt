@@ -6,3 +6,5 @@ SQLAlchemy
 mysql-connector-python
 tqdm
 nltk
+psycopg2-binary
+asyncpg

@@ -1,5 +1,5 @@
-from sys import stderr, stdout
 from datetime import datetime
+from sys import stderr, stdout
 
 
 def log(msg: str, level: str = "INFO") -> None:
@@ -15,6 +15,9 @@ def log(msg: str, level: str = "INFO") -> None:
     green = "\033[32m"
     white = "\033[37m"
     reset = "\033[0m"
+
+    level = level.upper()
+    p_level = level.center(7)
 
     if level == "INFO":
         color = white
@@ -32,4 +35,5 @@ def log(msg: str, level: str = "INFO") -> None:
     else:
         file = stdout
 
-    print(f"[{color}{level}{reset}] {datetime.now()} - {msg}", file=file)
+    d = datetime.now()
+    print(f"::[{color}{p_level}{reset}]:: {d} -> {msg}", file=file)

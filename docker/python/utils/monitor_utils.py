@@ -1,22 +1,26 @@
-from .db_utils import DBHelper, MonitoredItem, Topic, TelegramChannel, DLFolder
-from .log_utils import log
-import streamlit as st
 import asyncio
 import os
+
+import streamlit as st
+
+from .db_utils import DBHelper, MonitoredItem, Topic, DLFolder
+from .log_utils import log
+
 
 async def do_is_monitored(item_name, db_url):
     db = DBHelper(db_url)
     item = await db.query_with_filter(Topic,
-                                               Topic.topic_name ==
-                                               item_name)
+                                      Topic.topic_name ==
+                                      item_name)
     if not item:
         return False
     channel = await db.query_with_filter(MonitoredItem,
-                                               MonitoredItem.topic_id ==
-                                               item[0].id)
+                                         MonitoredItem.topic_id ==
+                                         item[0].id)
     if not channel:
         return False
     return channel[0].is_monitored
+
 
 async def do_add_monitored(name, db_url, root_file_path='/monitored'):
     db = DBHelper(db_url)
@@ -39,6 +43,7 @@ async def do_add_monitored(name, db_url, root_file_path='/monitored'):
                    f"be found in the ':red[{path}]' folder",
                    icon=":material/thumb_up:")
 
+
 async def do_remove_monitored(name, db_url):
     db = DBHelper(db_url)
     topic_id = await db.query_with_filter(Topic,
@@ -47,7 +52,6 @@ async def do_remove_monitored(name, db_url):
     if not topic_id:
         log(f"Topic {name} not found in db, not removing from monitored list", 'warning')
         return
-    print(topic_id)
     filter_cond = MonitoredItem.topic_id == topic_id[0].id
     await db.delete_record(MonitoredItem, filter_cond)
     log(f"Removed '{name}' from monitored list in db", 'success')
@@ -67,14 +71,17 @@ def create_monitored_folder(name, root_file_path='/monitored'):
         os.makedirs(folder_path) if not os.path.exists(folder_path) else None
         return folder_path
     except OSError:
-        print(f"Creation of the directory {folder_path} failed")
+        st.error(f"Failed to create folder '{folder_path}'")
         return None
+
 
 def add_monitored(name, db_url, root_file_path='/monitored'):
     asyncio.run(do_add_monitored(name, db_url, root_file_path))
 
+
 def remove_monitored(name, db_url):
     asyncio.run(do_remove_monitored(name, db_url))
+
 
 def is_monitored(name, db_url):
     return asyncio.run(do_is_monitored(name, db_url))
