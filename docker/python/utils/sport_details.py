@@ -8,7 +8,8 @@ from .db_utils import DBHelper, Topic
 from .monitor_utils import is_monitored, add_monitored, remove_monitored
 from .sportsDB import SportsDBClient
 
-db_url = "postgresql+asyncpg://user:password@localhost:5432/moviesdb"
+db_url = st.session_state.db_url
+
 TOPIC_NAMES = {
     'Gallagher Premiership': 'English Premiership Rugby',
     'URC': 'United Rugby Championship',
@@ -56,12 +57,15 @@ ROUND_CODES = {
 if 'ch_monitored' not in st.session_state:
     st.session_state.ch_monitored = False
 
+
 def progress_callback(current, total, message):
     st.session_state.pbar.progress(current / total, message)
+
 
 async def get_topics_from_db():
     data = await DBHelper(db_url).list_records(Topic)
     st.session_state.topics = data
+
 
 def monitor_callback():
     if st.session_state.ch_monitored:
@@ -69,6 +73,7 @@ def monitor_callback():
     else:
         add_monitored(st.session_state.selected_topic.topic_name, db_url,
                       st.session_state.root_dl_path)
+
 
 def display_channel(channel, tab):
     col_cont = tab.container(border=True)
@@ -96,8 +101,8 @@ def display_channel(channel, tab):
 
     col1, col2 = col_cont.columns([.6, .4])
     topic_sel = col1.selectbox('Choose Topic',
-                                   topic_list,
-                                   index=None)
+                               topic_list,
+                               index=None)
 
     if topic_sel:
         is_mon = is_monitored(topic_sel, db_url)
@@ -109,6 +114,7 @@ def display_channel(channel, tab):
         tab1, tab2 = col_cont.tabs(['League', 'Teams'])
         draw_league(tab1, topic_sel, topics)
         draw_team(tab2, topic_sel, topics)
+
 
 def draw_players(cont, team_name, team_id):
     players_tab = cont.container(border=True)
@@ -150,6 +156,7 @@ def draw_players(cont, team_name, team_id):
 
             cont.table(player_stats)
 
+
 def draw_old_events(cont, team_id):
     sdb_client = SportsDBClient(st.session_state.sportsdb_api)
     old_events = sdb_client.get_last_events_by_team(team_id)
@@ -180,14 +187,15 @@ def draw_old_events(cont, team_id):
         # Convert to a dataframe
         df = pd.DataFrame(results).transpose()
         dfe = cont.data_editor(df,
-                                   column_config={
-                                       'thumb':
-                                           st.column_config.ImageColumn(
-                                               "Thumbnail",
-                                               help="Event Thumbnail"
-                                           ),
-                                   },
-                                   )
+                               column_config={
+                                   'thumb':
+                                       st.column_config.ImageColumn(
+                                           "Thumbnail",
+                                           help="Event Thumbnail"
+                                       ),
+                               },
+                               )
+
 
 def draw_new_events(cont, team_id):
     sdb_client = SportsDBClient(st.session_state.sportsdb_api)
@@ -214,64 +222,63 @@ def draw_new_events(cont, team_id):
             # Convert to a dataframe
             df = pd.DataFrame(results).transpose()
             dfe = cont.data_editor(df,
-                                       column_config={
-                                           'thumb':
-                                               st.column_config.ImageColumn(
-                                                   "Thumbnail",
-                                                   help="Event Thumbnail"
-                                               ),
-                                       },
-                                       )
+                                   column_config={
+                                       'thumb':
+                                           st.column_config.ImageColumn(
+                                               "Thumbnail",
+                                               help="Event Thumbnail"
+                                           ),
+                                   },
+                                   )
     else:
         cont.write(new_events.text)
 
 
-
 def draw_team(cont, topic_sel, topics):
-        if st.session_state.teams:
-            data = st.session_state.teams
-            team_name_list = [team['strTeam'] for team in data]
-            team = cont.selectbox('Choose Team',
-                                               team_name_list, index=None)
-            sel_team = None
-            if team in TEAM_IDS:
-                team_id = TEAM_IDS[team]
-                sdb_client = SportsDBClient(st.session_state.sportsdb_api)
-                sel_team = sdb_client.lookup_team_by_id(team_id)
-                sel_team = sel_team.json()['teams'][0]
+    if st.session_state.teams:
+        data = st.session_state.teams
+        team_name_list = [team['strTeam'] for team in data]
+        team = cont.selectbox('Choose Team',
+                              team_name_list, index=None)
+        sel_team = None
+        if team in TEAM_IDS:
+            team_id = TEAM_IDS[team]
+            sdb_client = SportsDBClient(st.session_state.sportsdb_api)
+            sel_team = sdb_client.lookup_team_by_id(team_id)
+            sel_team = sel_team.json()['teams'][0]
 
-            else:
-                for t in data:
-                    if t['strTeam'] == team:
-                        sel_team = t
-                        break
-            if team:
-                cont.image(sel_team['strBadge'], width=150)
-                cont.markdown(f"""
+        else:
+            for t in data:
+                if t['strTeam'] == team:
+                    sel_team = t
+                    break
+        if team:
+            cont.image(sel_team['strBadge'], width=150)
+            cont.markdown(f"""
                 | Year Formed | Stadium | Location | Website |
                 |-------------|---------|----------|---------|
                 | {sel_team['intFormedYear']} | {sel_team['strStadium']} | {sel_team['strLocation']} | {sel_team['strWebsite']} |
                 """)
 
-                cont.write(sel_team['strDescriptionEN'])
-                cont.image(sel_team['strEquipment'], width=150)
-                cont.image(sel_team['strBanner'], width=150)
-                cont.markdown(sel_team['strYoutube'])
+            cont.write(sel_team['strDescriptionEN'])
+            cont.image(sel_team['strEquipment'], width=150)
+            cont.image(sel_team['strBanner'], width=150)
+            cont.markdown(sel_team['strYoutube'])
 
-                cont.divider()
-                players_tab, past_tab, next_tab = cont.tabs(['Players', 'Past '
-                                                             'Events', 'Upcoming Events'])
+            cont.divider()
+            players_tab, past_tab, next_tab = cont.tabs(['Players', 'Past '
+                                                                    'Events',
+                                                         'Upcoming Events'])
 
-                draw_players(players_tab, sel_team['strTeam'], sel_team['idTeam'])
-                draw_old_events(past_tab, sel_team['idTeam'])
-                draw_new_events(next_tab, sel_team['idTeam'])
-        else:
-            cont.write("No teams found")
-            st.stop()
+            draw_players(players_tab, sel_team['strTeam'], sel_team['idTeam'])
+            draw_old_events(past_tab, sel_team['idTeam'])
+            draw_new_events(next_tab, sel_team['idTeam'])
+    else:
+        cont.write("No teams found")
+        st.stop()
 
 
 def draw_league(cont, topic_sel, topics):
-
     topic_detail_cont = cont.container(border=True)
     topic = [topic for topic in topics if topic.topic_name == topic_sel][0]
     if topic:
@@ -286,7 +293,6 @@ def draw_league(cont, topic_sel, topics):
 
     league_detail = sdb_client.lookup_league_by_id(LEAGUE_IDS[name])
     league_id = LEAGUE_IDS[name]
-
 
     if data.status_code == 200:
         if data.json()['teams']:
@@ -307,11 +313,9 @@ def draw_league(cont, topic_sel, topics):
     topic_detail_cont.write(league_detail['strDescriptionEN'])
     col1, col2 = topic_detail_cont.columns([.8, .2])
     col1.image(league_detail['strBanner'],
-                            width=800)
+               width=800)
     col2.image(league_detail['strTrophy'],
-                            width=150, caption='Trophy')
-
-
+               width=150, caption='Trophy')
 
     col1, col2 = topic_detail_cont.columns([.1, 1])
     col1.image(league_detail['strBadge'],
@@ -332,7 +336,11 @@ def draw_league(cont, topic_sel, topics):
                 season_final = i
                 break
         if season_final:
-            winner = season_final['strHomeTeam'] if season_final['intHomeScore'] > season_final['intAwayScore'] else season_final['strAwayTeam']
+            winner = season_final['strHomeTeam'] if season_final[
+                                                        'intHomeScore'] > \
+                                                    season_final[
+                                                        'intAwayScore'] else \
+                season_final['strAwayTeam']
             winner_detail = sdb_client.search_team_by_name(winner)
             winner_detail = winner_detail.json()['teams'][0]
             winner_logo = (f"![Winner Logo]("
@@ -375,27 +383,27 @@ def draw_league(cont, topic_sel, topics):
             dfe = past_tab.data_editor(df,
                                        column_config={
                                            'thumb':
-                                           st.column_config.ImageColumn(
-                                               "Thumbnail",
-                                               help="Event Thumbnail"
-                                           ),
-                                             'video':
-                                             st.column_config.LinkColumn(
-                                                  "Video",
-                                                  help="Event Video",
-                                             display_text="Watch Video",),
+                                               st.column_config.ImageColumn(
+                                                   "Thumbnail",
+                                                   help="Event Thumbnail"
+                                               ),
+                                           'video':
+                                               st.column_config.LinkColumn(
+                                                   "Video",
+                                                   help="Event Video",
+                                                   display_text="Watch Video", ),
                                            'home_team_logo':
-                                             st.column_config.ImageColumn(
-                                                  "Home Team Logo",
-                                                  help="Home Team Logo",
-                                                 width='small'
-                                             ),
-                                             'away_team_logo':
-                                                st.column_config.ImageColumn(
-                                                    "Away Team Logo",
-                                                    help="Away Team Logo",
-                                                    width='small'
-                                                ),
+                                               st.column_config.ImageColumn(
+                                                   "Home Team Logo",
+                                                   help="Home Team Logo",
+                                                   width='small'
+                                               ),
+                                           'away_team_logo':
+                                               st.column_config.ImageColumn(
+                                                   "Away Team Logo",
+                                                   help="Away Team Logo",
+                                                   width='small'
+                                               ),
                                        },
                                        )
         else:
@@ -420,11 +428,11 @@ def draw_league(cont, topic_sel, topics):
         # Convert to a dataframe
         df = pd.DataFrame(results).transpose()
         dfe = next_tab.data_editor(df,
-                                            column_config={
-                                                'thumb':
-                                                    st.column_config.ImageColumn(
-                                                        "Thumbnail",
-                                                        help="Event Thumbnail"
-                                                    ),
-                                            },
-                                            )
+                                   column_config={
+                                       'thumb':
+                                           st.column_config.ImageColumn(
+                                               "Thumbnail",
+                                               help="Event Thumbnail"
+                                           ),
+                                   },
+                                   )
