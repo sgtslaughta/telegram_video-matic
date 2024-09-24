@@ -28,7 +28,8 @@ async def do_add_monitored(name, db_url, root_file_path='/monitored'):
                                           Topic.topic_name ==
                                           name)
     if not topic_id:
-        log(f"Topic {name} not found in db, not adding to monitored list", 'warning')
+        log(f"Topic {name} not found in db, not adding to monitored list",
+            'warning')
         return
     await db.add_record(MonitoredItem(topic_id=topic_id[0].id,
                                       is_monitored=True))
@@ -50,7 +51,8 @@ async def do_remove_monitored(name, db_url):
                                           Topic.topic_name ==
                                           name)
     if not topic_id:
-        log(f"Topic {name} not found in db, not removing from monitored list", 'warning')
+        log(f"Topic {name} not found in db, not removing from monitored list",
+            'warning')
         return
     filter_cond = MonitoredItem.topic_id == topic_id[0].id
     await db.delete_record(MonitoredItem, filter_cond)
