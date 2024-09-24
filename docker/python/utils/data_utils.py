@@ -1,13 +1,15 @@
+import asyncio
+import base64
+from datetime import datetime
+
+from mysql.connector.errors import IntegrityError
+from psycopg2 import pool
+from sqlalchemy import or_
+
 from .db_utils import DBHelper, TelegramChannel, Topic, Message
-from .tg_utils import TGAccount
 from .log_utils import log
 from .tag_utils import generate_tags
-import base64
-import asyncio
-from datetime import datetime
-from mysql.connector.errors import IntegrityError
-from sqlalchemy import or_
-from psycopg2 import pool
+from .tg_utils import TGAccount
 
 
 async def pull_channels(tg_a: TGAccount, dbh: DBHelper, callback=None):
@@ -245,9 +247,7 @@ async def pull_messages(tg_a: TGAccount,
                 'name': m.message,
                 'msg_id': m.id,
                 'date_added': datetime.now().strftime("%Y-%m-%d %H:%M:%S%z"),
-                'date_posted': m.date,
-                'raw_obj': m.stringify(),
-                'thumb': thumb,
+                'date_posted': m.date
                 'tg_ch_id': channel_id,
                 'topic_id': topic_id
             }

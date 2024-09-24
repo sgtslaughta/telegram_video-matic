@@ -87,3 +87,9 @@ def remove_monitored(name, db_url):
 
 def is_monitored(name, db_url):
     return asyncio.run(do_is_monitored(name, db_url))
+
+
+def get_videos(db_url):
+    db = DBHelper(db_url)
+    videos = db.list_records(MonitoredItem)
+    return videos

@@ -4,7 +4,6 @@ from time import sleep
 
 import streamlit as st
 
-import utils.registered_funcs as rf
 from utils.data_utils import TGAccount
 from utils.data_utils import pull_channels
 # try:
@@ -285,17 +284,9 @@ def menu():
                       on_click=gather_tg_details)
 
 
-async def run_tasks():
-    task_queue = st.session_state.task_queue
-    await task_queue.clear_tasks()
-    await task_queue.add_task(rf.print_thing, 'task1', 5, is_oneshot=True)
-    await task_queue.add_task(rf.test_func, 'MY_TASK', 10, is_oneshot=True)
-
-
 def load_page():
     config()
     asyncio.set_event_loop(st.session_state.loop)
-    asyncio.run(run_tasks())
     # print(f"Task process: {proc}")
     if (not st.session_state.api_id
             or not st.session_state.api_hash
