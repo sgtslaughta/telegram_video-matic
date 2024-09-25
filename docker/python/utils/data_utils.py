@@ -247,7 +247,7 @@ async def pull_messages(tg_a: TGAccount,
                 'name': m.message,
                 'msg_id': m.id,
                 'date_added': datetime.now().strftime("%Y-%m-%d %H:%M:%S%z"),
-                'date_posted': m.date
+                'date_posted': m.date,
                 'tg_ch_id': channel_id,
                 'topic_id': topic_id
             }

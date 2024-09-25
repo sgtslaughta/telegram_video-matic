@@ -3,8 +3,10 @@ import os
 
 import streamlit as st
 
-from .db_utils import DBHelper, MonitoredItem, Topic, DLFolder
+from .db_utils import DBHelper, MonitoredItem, Topic, DLFolder, ServerTasks
 from .log_utils import log
+from .registered_funcs import scan_files
+from .svr_tasks import TaskQueue
 
 
 async def do_is_monitored(item_name, db_url):
@@ -43,6 +45,18 @@ async def do_add_monitored(name, db_url, root_file_path='/monitored'):
         st.success(f"Added '{name}' to monitored list. Downloaded files can "
                    f"be found in the ':red[{path}]' folder",
                    icon=":material/thumb_up:")
+    # Add a task to scan the folder for new files
+    # Check if the task already exists
+    filter_cond = ServerTasks.args == path and \
+                  ServerTasks.func_name == 'scan_files'
+    task = await db.query_with_filter(ServerTasks, filter_cond)
+    if task:
+        log(f"Task to scan '{path}' already exists", 'info')
+        return
+    else:
+        task_queue = TaskQueue(db_url)
+        await task_queue.add_task(scan_files, path, 300)
+
 
 
 async def do_remove_monitored(name, db_url):
@@ -58,11 +72,19 @@ async def do_remove_monitored(name, db_url):
     await db.delete_record(MonitoredItem, filter_cond)
     log(f"Removed '{name}' from monitored list in db", 'success')
     filter_cond = DLFolder.topic_id == topic_id[0].id
+    folder = await db.query_with_filter(DLFolder, filter_cond)
     await db.delete_record(DLFolder,
                            DLFolder.topic_id == topic_id[0].id)
     log(f"Removed '{name}' from monitored folder in db", 'success')
     st.success(f"Removed '{name}' from monitored list",
                icon=":material/thumb_up:")
+    # Remove the task to scan the folder for new files
+    filter_cond = ServerTasks.args == folder[0].folder_path and \
+                  ServerTasks.func_name == 'scan_files'
+    task = await db.query_with_filter(ServerTasks, filter_cond)
+    if task:
+        svr_tasks = TaskQueue(db_url)
+        await svr_tasks.remove_task(task[0].id)
 
 
 def create_monitored_folder(name, root_file_path='/monitored'):

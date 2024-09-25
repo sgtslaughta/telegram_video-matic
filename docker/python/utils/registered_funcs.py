@@ -9,11 +9,8 @@ def test_func(name):
     print(f"\tTest func here baby! {name}")
 
 
-def scan_videos(directory):
-    print(f"Scanning directory: {directory}")
+def scan_files(directory):
+    pass
+    # print(f"Scanning directory: {directory}")
     videos = scan_video_directory(directory)
-    for video in videos:
-        print(f"Video: {video}")
-        for key, value in videos[video].items():
-            print(f"\t{key}: {value}")
-        print("\n")
+    print(f"Found {len(videos)} videos in {directory}")

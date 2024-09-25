@@ -2,6 +2,7 @@ import atexit
 import os
 import signal
 import subprocess
+from time import sleep
 
 # List to store subprocesses
 processes = []
@@ -30,8 +31,11 @@ if __name__ == '__main__':
     try:
         # Run each script as a subprocess
         run_subprocess("python3 init_db.py")
-        run_subprocess("python3 start_task_monitor.py")
         run_subprocess("python3 -m streamlit run './main.py'")
+        # Wait for the streamlit server to start, ensuring the
+        # database is initialized before running the task monitor
+        sleep(2)
+        run_subprocess("python3 start_task_monitor.py")
 
         # Wait for subprocesses to finish (block the main thread)
         for proc in processes:

@@ -53,9 +53,9 @@ class TaskQueue:
         log(f"Found {len(tasks)} pending tasks", 'info')
         for task in tasks:
             if datetime.now(timezone.utc) >= task.next_run_time:
-                func = globals().get(task.func_name)
-                if func:
-                    args_tuple = eval(task.args)
+                func = getattr(reg_funcs, task.func_name, None)
+                if callable(func):
+                    args_tuple = [task.args]
                     func(*args_tuple)
                     task.next_run_time = datetime.now() + timedelta(
                         seconds=task.interval_s)
@@ -82,14 +82,15 @@ class TaskQueue:
                         if task.is_oneshot:
                             await self.remove_task(task.id)
                         else:
+                            print(f"Rescheduling task: {task.func_name}")
                             # Reschedule the task
                             task.next_run_time = datetime.now() + timedelta(
                                 seconds=task.interval_s)
-                            task.is_complete = True
+                            task.is_complete = False
                             await self.dbh.update_record(ServerTasks, task,
-                                                         ServerTasks.id == task.id)
+                                                         filter_condition=ServerTasks.id == task.id)
                     else:
-                        log(f"Task gloabal function: '{task.func_name}' not "
+                        log(f"Task global function: '{task.func_name}' not "
                             f"found", 'error')
             await asyncio.sleep(5)  # Check every 5 second
 

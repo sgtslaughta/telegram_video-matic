@@ -4,9 +4,12 @@
 from datetime import datetime as dt
 from os import environ
 
+from nltk.downloader import update
 # from utils.tg_utils import catch_and_log_errors
 from sqlalchemy import (Column, Integer, String, ForeignKey,
-                        Text, DateTime, Boolean, Sequence, event, func, delete)
+                        Text, DateTime, Boolean, Sequence, event, func,
+                        delete,
+                        update)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -145,6 +148,17 @@ class DLFile(Base):
                 f"={self.tg_ch_id}, topic_id={self.topic_id})>")
 
 
+class FilesToFolders(Base):
+    __tablename__ = 'file_folder'
+
+    file_id = Column(Integer, ForeignKey('dl_file.id'), primary_key=True)
+    folder_id = Column(Integer, ForeignKey('dl_folder.id'), primary_key=True)
+
+    def __repr__(self):
+        return (f"<FilesToFolders(file_id={self.file_id}, folder_id"
+                f"={self.folder_id})>")
+
+
 class Tags(Base):
     __tablename__ = 'tag'
 
@@ -238,24 +252,21 @@ class DBHelper:
         """
         async with self.async_session() as session:
             async with session.begin():
-                # Fetch the existing record
-                result = await session.execute(
-                    select(table).filter(filter_condition))
-                existing_record = result.scalars().first()
+                # Convert the SQLAlchemy model instance to a dictionary
+                new_record_dict = {col: getattr(new_record, col) for col in
+                                   new_record.__table__.columns.keys()}
+                # Prepare the query to update the record based on the filter_condition
+                stmt = (
+                    update(table)
+                    .where(filter_condition)
+                    .values(new_record_dict)
+                    .execution_options(synchronize_session="fetch")
+                )
+                # Execute the query
+                result = await session.execute(stmt)
+                # Commit the transaction
+                await session.commit()
 
-                # Check if the record exists
-                if existing_record:
-                    # Update the existing record with values from new_record
-                    for attr, value in vars(new_record).items():
-                        if hasattr(existing_record,
-                                   attr) and attr != 'id':  # Ignore updating the 'id'
-                            setattr(existing_record, attr, value)
-                    # Commit the changes
-                    await session.commit()
-                    return existing_record
-                else:
-                    # Handle case where no record is found
-                    return None
 
     async def delete_record(self, table, filter_condition=None):
         async with self.async_session() as session:

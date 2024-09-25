@@ -290,9 +290,12 @@ def draw_league(cont, topic_sel, topics):
         name = topic.topic_name
     sdb_client = SportsDBClient(st.session_state.sportsdb_api)
     data = sdb_client.list_teams_in_league(name)
-
-    league_detail = sdb_client.lookup_league_by_id(LEAGUE_IDS[name])
-    league_id = LEAGUE_IDS[name]
+    try:
+        league_detail = sdb_client.lookup_league_by_id(LEAGUE_IDS[name])
+        league_id = LEAGUE_IDS[name]
+    except KeyError:
+        topic_detail_cont.write("League not found")
+        st.stop()
 
     if data.status_code == 200:
         if data.json()['teams']:
