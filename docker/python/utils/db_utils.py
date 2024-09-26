@@ -59,6 +59,7 @@ class ServerTasks(Base):
                 f"={self.next_run_time}, is_complete={self.is_complete},"
                 f"is_oneshot={self.is_oneshot})>")
 
+
 class MonitoredItem(Base):
     __tablename__ = 'monitored_item'
 
@@ -73,6 +74,7 @@ class MonitoredItem(Base):
         return (f"<MonitoredChannel(ch_id={self.topic_id}, date_added"
                 f"={self.date_added}, date_last_updated"
                 f"={self.date_last_updated}, is_active={self.is_monitored})>")
+
 
 @event.listens_for(MonitoredItem, 'before_update')
 def receive_before_update(mapper, connection, target):
@@ -96,9 +98,11 @@ class TelegramChannel(Base):
                 f"={self.date_added}, date_last_updated"
                 f"={self.date_last_updated}, last_msg_id={self.last_msg_id})>")
 
+
 @event.listens_for(TelegramChannel, 'before_update')
 def receive_before_update(mapper, connection, target):
     target.date_last_updated = dt.now()
+
 
 class Topic(Base):
     __tablename__ = 'topic'
@@ -175,17 +179,20 @@ class MessageTags(Base):
     message_id = Column(Integer, ForeignKey('message.id'), primary_key=True)
     tag_id = Column(Integer, ForeignKey('tag.id'), primary_key=True)
 
+
 class FolderTags(Base):
     __tablename__ = 'folder_tag'
 
     folder_id = Column(Integer, ForeignKey('dl_folder.id'), primary_key=True)
     tag_id = Column(Integer, ForeignKey('tag.id'), primary_key=True)
 
+
 class FileTags(Base):
     __tablename__ = 'file_tag'
 
     file_id = Column(Integer, ForeignKey('dl_file.id'), primary_key=True)
     tag_id = Column(Integer, ForeignKey('tag.id'), primary_key=True)
+
 
 class ServerSettings(Base):
     __tablename__ = 'svr_settings'
@@ -236,7 +243,16 @@ class DBHelper:
                     session.add(new_record)
                     await session.commit()
         except IntegrityError as e:
-            log(f"Duplicate record attempt, ignored...", level="INFO")
+            log(f"IntegrityError: Duplicate record attempt likely... {e}", level="INFO")
+
+    async def add_records(self, records: list):
+        try:
+            async with self.async_session() as session:
+                async with session.begin():
+                    session.add_all(records)
+                    await session.commit()
+        except IntegrityError as e:
+            log(f"IntegrityError: Duplicate record attempt likely... {e}", level="INFO")
 
     async def get_record(self, table, record_id: int):
         async with self.async_session() as session:
@@ -267,7 +283,6 @@ class DBHelper:
                 # Commit the transaction
                 await session.commit()
 
-
     async def delete_record(self, table, filter_condition=None):
         async with self.async_session() as session:
             async with session.begin():
@@ -297,8 +312,6 @@ class DBHelper:
             result = await session.execute(stmt)
             records = result.scalars().all()
             return records
-
-
 
 
 def init_db():

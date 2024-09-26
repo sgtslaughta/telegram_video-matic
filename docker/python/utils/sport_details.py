@@ -14,23 +14,28 @@ TOPIC_NAMES = {
     '6 Nations': 'Six Nations Championship',
     'Top 14': 'French Top 14',
     '2019 World Cup': 'Rugby World Cup',
+    'World Cup': 'Rugby World Cup',
     'Super Rugby Americas': 'Super Liga Americana',
     'The Rugby Championship': 'Rugby Championship',
     'Pro D2': 'French Pro D2',
     'Summer/Autumn Nations': 'Autumn Nations Cup',
     'NPC/Farah Palmer Cup': 'New Zealand National Provincial Championship',
+    'URBA': 'URBA Top 12',
+    'U20s': 'Six Nations Under 20s Championship'
 }
 LEAGUE_IDS = {
     'English Premiership Rugby': '4414',
     'United Rugby Championship': '4446',
     'Six Nations Championship': '4714',
-    'French Top 14': '4370',
+    'French Top 14': '4430',
     'Rugby World Cup': '4574',
     'Super Liga Americana': '4374',
     'Rugby Championship': '4986',
     'French Pro D2': '5172',
     'Autumn Nations Cup': '4375',
     'New Zealand National Provincial Championship': '5278',
+    'URBA Top 12': '5165',
+    'URBA': '5165',
 }
 TEAM_IDS = {
     'Ireland Rugby': '137130',
@@ -261,8 +266,10 @@ def draw_team(cont, topic_sel, topics):
                 """)
 
             cont.write(sel_team['strDescriptionEN'])
-            cont.image(sel_team['strEquipment'], width=150)
-            cont.image(sel_team['strBanner'], width=150)
+            if sel_team['strEquipment']:
+                cont.image(sel_team['strEquipment'], width=150)
+            if sel_team['strBanner']:
+                cont.image(sel_team['strBanner'], width=150)
             cont.markdown(sel_team['strYoutube'])
 
             cont.divider()
@@ -290,21 +297,41 @@ def draw_league(cont, topic_sel, topics):
         name = topic.topic_name
     sdb_client = SportsDBClient(st.session_state.sportsdb_api)
     data = sdb_client.list_teams_in_league(name)
-    try:
-        league_detail = sdb_client.lookup_league_by_id(LEAGUE_IDS[name])
-        league_id = LEAGUE_IDS[name]
-    except KeyError:
-        topic_detail_cont.write("League not found")
-        st.stop()
+    league_id = None
+    league_detail = None
+    if data.json()['teams']:
+        for team in data.json()['teams']:
+            if team['idLeague']:
+                league_id = team['idLeague']
+                break
+    if league_id:
+        try:
+            league_detail = sdb_client.lookup_league_by_id(league_id)
+            league_detail = league_detail.json()['leagues'][0]
+        except KeyError:
+            topic_detail_cont.write("League not found")
+            st.stop()
+    else:
+        try:
+            league_id = LEAGUE_IDS[name]
+            league_detail = sdb_client.lookup_league_by_id(LEAGUE_IDS[name])
+            league_detail = league_detail.json()['leagues'][0]
+        except KeyError:
+            topic_detail_cont.write("No league found")
 
     if data.status_code == 200:
         if data.json()['teams']:
             st.session_state.teams = data.json()['teams']
         else:
-            topic_detail_cont.write("No league found")
-            st.stop()
+            try:
+                data = sdb_client.list_all_teams_in_league_by_l_id(league_id)
+                if data.json()['teams']:
+                    st.session_state.teams = data.json()['teams']
 
-    league_detail = league_detail.json()['leagues'][0]
+            except KeyError:
+                topic_detail_cont.write("No league found")
+                st.stop()
+
     topic_detail_cont.image(league_detail['strLogo'],
                             width=800)
 
@@ -315,14 +342,17 @@ def draw_league(cont, topic_sel, topics):
             """)
     topic_detail_cont.write(league_detail['strDescriptionEN'])
     col1, col2 = topic_detail_cont.columns([.8, .2])
-    col1.image(league_detail['strBanner'],
-               width=800)
-    col2.image(league_detail['strTrophy'],
-               width=150, caption='Trophy')
+    if league_detail['strBanner']:
+        col1.image(league_detail['strBanner'],
+                   width=800)
+    if league_detail['strTrophy']:
+        col2.image(league_detail['strTrophy'],
+                   width=150, caption='Trophy')
 
     col1, col2 = topic_detail_cont.columns([.1, 1])
-    col1.image(league_detail['strBadge'],
-               width=100, caption='Badge')
+    if league_detail['strBadge']:
+        col1.image(league_detail['strBadge'],
+                   width=100, caption='Badge')
 
     past_tab, next_tab = col2.tabs(['Past Events', 'Upcoming Events'])
     schedule = sdb_client.get_next_events_by_league(league_id)

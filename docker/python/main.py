@@ -21,7 +21,8 @@ from utils.svr_tasks import TaskQueue
 
 st.set_page_config(layout='wide',
                    page_icon=':tv:',
-                   page_title='Telegram Video Manager')
+                   page_title='Telegram Video Manager',
+                   initial_sidebar_state='collapsed')
 
 
 def create_db_url():

@@ -149,7 +149,8 @@ async def pull_messages(tg_a: TGAccount,
                         callback=None,
                         offset_date: str = None,
                         offset_id: int = None,
-                        filter_media=None):
+                        filter_media: str = None,
+                        topic: str = None):
     """
     Pull all messages from users Telegram and add them to the database.
     Args:
@@ -172,92 +173,48 @@ async def pull_messages(tg_a: TGAccount,
         'voice': TGAccount.FILTER_VOICE,
         'url': TGAccount.FILTER_URL
     }
-    try:
-        filter_media = filter[filter_media]
-    except KeyError:
-        log(f"Invalid filter_media: {filter_media}", level="ERROR")
-        return
+    if filter_media:
+        try:
+            filter_media = filter[filter_media]
+        except KeyError:
+            log(f"Invalid filter_media: {filter_media}", level="ERROR")
+            return
     total_steps = 3
     step = 1
-    if callback:
-        callback(step, total_steps, "1: Validating inputs...")
-    if not channel_name and not channel_id:
-        log("Cannot pull messages, no channel provided.", level="ERROR")
-        if callback:
-            callback(step, total_steps, "1.1 Cannot pull messages, no channel provided...FAILED")
-        return
 
-    if not tg_a:
-        log("Cannot pull messages, no TGAccount provided.", level="ERROR")
-        if callback:
-            callback(step, total_steps, "1.4 Cannot pull messages, no TGAccount provided...FAILED")
-        return
-    step += 1
     if callback:
-        callback(step, total_steps, "2: Pulling messages from Telegram...")
+        callback(step, total_steps, f"{step}: Pulling messages from Telegram...")
     log("Pulling messages...", level="INFO")
 
     entity = await tg_a.get_peer(channel_name)
     # try and get the last time the channel was updated
-    q_str = f"SELECT id FROM channel WHERE ch_id = {entity.id};"
-    db_channel_id = dbh.execute_db_command(q_str)[0][0]
-    q_str = f"SELECT MAX(msg_id) AS max_msg_id FROM message WHERE tg_ch_id = {db_channel_id};"
-    last_msg_id = dbh.execute_db_command(q_str)
-    if last_msg_id[0][0]:
-        last_msg_id = last_msg_id[0][0] + 1
+    tg_channel = await dbh.query_with_filter(TelegramChannel, TelegramChannel.ch_name == channel_name)
+    tg_channel = tg_channel[0]
+    if tg_channel:
+        last_updated = tg_channel.date_last_updated
     else:
-        last_msg_id = 0
-    messages = await tg_a.get_messages(entity=entity,
-                                       msg_filter=filter_media,
-                                       callback=callback,
-                                       min_id=last_msg_id,
-                                       limit=None)
-    if not messages:
-        log(f"No messages found or no new messages since message: {last_msg_id - 1}.", level="INFO")
-        if callback:
-            callback(step, total_steps, f"2.1 No new messages found since message: {last_msg_id - 1}...")
-        return
-    step += 1
-    m_step = 1
+        last_updated = None
+    topic_id = await dbh.query_with_filter(Topic, Topic.topic_name == topic)
 
-    # TODO - update the last updated date for the channel. Also implement
-    # pulling the videos based on the last updated date.
-    date_ch_last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    total_msg = len(messages)
-    for m in messages:
-        try:
-            if m.reply_to_msg_id:
-                q_str = f"SELECT id FROM topic WHERE topic_id={m.reply_to_msg_id};"
-                topic_id = dbh.execute_db_command(q_str)[0][0]
-        except Exception as e:
-            log(f"Error getting topic ID for message {m.id}: {e}", level="ERROR")
-            topic_id = None
-        try:
-            q_str = f"SELECT id FROM channel WHERE ch_id={m.peer_id.channel_id};"
-            channel_id = dbh.execute_db_command(q_str)[0][0]
-        except Exception as e:
-            log(f"Error getting channel ID for message {m.id}: {e}", level="ERROR")
-            channel_id = None
-        try:
-            thumb = base64.b64encode(m.media.document.thumbs.bytes).decode('utf-8') if m.media.document else None
-        except Exception as e:
-            thumb = None
-        try:
+    topic_id = topic_id[0]
+    if not topic_id:
+        log("Topic not found in database.", level="ERROR")
+        return
+    tg_topic_id = topic_id.topic_id
+    messages = await tg_a.get_messages(entity=entity, offset_date=last_updated, reply_to=tg_topic_id, msg_filter=filter_media,
+                                       limit=None)
+    toal_msg = len(messages)
+    if messages:
+        for msg in messages:
             x = {
-                'name': m.message,
-                'msg_id': m.id,
-                'date_added': datetime.now().strftime("%Y-%m-%d %H:%M:%S%z"),
-                'date_posted': m.date,
-                'tg_ch_id': channel_id,
-                'topic_id': topic_id
+                'msg_id': msg.id,
+                'date_posted': msg.date,
+                'name': msg.message,
+                'is_media': True if filter_media else False,
+                'tg_ch_id': tg_channel.id,
+                'topic_id': topic_id.id
             }
-            dbh.insert_into_table(Message, filter_column='msg_id', filter_value=x['msg_id'], **x)
-            if callback:
-                callback(m_step, total_msg, f"3: Inserting message {m_step}/{total_msg} into database...")
-            m_step += 1
-        except Exception as e:
-            log(f"Error inserting message {m.id}: {e}", level="ERROR")
-    dbh.update_channel_last_time(datetime.now().strftime("%Y-%m-%d %H:%M:%S%z"), entity.id)
+            await dbh.add_record(Message(**x))
 
 
 async def pull_videos(tg_a: TGAccount,

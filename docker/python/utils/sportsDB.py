@@ -86,6 +86,10 @@ class SportsDBClient:
             params['s'] = sport
         return self._get("search_all_leagues.php", params)
 
+    def list_all_teams_in_league_by_l_id(self, league_id):
+        params = {'id': league_id}
+        return self._get("lookup_all_teams.php", params)
+
     def list_all_seasons_in_league(self, league_id):
         params = {'id': league_id}
         return self._get("search_all_seasons.php", params)

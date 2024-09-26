@@ -2,7 +2,7 @@ import asyncio
 import os
 
 import streamlit as st
-
+from sqlalchemy import and_
 from .db_utils import DBHelper, MonitoredItem, Topic, DLFolder, ServerTasks
 from .log_utils import log
 from .registered_funcs import scan_files
@@ -47,8 +47,10 @@ async def do_add_monitored(name, db_url, root_file_path='/monitored'):
                    icon=":material/thumb_up:")
     # Add a task to scan the folder for new files
     # Check if the task already exists
-    filter_cond = ServerTasks.args == path and \
-                  ServerTasks.func_name == 'scan_files'
+    filter_cond = and_(
+        ServerTasks.args == path,
+        ServerTasks.func_name == 'scan_files'
+    )
     task = await db.query_with_filter(ServerTasks, filter_cond)
     if task:
         log(f"Task to scan '{path}' already exists", 'info')
@@ -56,7 +58,6 @@ async def do_add_monitored(name, db_url, root_file_path='/monitored'):
     else:
         task_queue = TaskQueue(db_url)
         await task_queue.add_task(scan_files, path, 300)
-
 
 
 async def do_remove_monitored(name, db_url):
