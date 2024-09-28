@@ -20,10 +20,11 @@ from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, 
     InputMessagesFilterVoice
 from telethon.tl.types import (MessageMediaDocument, InputChannel,
                                InputPeerSelf)
-from tqdm import tqdm
+from tqdm.asyncio import tqdm_asyncio
 
 from .log_utils import log
 
+p_bars = {}
 
 def catch_and_log_errors(method: callable) -> callable:
     """
@@ -200,60 +201,53 @@ class TGAccount(TGFilters):
                     'date_added': datetime.now(),
                 }
 
-    @ensure_authenticated
-    async def grab_file(self, message, idx, dl_path='./', callback=None) -> None:
-        """
-        Download a file from a Telegram message.
-        :param message: The message containing the file
-        :param idx: The index of the message used to position the terminal progress bar
-        :param dl_path: The path to download the file to, defaults to the current directory
-        :param callback: Optional callback function to update the progress
-        :return: None
-        """
-
-        def progress_bar(downloaded_bytes, total_bytes):
-            if total_bytes:
-                diff_since_last = downloaded_bytes - progress_bar.n
-                progress_bar.update(diff_since_last)
-
-        total_b = message.file.size
-        if not callback:
-            progress_bar = tqdm(total=total_b, unit='B', unit_scale=True, unit_divisor=1024, desc=message.file.name,
-                                leave=False, position=idx)
-            callback = progress_bar
-
-        if not pathlib.Path(dl_path).exists():
-            log(f"Download path does not exist: {dl_path}", level="ERROR")
-            return None
-        dl_path = os.path.abspath(dl_path)
-        path = await self.client.download_media(message, dl_path, progress_callback=callback)
 
     # @ensure_authenticated
-    async def get_messages_by_id(self, msg_id: int, channel_name: str) -> list:
+    async def get_messages_by_id(self, msg_ids: list, channel_name: str) -> list:
         """
         Get a telethon Telegram message object by ID.
         :param msg_ids: list - the message IDs
         :param channel_name: str - the channel name
         :return: None
         """
-        print(f"Getting message {msg_id} from {channel_name}")
+        log(f"Getting {len(msg_ids)} messages by ID: {msg_ids}", level="INFO")
         peer = await self.get_peer(channel_name)
-        msg = await self.client(GetMessagesRequest(channel=peer, id=msg_id))
-        return msg
+        msgs = await self.client(GetMessagesRequest(channel=peer, id=msg_ids))
+        return msgs
 
-    @ensure_authenticated
-    async def multi_download(self, message_list: list, dl_path: str = './') -> None:
+    async def grab_file_with_semaphore(self, semaphore, message, callback=None):
+        async with semaphore:
+            await self.grab_file(message, callback=callback)
+
+    # @ensure_authenticated
+    async def grab_file(self, message, callback=None) -> None:
+        """
+        Download a file from a Telegram message.
+        """
+        dl_path = message['path']
+        msg = message['msg_obj']
+        file_name = message['file_name']
+
+        if not pathlib.Path(dl_path).exists():
+            pathlib.Path(dl_path).mkdir(parents=True, exist_ok=True)
+        if pathlib.Path(dl_path, file_name).exists():
+            log(f"File already exists: {dl_path}/{file_name}", level="INFO")
+            return None
+
+        dl_path = os.path.abspath(dl_path + '/' + file_name)
+        await self.client.download_media(msg, dl_path, progress_callback=callback)
+
+    # @ensure_authenticated
+    async def multi_download(self, message_list: list, concurrent_amt: int = 5) -> None:
         """
         Download media concurrently using asyncio.
-        :param message_list: list - of the telethon Telegram message objects containing the videos
-        :param dl_path: str - the path to download the videos to
-        :return:
         """
         video_tasks = []
-        for idx, message in enumerate(message_list):
-            video_tasks.append(self.grab_file(message, idx, dl_path))
-
-            # Run the grab_video tasks concurrently
+        semaphore = asyncio.Semaphore(concurrent_amt)
+        for message in message_list:
+            # Wrap the grab_file call with the semaphore
+            video_tasks.append(self.grab_file_with_semaphore(semaphore, message))
+        # # Run the grab_file tasks concurrently
         await asyncio.gather(*video_tasks)
 
     @ensure_authenticated
@@ -283,6 +277,7 @@ class TGAccount(TGFilters):
             callback: callable The callback function to report how many messages have been retrieved.
             reverse: bool Whether to reverse the order of the messages
                 RETURNS int The length of the messages list
+            reply_to: int The message ID to reply to
 
         References: https://docs.telethon.dev/en/stable/modules/client.html#telethon.client.messages.MessageMethods.iter_messages
         Returns:

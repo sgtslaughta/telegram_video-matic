@@ -209,7 +209,8 @@ class ServerSettings(Base):
 class DBHelper:
     def __init__(self, database_url: str,
                  pool_size: int = 15,
-                 max_overflow: int = 32):
+                 max_overflow: int = 32,
+                 debug: bool = False):
         self.db_url = database_url
         self.pool_size = pool_size
         self.max_overflow = max_overflow
@@ -217,6 +218,7 @@ class DBHelper:
         self.async_session = async_sessionmaker(
             bind=self.engine, class_=AsyncSession, expire_on_commit=False
         )
+        self.debug = debug
 
     async def create_tables(self):
         async with self.engine.begin() as conn:
@@ -243,7 +245,8 @@ class DBHelper:
                     session.add(new_record)
                     await session.commit()
         except IntegrityError as e:
-            log(f"IntegrityError: Duplicate record attempt likely... {e}", level="INFO")
+            if self.debug:
+                log(f"IntegrityError: Duplicate record attempt likely... {e}", level="INFO")
 
     async def add_records(self, records: list):
         try:
@@ -252,7 +255,8 @@ class DBHelper:
                     session.add_all(records)
                     await session.commit()
         except IntegrityError as e:
-            log(f"IntegrityError: Duplicate record attempt likely... {e}", level="INFO")
+            if self.debug:
+                log(f"IntegrityError: Duplicate record attempt likely... {e}", level="INFO")
 
     async def get_record(self, table, record_id: int):
         async with self.async_session() as session:
@@ -312,6 +316,13 @@ class DBHelper:
             result = await session.execute(stmt)
             records = result.scalars().all()
             return records
+
+    async def get_highest_by(self, table, filter_condition, sort_by):
+        async with self.async_session() as session:
+            stmt = select(table).filter(filter_condition).order_by(sort_by.desc())
+            result = await session.execute(stmt)
+            record = result.scalars().first()
+            return record
 
 
 def init_db():

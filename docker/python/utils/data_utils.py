@@ -146,11 +146,13 @@ async def pull_messages(tg_a: TGAccount,
                         dbh: DBHelper,
                         channel_name: str = None,
                         channel_id: int = None,
-                        callback=None,
+                        progress_callback=None,
                         offset_date: str = None,
                         offset_id: int = None,
                         filter_media: str = None,
-                        topic: str = None):
+                        topic: str = None,
+                        limit: int = None,
+                        reverse=False):
     """
     Pull all messages from users Telegram and add them to the database.
     Args:
@@ -158,9 +160,12 @@ async def pull_messages(tg_a: TGAccount,
         dbh:
         channel_name:
         channel_id:
-        callback:
-        filter_date:
+        progress_callback:
+        offset_date:
+        offset_id:
         filter_media: ['image', 'video', 'document', 'music', 'voice', 'url']
+        topic:
+        limit:
 
     Returns:
 
@@ -179,12 +184,16 @@ async def pull_messages(tg_a: TGAccount,
         except KeyError:
             log(f"Invalid filter_media: {filter_media}", level="ERROR")
             return
+    if not offset_id:
+        offset_id = 0
+    if not offset_date:
+        offset_date = None
     total_steps = 3
     step = 1
-
-    if callback:
-        callback(step, total_steps, f"{step}: Pulling messages from Telegram...")
-    log("Pulling messages...", level="INFO")
+    ch_topic_log_str = f"[{channel_name}:{topic}]"
+    if progress_callback:
+        progress_callback(step, total_steps, f"{step}: Pulling messages from Telegram...")
+    log(f"Pulling TG messages {ch_topic_log_str}", level="INFO")
 
     entity = await tg_a.get_peer(channel_name)
     # try and get the last time the channel was updated
@@ -201,20 +210,25 @@ async def pull_messages(tg_a: TGAccount,
         log("Topic not found in database.", level="ERROR")
         return
     tg_topic_id = topic_id.topic_id
-    messages = await tg_a.get_messages(entity=entity, offset_date=last_updated, reply_to=tg_topic_id, msg_filter=filter_media,
-                                       limit=None)
-    toal_msg = len(messages)
+    messages = await tg_a.get_messages(entity=channel_name, offset_date=last_updated, offset_id=offset_id, reply_to=tg_topic_id,
+                                       limit=limit, msg_filter=filter_media, reverse=reverse)
+    cnt = 0
     if messages:
         for msg in messages:
-            x = {
-                'msg_id': msg.id,
-                'date_posted': msg.date,
-                'name': msg.message,
-                'is_media': True if filter_media else False,
-                'tg_ch_id': tg_channel.id,
-                'topic_id': topic_id.id
-            }
-            await dbh.add_record(Message(**x))
+            if msg.media:
+                if msg.media.video:
+                    x = {
+                        'msg_id': msg.id,
+                        'date_posted': msg.date,
+                        'name': msg.message[:255],
+                        'is_media': True,
+                        'tg_ch_id': tg_channel.id,
+                        'topic_id': topic_id.id
+                    }
+                    await dbh.add_record(Message(**x))
+                    cnt += 1
+        log(f"Added {cnt} messages to DB {ch_topic_log_str}", level="INFO")
+
 
 
 async def pull_videos(tg_a: TGAccount,
