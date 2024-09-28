@@ -9,7 +9,7 @@ import os.path
 import pathlib
 from datetime import datetime
 from functools import wraps
-
+from typing import Any, Coroutine, Tuple, List, Iterable
 from telethon.sync import TelegramClient, functions, types
 from telethon.tl.functions.channels import GetFullChannelRequest, \
     GetMessagesRequest
@@ -20,7 +20,7 @@ from telethon.tl.types import InputMessagesFilterMusic, InputMessagesFilterUrl, 
     InputMessagesFilterVoice
 from telethon.tl.types import (MessageMediaDocument, InputChannel,
                                InputPeerSelf)
-from tqdm.asyncio import tqdm_asyncio
+from tqdm import tqdm
 
 from .log_utils import log
 
@@ -202,7 +202,7 @@ class TGAccount(TGFilters):
                 }
 
 
-    # @ensure_authenticated
+    @ensure_authenticated
     async def get_messages_by_id(self, msg_ids: list, channel_name: str) -> list:
         """
         Get a telethon Telegram message object by ID.
@@ -215,39 +215,59 @@ class TGAccount(TGFilters):
         msgs = await self.client(GetMessagesRequest(channel=peer, id=msg_ids))
         return msgs
 
-    async def grab_file_with_semaphore(self, semaphore, message, callback=None):
-        async with semaphore:
-            await self.grab_file(message, callback=callback)
-
     # @ensure_authenticated
-    async def grab_file(self, message, callback=None) -> None:
+    async def grab_file(self, message, progress_callback=None) -> None:
         """
         Download a file from a Telegram message.
         """
+
         dl_path = message['path']
         msg = message['msg_obj']
         file_name = message['file_name']
+        total_b = msg.media.document.size
 
         if not pathlib.Path(dl_path).exists():
-            pathlib.Path(dl_path).mkdir(parents=True, exist_ok=True)
-        if pathlib.Path(dl_path, file_name).exists():
+            pathlib.Path(dl_path).mkdir(parents=True)
+        full_path = os.path.abspath(os.path.join(dl_path, file_name))
+        if os.path.exists(full_path):
+            log(f"File already exists: {dl_path}/{file_name}", level="INFO")
+            return None
+        if pathlib.Path(full_path).exists():
             log(f"File already exists: {dl_path}/{file_name}", level="INFO")
             return None
 
-        dl_path = os.path.abspath(dl_path + '/' + file_name)
-        await self.client.download_media(msg, dl_path, progress_callback=callback)
+        log(f"Downloading file: '{full_path}' [{round(total_b / (1024 * 1024), 2)}MB]", level="INFO")
+        await self.client.download_media(msg, full_path, progress_callback=progress_callback)
 
+    async def progress(tasks: Iterable[Coroutine], **pbar_kws: Any) -> List[Any]:
+        """Runs async tasks with a progress bar and returns an ordered result."""
+
+        if not tasks:
+            return []
+
+        async def tup(idx: int, task: Coroutine) -> Tuple[int, Any]:
+            """Returns the index and result of a task."""
+            return idx, await task
+
+        _tasks = [tup(i, t) for i, t in enumerate(tasks)]
+        pbar = tqdm(asyncio.as_completed(_tasks), total=len(_tasks), **pbar_kws)
+        res = [await t for t in pbar]
+        return [r[1] for r in sorted(res, key=lambda r: r[0])]
+
+    @ensure_authenticated
     # @ensure_authenticated
-    async def multi_download(self, message_list: list, concurrent_amt: int = 5) -> None:
+    async def multi_download(self, message_list: list, concurrent_amt: int = 5):
         """
         Download media concurrently using asyncio.
         """
-        video_tasks = []
         semaphore = asyncio.Semaphore(concurrent_amt)
-        for message in message_list:
-            # Wrap the grab_file call with the semaphore
-            video_tasks.append(self.grab_file_with_semaphore(semaphore, message))
-        # # Run the grab_file tasks concurrently
+
+        async def sem_task(message):
+            async with semaphore:
+                await self.grab_file(message)
+
+        video_tasks = [sem_task(message) for message in message_list]
+
         await asyncio.gather(*video_tasks)
 
     @ensure_authenticated

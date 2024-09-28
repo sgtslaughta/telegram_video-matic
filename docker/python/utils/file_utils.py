@@ -71,7 +71,7 @@ async def search_missing_files(db, topic_id):
     return [msg for msg in topic_msgs if msg.msg_id not in files_by_id_list], path
 
 
-async def dl_missing_files(db, tga, topic_id, concurrent_amt=5):
+async def compare_missing_files(db, tga, topic_id, concurrent_amt=5):
     missing_files, root_path = await search_missing_files(db, topic_id)
     if not missing_files:
         log(f"No missing files found for topic {topic_id}", 'info')
@@ -87,9 +87,14 @@ async def dl_missing_files(db, tga, topic_id, concurrent_amt=5):
             'file_name': format_file_name(msg.message[:255], msg.date, msg.id),
             'path': f"{root_path}/{msg.date.year}"
         })
-    await tga.multi_download(msg_dict_list, concurrent_amt=concurrent_amt)
+    return msg_dict_list
+
+
+async def s_and_d(tgh, db, topic_id, concurrent_amt=5):
+    files = await compare_missing_files(db, tgh, topic_id, concurrent_amt)
+    await tgh.multi_download(files, concurrent_amt=concurrent_amt)
 
 
 def search_missing_and_dl(tgh, db, topic_id, concurrent_amt=5):
-    asyncio.run(dl_missing_files(db, tgh, topic_id, concurrent_amt))
+    files = asyncio.run(s_and_d(tgh, db, topic_id, concurrent_amt))
 
