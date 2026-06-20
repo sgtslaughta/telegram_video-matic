@@ -21,6 +21,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
 
   const [apiId, setApiId] = useState('')
   const [apiHash, setApiHash] = useState('')
+  const [editCreds, setEditCreds] = useState(false)
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
@@ -28,8 +29,8 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
   // Determine current step based on status
   const getStep = (): Step => {
     if (!tgStatus.data) return 'phone'
-    // No API credentials yet → collect them before phone login
-    if (!tgStatus.data.configured) return 'credentials'
+    // No API credentials yet (or user chose to change them) → credentials step
+    if (!tgStatus.data.configured || editCreds) return 'credentials'
     switch (tgStatus.data.status) {
       case AccountStatus.DISCONNECTED:
         return 'phone'
@@ -60,6 +61,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     if (!apiId.trim() || !apiHash.trim()) return
     try {
       await setCreds.mutateAsync({ apiId: apiId.trim(), apiHash: apiHash.trim() })
+      setEditCreds(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Telegram request failed')
     }
@@ -292,6 +294,13 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                 >
                   {loginPhone.isPending ? 'Sending...' : 'Next'}
                 </Button>
+                <button
+                  type="button"
+                  onClick={() => setEditCreds(true)}
+                  className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  Change API credentials
+                </button>
               </motion.form>
             )}
 

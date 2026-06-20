@@ -7,7 +7,7 @@ import { useTgStatus } from '@/hooks/useTgStatus'
 import { AccountStatus } from '@/lib/types'
 
 export default function Shell() {
-  const { data: tg } = useTgStatus()
+  const { data: tg, isError: backendDown } = useTgStatus()
   const [loginOpen, setLoginOpen] = useState(false)
   const connected = tg?.status === AccountStatus.CONNECTED
 
@@ -21,6 +21,12 @@ export default function Shell() {
       <Sidebar connected={connected} onConnectClick={() => setLoginOpen(true)} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header connected={connected} onConnectClick={() => setLoginOpen(true)} />
+        {backendDown && (
+          <div className="flex items-center gap-2 bg-destructive px-6 py-2 text-sm font-medium text-destructive-foreground">
+            <span className="h-2 w-2 rounded-full bg-destructive-foreground" />
+            Can’t reach the server — retrying…
+          </div>
+        )}
         <main className="flex-1 overflow-auto bg-background">
           <Outlet />
         </main>

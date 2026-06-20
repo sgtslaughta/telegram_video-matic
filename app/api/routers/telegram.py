@@ -25,7 +25,7 @@ async def _get_tg_status(request: Request) -> TelegramStatusRead:
             username=None, display_name=None, phone=None
         )
     return TelegramStatusRead(
-        status=account.status.value,
+        status=str(account.status),
         configured=bool(account.api_id_enc),
         username=account.username,
         display_name=account.display_name,
