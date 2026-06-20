@@ -1,12 +1,10 @@
-"""Subscriptions router."""
+"""Subscriptions router: CRUD + duplicate detection + scan."""
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db, require_app_auth
-from app.api.schemas import (
-    SubscriptionRead, SubscriptionCreateRequest, SubscriptionUpdateRequest
-)
-from app.db.repositories import subscriptions as sub_repo
+from app.api.schemas import SubscriptionRead, SubscriptionCreateRequest, SubscriptionUpdateRequest
+from app.db import repositories as repo_module
 
 router = APIRouter(
     prefix="/api/subscriptions",
@@ -18,7 +16,7 @@ router = APIRouter(
 @router.get("")
 async def list_subscriptions(db: AsyncSession = Depends(get_db)):
     """GET /api/subscriptions — list all subscriptions."""
-    subs = await sub_repo.list(db)
+    subs = await repo_module.subscriptions.list(db)
     return [SubscriptionRead.model_validate(s) for s in subs]
 
 
@@ -28,14 +26,22 @@ async def create_subscription(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /api/subscriptions — create subscription."""
+    existing = await repo_module.subscriptions.get_by_channel_topic(
+        db, req.channel_id, req.topic_id
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Subscription already exists for this channel/topic",
+        )
+
     try:
-        sub = await sub_repo.create(
+        sub = await repo_module.subscriptions.create(
             db,
             channel_id=req.channel_id,
             topic_id=req.topic_id,
             enabled=req.enabled,
             mode=req.mode,
-            schedule_days=req.schedule_days,
             filter_regex=req.filter_regex,
             filter_mode=req.filter_mode,
             min_size_mb=req.min_size_mb,
@@ -57,7 +63,7 @@ async def create_subscription(
 @router.get("/{sub_id}")
 async def get_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     """GET /api/subscriptions/{id} — get single subscription."""
-    sub = await sub_repo.get(db, sub_id)
+    sub = await repo_module.subscriptions.get(db, sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
     return SubscriptionRead.model_validate(sub)
@@ -70,25 +76,25 @@ async def update_subscription(
     db: AsyncSession = Depends(get_db),
 ):
     """PATCH /api/subscriptions/{id} — update subscription."""
-    sub = await sub_repo.get(db, sub_id)
+    sub = await repo_module.subscriptions.get(db, sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     update_data = req.model_dump(exclude_unset=True)
-    updated = await sub_repo.update(db, sub_id, **update_data)
+    updated = await repo_module.subscriptions.update(db, sub_id, **update_data)
     return SubscriptionRead.model_validate(updated)
 
 
 @router.delete("/{sub_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     """DELETE /api/subscriptions/{id} — delete subscription."""
-    await sub_repo.delete(db, sub_id)
+    await repo_module.subscriptions.delete(db, sub_id)
 
 
 @router.post("/{sub_id}/scan")
 async def scan_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     """POST /api/subscriptions/{id}/scan — force manual poll."""
-    sub = await sub_repo.get(db, sub_id)
+    sub = await repo_module.subscriptions.get(db, sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
