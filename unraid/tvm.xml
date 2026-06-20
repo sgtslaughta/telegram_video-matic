@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Container version="2">
+  <Name>telegram-video-matic</Name>
+  <Repository>ghcr.io/user/telegram-video-matic:latest</Repository>
+  <Registry>ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/user/telegram-video-matic/issues</Support>
+  <Project>https://github.com/user/telegram-video-matic</Project>
+  <Category>MediaServer</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/user/telegram-video-matic/main/unraid/tvm.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/user/telegram-video-matic/main/unraid/icon.png</Icon>
+  <Description>
+    Self-hosted Telegram media downloader with automatic channel/topic monitoring,
+    smart naming for Jellyfin/Plex, retry logic, and pruning. Single container, one port.
+  </Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8000</HostPort>
+        <ContainerPort>8000</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/telegram-video-matic</HostDir>
+      <ContainerDir>/data</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+    <Volume>
+      <HostDir>/mnt/user/media</HostDir>
+      <ContainerDir>/media</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Name>TVM_SECRET_KEY</Name>
+      <Description>Encryption key for storing Telegram API credentials. Required. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"</Description>
+      <Default></Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
+      <Name>TVM_APP_PASSWORD</Name>
+      <Description>Web UI login password. Leave empty for open access (LAN only, not recommended).</Description>
+      <Default></Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
+      <Name>POLL_INTERVAL_SEC</Name>
+      <Description>Default poll interval in seconds. Runtime-tunable via API. Default: 300 (5 min).</Description>
+      <Default>300</Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
+      <Name>MAX_CONCURRENT_DOWNLOADS</Name>
+      <Description>Maximum parallel downloads. Runtime-tunable via API. Default: 3.</Description>
+      <Default>3</Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
+      <Name>RETENTION_DAYS</Name>
+      <Description>Retention period in days. Runtime-tunable via API. Default: 90.</Description>
+      <Default>90</Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
+      <Name>RETENTION_DISK_PCT</Name>
+      <Description>Retention disk percentage threshold. Runtime-tunable via API. Default: 80.</Description>
+      <Default>80</Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
+      <Name>TZ</Name>
+      <Description>Timezone for schedule-day evaluation. Examples: UTC, America/New_York, Europe/London.</Description>
+      <Default>UTC</Default>
+      <Mode></Mode>
+    </Variable>
+  </Environment>
+  <Labels>
+    <Label>telegram-video-matic.version=1.0.0</Label>
+  </Labels>
+</Container>
