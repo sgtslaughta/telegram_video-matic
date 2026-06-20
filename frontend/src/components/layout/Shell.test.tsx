@@ -5,13 +5,17 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { ThemeProvider } from '@/hooks/useTheme'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import Shell from './Shell'
+import * as api from '@/lib/api'
 
 const queryClient = new QueryClient()
+
+// Mock the API
+vi.mock('@/lib/api')
 
 // Mock the hooks
 vi.mock('@/hooks/useTgStatus', () => ({
   useTgStatus: () => ({
-    data: { authenticated: true },
+    data: { status: 'connected' },
     isLoading: false,
   }),
 }))
