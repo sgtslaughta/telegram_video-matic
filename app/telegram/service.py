@@ -162,6 +162,13 @@ class TelegramService:
     # Task 5: Read-only fetch methods
     # ========================================================================
 
+    async def _channel_input(self, tg_id: int):
+        """Resolve a channel's input entity. A bare int is treated by Telethon as
+        a user; wrap in PeerChannel so it resolves as a channel (access hash comes
+        from the session cache populated by get_dialogs)."""
+        from telethon.tl.types import PeerChannel
+        return await self.client.get_input_entity(PeerChannel(tg_id))
+
     async def list_channels(self, limit: int = 200) -> list[ChannelDTO]:
         """List all subscribed channels (Channel type only)."""
         if not self.client:
@@ -215,7 +222,7 @@ class TelegramService:
 
         # Forum channel: fetch topics
         result = await self.client(GetForumTopicsRequest(
-            channel=channel.tg_id,
+            channel=await self._channel_input(channel.tg_id),
             offset_date=None,
             offset_id=0,
             offset_topic=0,
@@ -244,8 +251,9 @@ class TelegramService:
             return
 
         try:
+            entity = await self._channel_input(channel.tg_id)
             async for message in self.client.iter_messages(
-                channel.tg_id,
+                entity,
                 min_id=since_msg_id or 0,
                 reverse=False
             ):

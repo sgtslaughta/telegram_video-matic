@@ -356,9 +356,11 @@ async def test_channels_list_topics_from_db():
         await session.commit()
         channel_id = ch.id
 
-    # Test the endpoint function directly
+    # Test the endpoint function directly (no live service → DB-only path)
+    request = MagicMock(spec=Request)
+    request.app.state.tg_service = None
     async with SessionLocal() as session:
-        result = await list_topics(channel_id, session)
+        result = await list_topics(channel_id, request, session)
 
     assert isinstance(result, list)
     assert len(result) == 1
