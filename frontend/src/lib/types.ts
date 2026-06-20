@@ -10,8 +10,8 @@
 export enum AccountStatus {
   DISCONNECTED = "disconnected",
   WAITING_PHONE = "waiting_phone",
-  WAITING_CODE = "waiting_code",
-  WAITING_PASSWORD = "waiting_password",
+  WAITING_CODE = "awaiting_code",
+  WAITING_PASSWORD = "awaiting_password",
   CONNECTED = "connected",
 }
 
