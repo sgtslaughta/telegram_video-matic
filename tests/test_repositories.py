@@ -7,13 +7,6 @@ from app.db.models import Base, Account, Channel, Topic, Subscription, MediaItem
 from app.db.repositories import (
     accounts, channels, topics, subscriptions, media, downloads, settings, events, tags, plugins
 )
-from app.crypto import init_crypto
-
-
-@pytest.fixture(scope="session", autouse=True)
-def init_crypto_once():
-    """Initialize crypto once per test session."""
-    init_crypto()
 
 
 @pytest_asyncio.fixture
@@ -200,6 +193,35 @@ async def test_media_claim_pending_atomicity(session):
     # Claim 1 more
     claimed2 = await media.claim_pending(session, limit=1)
     assert len(claimed2) == 1
+
+    # Test: pending items in disabled subscriptions are NOT claimed
+    sub_disabled = await subscriptions.create(session, channel.id, None, "/media", "{title}", enabled=False)
+    m3 = await media.upsert_from_tg(
+        session=session,
+        channel_id=channel.id,
+        topic_id=None,
+        subscription_id=sub_disabled.id,
+        tg_msg_id=3,
+        caption="Video 3",
+        file_name="v3.mp4",
+        mime="video/mp4",
+        size_bytes=3000000,
+        duration_sec=180,
+        date_posted=datetime.now(timezone.utc),
+        thumb_b64=None,
+        raw=None,
+    )
+
+    claimed3 = await media.claim_pending(session, limit=10)
+    assert len(claimed3) == 0  # Should not claim from disabled subscription
+
+    # Verify the item is still PENDING
+    m3_refreshed = await media.get(session, m3.id)
+    assert m3_refreshed.status == MediaStatus.PENDING
+
+    # Test: already-QUEUED items are not re-claimed
+    claimed4 = await media.claim_pending(session, limit=10)
+    assert len(claimed4) == 0  # No pending items left (all queued or in disabled sub)
 
 
 @pytest.mark.asyncio
