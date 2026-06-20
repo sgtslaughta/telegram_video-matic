@@ -96,6 +96,10 @@ class TelegramService:
             if not self.client:
                 raise RuntimeError("Client not initialized")
 
+            # Telethon requires an active connection before sending requests
+            if not self.client.is_connected():
+                await self.client.connect()
+
             sent_code = await self.client.send_code_request(phone)
             self._phone_code_hash = sent_code.phone_code_hash
 
