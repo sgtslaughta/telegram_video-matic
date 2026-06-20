@@ -1,3 +1,4 @@
+import type { EventRead } from '@/lib/types'
 import { useStats } from '@/hooks/useStats'
 import { useDownloadSeries } from '@/hooks/useDownloadSeries'
 import { useEvents } from '@/hooks/useEvents'
@@ -28,7 +29,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   )
 }
 
-function ActivityCard({ events, truncate }: { events: any[] | undefined; truncate?: boolean }) {
+function ActivityCard({ events, truncate }: { events: EventRead[] | undefined; truncate?: boolean }) {
   return (
     <Card>
       <CardHeader>

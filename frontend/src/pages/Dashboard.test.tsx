@@ -37,7 +37,7 @@ describe('Dashboard', () => {
     vi.clearAllMocks()
   })
 
-  it('renders dashboard heading and stat labels', async () => {
+  it('renders dashboard heading and stat labels', () => {
     render(<Dashboard />, { wrapper: createWrapper() })
 
     expect(screen.getByText('Dashboard')).toBeTruthy()

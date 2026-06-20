@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import * as api from '@/lib/api'
 import { MediaStatus } from '@/lib/types'
 
-export function useStats() {
+export function useStats(): { activeSubs: number; downloaded: number; failed: number; storageBytes: number; isLoading: boolean } {
   const subs = useQuery({ queryKey: ['subscriptions', 'list'], queryFn: () => api.subscriptions.list() })
   const downloaded = useQuery({
     queryKey: ['media', 'list', { status: MediaStatus.DOWNLOADED }],
