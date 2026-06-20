@@ -448,6 +448,17 @@ class TelegramService:
     # Task 6: Download with semaphore and progress callback
     # ========================================================================
 
+    async def download_by_id(self, channel_tg_id: int, msg_id: int, dest_path: str, on_progress=None) -> str:
+        """Resolve a message by (channel, id) then download it. The downloader
+        stores ids, but download() needs the Telethon message object."""
+        if not self.client:
+            raise ValueError("Client not initialized")
+        entity = await self._channel_input(channel_tg_id)
+        msg = await self.client.get_messages(entity, ids=msg_id)
+        if not msg:
+            raise ValueError(f"Message {msg_id} not found")
+        return await self.download(msg, dest_path, on_progress=on_progress)
+
     async def download(
         self,
         message,

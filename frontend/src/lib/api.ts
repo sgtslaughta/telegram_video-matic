@@ -104,6 +104,11 @@ export const channels = {
 
   browseThumbUrl: (channelId: number, tgMsgId: number) =>
     `/api/channels/${channelId}/thumb/${tgMsgId}`,
+
+  browseDownload: (channelId: number, tgMsgId: number) =>
+    fetchAPI<{ status: string; media_id: number }>(
+      `/channels/${channelId}/browse/${tgMsgId}/download`, { method: 'POST' }
+    ),
 }
 
 // Subscriptions
@@ -147,6 +152,9 @@ export const media = {
 
   get: (id: number) =>
     fetchAPI<T.MediaItemRead>(`/media/${id}`),
+
+  clear: () =>
+    fetchAPI<void>('/media/clear', { method: 'POST' }),
 
   download: (id: number) =>
     fetchAPI<T.DownloadJobRead>(`/media/${id}/download`, { method: 'POST' }),

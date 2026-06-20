@@ -1,9 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { Trash2 } from 'lucide-react'
 import { useActiveDownloads } from '@/hooks/useDownloads'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import * as api from '@/lib/api'
 
 function fmtBytes(n?: number | null): string {
   if (!n || n <= 0) return '0 B'
@@ -21,14 +26,31 @@ function fmtEta(sec?: number | null): string {
 export default function Downloads() {
   // Mounting the socket here keeps progress live even if no other page has it open.
   useWebSocket()
+  const qc = useQueryClient()
   const { data, isLoading } = useActiveDownloads()
   const jobs = data ?? []
 
+  const clearAll = async () => {
+    if (!window.confirm('Clear ALL media items and download jobs? (keeps your account, subscriptions, channels)')) return
+    try {
+      await api.media.clear()
+      qc.invalidateQueries()
+      toast.success('Cleared media & download jobs')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Clear failed')
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Downloads</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Live progress of active downloads</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Downloads</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Live progress of active downloads</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={clearAll}>
+          <Trash2 className="mr-2 h-4 w-4" /> Clear data
+        </Button>
       </div>
 
       {isLoading ? (

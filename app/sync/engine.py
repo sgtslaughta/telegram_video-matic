@@ -86,6 +86,7 @@ class SyncEngine:
         broadcast: Optional[Callable] = None,
         poll_interval_sec: int = 60,
         maintenance_interval_sec: int = 3600,
+        download_root: str = "/downloads",
     ):
         """Initialize SyncEngine.
 
@@ -102,6 +103,7 @@ class SyncEngine:
         self.broadcast = broadcast or (lambda x: None)
         self.poll_interval_sec = poll_interval_sec
         self.maintenance_interval_sec = maintenance_interval_sec
+        self.download_root = download_root
         self._tasks = []
         self._stop_event = asyncio.Event()
 
@@ -225,16 +227,17 @@ class SyncEngine:
                                 continue
 
                         try:
-                            # Get subscription and validate
-                            sub = await subscriptions.get(session, item.subscription_id)
-                            if not sub:
+                            # Subscription is optional (ad-hoc downloads have none).
+                            sub = await subscriptions.get(session, item.subscription_id) if item.subscription_id else None
+                            channel = await session.get(Channel, item.channel_id)
+                            if not channel:
                                 await media.set_status(session, item.id, MediaStatus.FAILED)
                                 await events.add(
                                     session,
                                     level=EventLevel.ERROR,
                                     kind="download",
                                     media_id=item.id,
-                                    message="Subscription not found",
+                                    message="Channel not found",
                                 )
                                 await session.commit()
                                 continue
@@ -264,8 +267,9 @@ class SyncEngine:
                                             "bytes_total": total_bytes,
                                         })
 
-                                # Download from Telegram
-                                await self.tg_service.download(
+                                # Download from Telegram (resolve message by channel+id)
+                                await self.tg_service.download_by_id(
+                                    channel.tg_id,
                                     item.tg_msg_id,
                                     temp_file,
                                     on_progress=on_progress
@@ -275,7 +279,7 @@ class SyncEngine:
                                 # Check if filename/caption has S/E pattern
                                 text = item.file_name or item.caption or ""
                                 has_pattern = bool(_SE_PATTERN.search(text))
-                                use_template = bool(sub.season_detection) and has_pattern
+                                use_template = bool(sub and sub.season_detection) and has_pattern
 
                                 if use_template:
                                     # Pattern found and detection enabled: use template with season/episode
@@ -296,9 +300,10 @@ class SyncEngine:
                                     target_path = render_path(sub.rename_template, tokens)
                                 else:
                                     # No pattern found OR detection disabled: keep original filename
-                                    target_path = item.file_name or f"{item.tg_msg_id}"
+                                    target_path = item.file_name or f"{item.tg_msg_id}.mp4"
 
-                                target_full = Path(sub.storage_path) / target_path
+                                storage_base = sub.storage_path if sub else self.download_root
+                                target_full = Path(storage_base) / target_path
 
                                 # Move file into place
                                 target_full.parent.mkdir(parents=True, exist_ok=True)

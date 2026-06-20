@@ -9,6 +9,7 @@ from app.api.schemas import ChannelRead, TopicRead
 from app.db.models import Channel, Topic, Subscription, MediaItem
 from app.db.repositories import channels as channels_repo
 from app.db.repositories import topics as topics_repo
+from app.db.repositories import media as media_repo
 from app.telegram.dtos import ChannelDTO, TopicDTO
 
 router = APIRouter(prefix="/api/channels", tags=["channels"], dependencies=[Depends(require_app_auth)])
@@ -96,6 +97,26 @@ async def browse_channel(
     except Exception as e:
         print(f"[browse] failed for channel {channel_id}: {e!r}")
     return out
+
+
+@router.post("/{channel_id}/browse/{tg_msg_id}/download")
+async def browse_download(channel_id: int, tg_msg_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """POST — ad-hoc download a single live message (no subscription needed)."""
+    channel = await db.get(Channel, channel_id)
+    svc = getattr(request.app.state, "tg_service", None)
+    if not channel or not (svc and svc.client):
+        raise HTTPException(status_code=400, detail="Telegram not connected")
+    chan_dto = ChannelDTO(
+        tg_id=channel.tg_id, title=channel.title, username=channel.username,
+        is_forum=channel.is_forum, photo_b64=channel.photo_b64, raw={},
+    )
+    dto = await svc.get_message(chan_dto, tg_msg_id)
+    if not dto:
+        raise HTTPException(status_code=404, detail="Message not found or has no media")
+    item = await media_repo.upsert_from_tg_dto(db, dto, None, channel_id, None)
+    await media_repo.set_status(db, item.id, "pending")
+    await db.commit()
+    return {"status": "queued", "media_id": item.id}
 
 
 @router.get("/{channel_id}/thumb/{tg_msg_id}")

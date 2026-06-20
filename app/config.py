@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Secrets (REQUIRED at startup)
     tvm_secret_key: str
 
+    # Default download directory for ad-hoc downloads (no subscription)
+    media_root: str = "/downloads"
+
     # Tunables (persist in DB as Setting, but env provides defaults)
     poll_interval_sec: int = 300
     retention_days: int = 90

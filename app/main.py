@@ -111,6 +111,7 @@ async def lifespan(app: FastAPI):
             broadcast=hub.broadcast,
             poll_interval_sec=settings.poll_interval_sec,
             maintenance_interval_sec=3600,
+            download_root=settings.media_root,
         )
         await engine.start()
         app.state.engine = engine

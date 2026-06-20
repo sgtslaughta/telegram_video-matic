@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Download, LayoutGrid, List, Search } from 'lucide-react'
@@ -158,22 +159,29 @@ export default function Browse() {
   )
 }
 
-function useItemDownload(item: any) {
+function useItemDownload(item: any, channelId: number) {
+  const qc = useQueryClient()
   const dl = useDownloadMedia(item.media_id ?? 0)
-  const onDownload = () => {
-    if (item.media_id) dl.mutate()
-    else toast.message('Not captured yet', {
-      description: item.subscription_label
-        ? 'A subscription targets this — it will download on the next scan.'
-        : 'Create a subscription for this channel/topic to download it.',
-    })
+  const [adhocPending, setAdhocPending] = useState(false)
+  const onDownload = async () => {
+    if (item.media_id) { dl.mutate(); return }
+    try {
+      setAdhocPending(true)
+      await api.channels.browseDownload(channelId, item.tg_msg_id)
+      toast.success('Queued for download')
+      qc.invalidateQueries({ queryKey: ['browse'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Download failed')
+    } finally {
+      setAdhocPending(false)
+    }
   }
-  return { onDownload, pending: dl.isPending }
+  return { onDownload, pending: dl.isPending || adhocPending }
 }
 
 function MediaCard({ item, channelId }: { item: any; channelId: number }) {
   const navigate = useNavigate()
-  const { onDownload, pending } = useItemDownload(item)
+  const { onDownload, pending } = useItemDownload(item, channelId)
   return (
     <Card className="flex h-full flex-col transition-shadow hover:shadow-md">
       <button
@@ -204,7 +212,7 @@ function MediaCard({ item, channelId }: { item: any; channelId: number }) {
 
 function MediaRow({ item, channelId }: { item: any; channelId: number }) {
   const navigate = useNavigate()
-  const { onDownload, pending } = useItemDownload(item)
+  const { onDownload, pending } = useItemDownload(item, channelId)
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50">
       <button onClick={() => item.media_id && navigate(`/media/${item.media_id}`)} className="h-10 w-16 shrink-0 overflow-hidden rounded">

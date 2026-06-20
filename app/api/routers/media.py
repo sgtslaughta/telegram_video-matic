@@ -34,6 +34,18 @@ async def list_media(
     return [MediaItemRead.from_orm(item) for item in items]
 
 
+@router.post("/clear")
+async def clear_media(db: AsyncSession = Depends(get_db)):
+    """POST /api/media/clear — purge all media items and download jobs (keeps
+    account, subscriptions, channels). Useful to reset after bad/partial scans."""
+    from sqlalchemy import delete
+    from app.db.models import MediaItem, DownloadJob
+    await db.execute(delete(DownloadJob))
+    await db.execute(delete(MediaItem))
+    await db.commit()
+    return {"status": "cleared"}
+
+
 @router.get("/{media_id}")
 async def get_media(media_id: int, db: AsyncSession = Depends(get_db)):
     """GET /api/media/{id} — get single media item."""
