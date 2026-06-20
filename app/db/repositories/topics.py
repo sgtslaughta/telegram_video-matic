@@ -57,3 +57,14 @@ async def get_or_create_general(
         await session.commit()
 
     return topic
+
+
+async def list_by_channel(
+    session: AsyncSession,
+    channel_id: int,
+) -> list[Topic]:
+    """List all topics in a channel."""
+    result = await session.execute(
+        select(Topic).where(Topic.channel_id == channel_id)
+    )
+    return result.scalars().all()

@@ -45,3 +45,9 @@ async def get_by_tg_id(session: AsyncSession, tg_id: int) -> Channel | None:
         select(Channel).where(Channel.tg_id == tg_id)
     )
     return result.scalar_one_or_none()
+
+
+async def list(session: AsyncSession) -> list[Channel]:
+    """List all channels."""
+    result = await session.execute(select(Channel))
+    return result.scalars().all()

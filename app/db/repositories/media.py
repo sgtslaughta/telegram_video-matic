@@ -224,3 +224,33 @@ async def list_downloaded_oldest_first(
         .order_by(MediaItem.downloaded_at.asc())
     )
     return result.scalars().all()
+
+
+async def list_filtered(
+    session: AsyncSession,
+    status: str | None = None,
+    sub_id: int | None = None,
+    channel_id: int | None = None,
+    topic_id: int | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[MediaItem]:
+    """List media with optional filters and pagination."""
+    query = select(MediaItem)
+    filters = []
+
+    if status is not None:
+        filters.append(MediaItem.status == status)
+    if sub_id is not None:
+        filters.append(MediaItem.subscription_id == sub_id)
+    if channel_id is not None:
+        filters.append(MediaItem.channel_id == channel_id)
+    if topic_id is not None:
+        filters.append(MediaItem.topic_id == topic_id)
+
+    if filters:
+        query = query.where(and_(*filters))
+
+    query = query.offset(offset).limit(limit)
+    result = await session.execute(query)
+    return result.scalars().all()

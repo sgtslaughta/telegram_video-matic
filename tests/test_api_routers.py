@@ -278,3 +278,131 @@ async def test_tg_phone_masking(monkeypatch):
     assert "*" in phone
     # Last 4 digits should be visible
     assert "90" in phone
+
+
+# ============================================================================
+# TASK 7: Channels Router Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_channels_list_from_db():
+    """Test: GET /api/channels returns channels from DB."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Channel
+    from app.api.routers.channels import list_channels
+
+    # Setup: real in-memory DB
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test channel
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", username="test_ch", is_forum=False)
+        session.add(ch)
+        await session.commit()
+
+    # Test the endpoint function directly
+    async with SessionLocal() as session:
+        result = await list_channels(session)
+
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].title == "Test Channel"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_channels_list_topics_from_db():
+    """Test: GET /api/channels/{id}/topics returns topics from DB."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Channel, Topic
+    from app.api.routers.channels import list_topics
+
+    # Setup: real in-memory DB
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test channel and topic
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=True)
+        session.add(ch)
+        await session.flush()
+        t = Topic(channel_id=ch.id, tg_topic_id=1, title="General")
+        session.add(t)
+        await session.commit()
+        channel_id = ch.id
+
+    # Test the endpoint function directly
+    async with SessionLocal() as session:
+        result = await list_topics(channel_id, session)
+
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].title == "General"
+
+    await engine.dispose()
+
+
+# ============================================================================
+# TASK 8: Subscriptions Router Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_sub_list_empty():
+    """Test 13: GET /api/subscriptions on empty DB returns empty list."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base
+    from app.api.routers import subscriptions
+
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    app = FastAPI()
+    app.include_router(subscriptions.router)
+
+    async def mock_get_db():
+        async with SessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[subscriptions.get_db] = mock_get_db
+
+    client = TestClient(app)
+    response = client.get("/api/subscriptions")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sub_create_and_list():
+    """Test 14: POST /api/subscriptions creates, GET lists it."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
