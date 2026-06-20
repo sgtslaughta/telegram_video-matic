@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { ThemeProvider } from '@/hooks/useTheme'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 import Router from './Router'
 
@@ -31,8 +32,10 @@ describe('Router', () => {
       <MemoryRouter initialEntries={['/login']}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <Router />
-            <Toaster />
+            <TooltipProvider>
+              <Router />
+              <Toaster />
+            </TooltipProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </MemoryRouter>
@@ -47,8 +50,10 @@ describe('Router', () => {
       <MemoryRouter initialEntries={['/']}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <Router />
-            <Toaster />
+            <TooltipProvider>
+              <Router />
+              <Toaster />
+            </TooltipProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </MemoryRouter>
@@ -65,8 +70,10 @@ describe('Router', () => {
       <MemoryRouter initialEntries={['/subscriptions']}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <Router />
-            <Toaster />
+            <TooltipProvider>
+              <Router />
+              <Toaster />
+            </TooltipProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </MemoryRouter>

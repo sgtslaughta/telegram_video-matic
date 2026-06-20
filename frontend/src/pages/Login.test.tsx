@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import Login from './Login'
 
 const createWrapper = () => {
@@ -9,7 +10,9 @@ const createWrapper = () => {
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        {children}
+        <TooltipProvider>
+          {children}
+        </TooltipProvider>
       </BrowserRouter>
     </QueryClientProvider>
   )

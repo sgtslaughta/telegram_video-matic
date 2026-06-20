@@ -6,6 +6,8 @@ import { useTgStatus } from '@/hooks/useTgStatus'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import type * as T from '@/lib/types'
 
 export default function Dashboard() {
@@ -75,161 +77,156 @@ export default function Dashboard() {
         variants={containerVariants}
         className="grid grid-cols-1 gap-4 md:grid-cols-3"
       >
-        <motion.div
-          variants={itemVariants}
-          className="rounded-lg border border-gray-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
-        >
-          <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
-            Subscriptions
-          </div>
-          <div className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
-            {subscriptions.data?.length ?? 0}
-          </div>
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Subscriptions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{subscriptions.data?.length ?? 0}</div>
+            </CardContent>
+          </Card>
         </motion.div>
 
-        <motion.div
-          variants={itemVariants}
-          className="rounded-lg border border-gray-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
-        >
-          <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
-            Pending
-          </div>
-          <div className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
-            {subscriptions.data?.filter((s) => !s.enabled).length ?? 0}
-          </div>
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Pending</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">
+                {subscriptions.data?.filter((s) => !s.enabled).length ?? 0}
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
 
-        <motion.div
-          variants={itemVariants}
-          className="rounded-lg border border-gray-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900"
-        >
-          <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
-            Downloaded
-          </div>
-          <div className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
-            {subscriptions.data?.filter((s) => s.enabled).length ?? 0}
-          </div>
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Downloaded</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">
+                {subscriptions.data?.filter((s) => s.enabled).length ?? 0}
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
       </motion.div>
 
       {/* Active Downloads */}
       <motion.div variants={itemVariants}>
-        <div className="rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <div className="border-b border-gray-200 px-6 py-4 dark:border-slate-700">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Active Downloads
-            </h2>
-          </div>
-
-          {downloads.isLoading ? (
-            <div className="px-6 py-8 text-center text-gray-600 dark:text-gray-400">
-              Loading...
-            </div>
-          ) : downloads.data && downloads.data.length > 0 ? (
-            <div className="divide-y divide-gray-200 dark:divide-slate-700">
-              {downloads.data.map((job) => (
-                <motion.div
-                  key={job.id}
-                  variants={itemVariants}
-                  className="px-6 py-4"
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                      Download #{job.id}
-                    </span>
-                    <StatusBadge status={job.status} />
-                  </div>
-                  <ProgressBar progress={job.progress} animated showLabel />
-                  <div className="mt-2 flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                    <span>
-                      {job.bytes_done && job.bytes_total
-                        ? `${(job.bytes_done / 1024 / 1024).toFixed(1)}MB / ${(job.bytes_total / 1024 / 1024).toFixed(1)}MB`
-                        : '—'}
-                    </span>
-                    <span>
-                      {job.speed_bps
-                        ? `${(job.speed_bps / 1024 / 1024).toFixed(1)}MB/s`
-                        : '—'}
-                    </span>
-                    {job.eta_sec && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Active Downloads</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {downloads.isLoading ? (
+              <div className="py-8 text-center text-gray-600 dark:text-gray-400">
+                Loading...
+              </div>
+            ) : downloads.data && downloads.data.length > 0 ? (
+              <div className="space-y-4">
+                {downloads.data.map((job) => (
+                  <motion.div
+                    key={job.id}
+                    variants={itemVariants}
+                    className="border rounded-lg p-4 border-slate-200 dark:border-slate-700"
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-sm font-medium">Download #{job.id}</span>
+                      <StatusBadge status={job.status} />
+                    </div>
+                    <ProgressBar progress={job.progress} animated showLabel />
+                    <div className="mt-2 flex justify-between text-xs text-gray-600 dark:text-gray-400">
                       <span>
-                        ETA{' '}
-                        {Math.floor(job.eta_sec / 60) > 0
-                          ? `${Math.floor(job.eta_sec / 60)}m`
-                          : `${job.eta_sec}s`}
+                        {job.bytes_done && job.bytes_total
+                          ? `${(job.bytes_done / 1024 / 1024).toFixed(1)}MB / ${(job.bytes_total / 1024 / 1024).toFixed(1)}MB`
+                          : '—'}
                       </span>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="px-6 py-8">
+                      <span>
+                        {job.speed_bps
+                          ? `${(job.speed_bps / 1024 / 1024).toFixed(1)}MB/s`
+                          : '—'}
+                      </span>
+                      {job.eta_sec && (
+                        <span>
+                          ETA{' '}
+                          {Math.floor(job.eta_sec / 60) > 0
+                            ? `${Math.floor(job.eta_sec / 60)}m`
+                            : `${job.eta_sec}s`}
+                        </span>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
               <EmptyState
                 title="No active downloads"
                 message="Your subscriptions will appear here when actively downloading."
               />
-            </div>
-          )}
-        </div>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Recent Activity */}
       <motion.div variants={itemVariants}>
-        <div className="rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <div className="border-b border-gray-200 px-6 py-4 dark:border-slate-700">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Recent Activity
-            </h2>
-          </div>
-
-          {events.isLoading ? (
-            <div className="px-6 py-8 text-center text-gray-600 dark:text-gray-400">
-              Loading...
-            </div>
-          ) : events.data && events.data.length > 0 ? (
-            <div className="divide-y divide-gray-200 dark:divide-slate-700">
-              {events.data.map((event, idx) => (
-                <motion.div
-                  key={event.id}
-                  variants={itemVariants}
-                  transition={{ delay: idx * 0.05 }}
-                  className="flex items-start gap-4 px-6 py-4"
-                >
-                  <div className="mt-1 flex h-2 w-2 flex-shrink-0 rounded-full bg-[#229ED9]" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-900 dark:text-white">
-                      {event.message}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
-                      {new Date(event.created_at).toLocaleDateString()} at{' '}
-                      {new Date(event.created_at).toLocaleTimeString()}
-                    </p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="px-6 py-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {events.isLoading ? (
+              <div className="py-8 text-center text-gray-600 dark:text-gray-400">
+                Loading...
+              </div>
+            ) : events.data && events.data.length > 0 ? (
+              <div className="space-y-4">
+                {events.data.map((event, idx) => (
+                  <motion.div
+                    key={event.id}
+                    variants={itemVariants}
+                    transition={{ delay: idx * 0.05 }}
+                    className="flex items-start gap-3 pb-3 border-b border-slate-200 dark:border-slate-700 last:border-b-0"
+                  >
+                    <div className="mt-1.5 flex h-2 w-2 flex-shrink-0 rounded-full bg-[#229ED9]" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm">{event.message}</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {new Date(event.created_at).toLocaleDateString()} at{' '}
+                        {new Date(event.created_at).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
               <EmptyState
                 title="No activity yet"
                 message="Events will appear here as your subscriptions run."
               />
-            </div>
-          )}
-        </div>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* TG Status Debug */}
       {tgStatus.data && (
-        <motion.div
-          variants={itemVariants}
-          className="rounded-lg border border-gray-200 bg-white p-4 text-xs text-gray-600 dark:border-slate-700 dark:bg-slate-900 dark:text-gray-400"
-        >
-          <span className="font-mono">
-            TG: {tgStatus.data.status}
-            {tgStatus.data.username && ` (@${tgStatus.data.username})`}
-          </span>
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <Badge variant="outline">TG Status</Badge>
+                <span className="font-mono text-sm">
+                  {tgStatus.data.status}
+                  {tgStatus.data.username && ` (@${tgStatus.data.username})`}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
       )}
     </motion.div>

@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { useSubscriptionEditor } from '@/hooks/useSubscriptionEditor'
 import * as channelsHook from '@/hooks/useChannels'
 import * as subsHook from '@/hooks/useSubscriptions'
@@ -105,7 +106,11 @@ describe('SubscriptionEditor - UI Badge Color', () => {
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <MemoryRouter>
-        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+        <QueryClientProvider client={qc}>
+          <TooltipProvider>
+            {children}
+          </TooltipProvider>
+        </QueryClientProvider>
       </MemoryRouter>
     )
 
@@ -117,8 +122,7 @@ describe('SubscriptionEditor - UI Badge Color', () => {
 
     await waitFor(
       () => {
-        const badgeSpan = container.querySelector('.text-green-600')
-        expect(badgeSpan?.textContent).toBe('✅')
+        expect(screen.getByText(/Valid/)).toBeTruthy()
       },
       { timeout: 2000 }
     )
@@ -164,7 +168,11 @@ describe('SubscriptionEditor - UI Badge Color', () => {
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <MemoryRouter>
-        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+        <QueryClientProvider client={qc}>
+          <TooltipProvider>
+            {children}
+          </TooltipProvider>
+        </QueryClientProvider>
       </MemoryRouter>
     )
 
@@ -176,8 +184,7 @@ describe('SubscriptionEditor - UI Badge Color', () => {
 
     await waitFor(
       () => {
-        const badgeSpan = container.querySelector('.text-red-600')
-        expect(badgeSpan?.textContent).toBe('❌')
+        expect(screen.getByText(/Invalid/)).toBeTruthy()
       },
       { timeout: 2000 }
     )

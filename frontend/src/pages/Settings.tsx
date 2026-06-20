@@ -3,6 +3,18 @@ import { motion } from 'framer-motion'
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
 import { useTheme } from '@/hooks/useTheme'
 import { usePlugins, useUpdatePlugin } from '@/hooks/usePlugins'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type * as T from '@/lib/types'
 
 const containerVariants = {
@@ -98,166 +110,137 @@ export default function Settings() {
     >
       {/* Settings Section */}
       <motion.div variants={itemVariants}>
-        <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Settings</h2>
+        <h2 className="text-2xl font-bold mb-4">Settings</h2>
 
         {/* System Settings */}
-        <motion.div className="space-y-4 mb-6 p-6 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">System</h3>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>System</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="poll">Poll Interval (seconds)</Label>
+              <Input
+                id="poll"
+                type="number"
+                value={formData.poll_interval_sec || getSettingValue('poll_interval_sec')}
+                onChange={(e) =>
+                  handleSettingChange('poll_interval_sec', e.target.value)
+                }
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Poll Interval (seconds)
-            </label>
-            <input
-              type="number"
-              value={formData.poll_interval_sec || getSettingValue('poll_interval_sec')}
-              onChange={(e) =>
-                handleSettingChange('poll_interval_sec', e.target.value)
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-[#229ED9] focus:ring-2 focus:ring-[#229ED9]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="max-dl">Max Concurrent Downloads</Label>
+              <Input
+                id="max-dl"
+                type="number"
+                value={
+                  formData.max_concurrent_downloads ||
+                  getSettingValue('max_concurrent_downloads')
+                }
+                onChange={(e) =>
+                  handleSettingChange('max_concurrent_downloads', e.target.value)
+                }
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Max Concurrent Downloads
-            </label>
-            <input
-              type="number"
-              value={
-                formData.max_concurrent_downloads ||
-                getSettingValue('max_concurrent_downloads')
-              }
-              onChange={(e) =>
-                handleSettingChange('max_concurrent_downloads', e.target.value)
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-[#229ED9] focus:ring-2 focus:ring-[#229ED9]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="retention">Retention Days</Label>
+              <Input
+                id="retention"
+                type="number"
+                value={formData.retention_days || getSettingValue('retention_days')}
+                onChange={(e) =>
+                  handleSettingChange('retention_days', e.target.value)
+                }
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Retention Days
-            </label>
-            <input
-              type="number"
-              value={formData.retention_days || getSettingValue('retention_days')}
-              onChange={(e) =>
-                handleSettingChange('retention_days', e.target.value)
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-[#229ED9] focus:ring-2 focus:ring-[#229ED9]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Retention Disk Percentage
-            </label>
-            <input
-              type="number"
-              value={
-                formData.retention_disk_pct ||
-                getSettingValue('retention_disk_pct')
-              }
-              onChange={(e) =>
-                handleSettingChange('retention_disk_pct', e.target.value)
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-[#229ED9] focus:ring-2 focus:ring-[#229ED9]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-        </motion.div>
+            <div className="space-y-2">
+              <Label htmlFor="retention-pct">Retention Disk Percentage</Label>
+              <Input
+                id="retention-pct"
+                type="number"
+                value={
+                  formData.retention_disk_pct ||
+                  getSettingValue('retention_disk_pct')
+                }
+                onChange={(e) =>
+                  handleSettingChange('retention_disk_pct', e.target.value)
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Theme Section */}
-        <motion.div className="space-y-4 p-6 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 shadow-sm">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Theme</h3>
-
-          <div className="space-y-2">
-            <label className="flex items-center cursor-pointer">
-              <input
-                type="radio"
-                name="theme"
-                value="light"
-                checked={theme === 'light'}
-                onChange={() => setTheme('light')}
-                className="mr-2"
-              />
-              <span className="text-gray-700 dark:text-gray-300">Light</span>
-            </label>
-            <label className="flex items-center cursor-pointer">
-              <input
-                type="radio"
-                name="theme"
-                value="dark"
-                checked={theme === 'dark'}
-                onChange={() => setTheme('dark')}
-                className="mr-2"
-              />
-              <span className="text-gray-700 dark:text-gray-300">Dark</span>
-            </label>
-            <label className="flex items-center cursor-pointer">
-              <input
-                type="radio"
-                name="theme"
-                value="system"
-                checked={theme === 'system'}
-                onChange={() => setTheme('system')}
-                className="mr-2"
-              />
-              <span className="text-gray-700 dark:text-gray-300">System</span>
-            </label>
-          </div>
-        </motion.div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Theme</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Select value={theme} onValueChange={(v) => setTheme(v as any)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="light">Light</SelectItem>
+                <SelectItem value="dark">Dark</SelectItem>
+                <SelectItem value="system">System</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Plugins Section */}
-      <motion.div variants={itemVariants}>
-        <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Plugins</h2>
+      <motion.div variants={itemVariants} className="mt-8">
+        <h2 className="text-2xl font-bold mb-4">Plugins</h2>
 
-        {plugins && plugins.length > 0 ? (
-          <div className="space-y-3">
-            {plugins.map((plugin) => (
-              <motion.div
-                key={plugin.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-white hover:shadow-md transition-all dark:bg-slate-900 dark:border-slate-700"
-              >
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-white">{plugin.name}</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">v{plugin.version}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
+        <Card>
+          <CardContent className="pt-6">
+            {plugins && plugins.length > 0 ? (
+              <div className="space-y-3">
+                {plugins.map((plugin) => (
+                  <motion.div
+                    key={plugin.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:shadow-md transition-all dark:border-slate-700"
+                  >
+                    <div>
+                      <p className="font-medium">{plugin.name}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">v{plugin.version}</p>
+                    </div>
+                    <Switch
                       aria-label={plugin.name}
                       checked={pluginStates[plugin.name]?.enabled ?? plugin.enabled}
-                      onChange={(e) =>
-                        handlePluginToggle(plugin.name, e.target.checked)
+                      onCheckedChange={(checked) =>
+                        handlePluginToggle(plugin.name, checked)
                       }
-                      className="mr-2 accent-[#229ED9]"
                     />
-                    <span className="text-gray-700 dark:text-gray-300">Enable</span>
-                  </label>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500 dark:text-gray-400">No plugins installed</p>
-        )}
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500">No plugins installed</p>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Save Button */}
-      <motion.button
-        onClick={handleSave}
-        disabled={updateSettings.isPending || updatePlugin.isPending}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        className="w-full px-4 py-2 bg-[#229ED9] text-white rounded-lg font-medium shadow-md hover:bg-[#1a7aaf] hover:shadow-lg transition-all disabled:opacity-50"
-      >
-        Save Changes
-      </motion.button>
+      <motion.div className="mt-8">
+        <Button
+          onClick={handleSave}
+          disabled={updateSettings.isPending || updatePlugin.isPending}
+          className="w-full bg-[#229ED9] hover:bg-[#1a7aaf]"
+          size="lg"
+        >
+          Save Changes
+        </Button>
+      </motion.div>
     </motion.div>
   )
 }

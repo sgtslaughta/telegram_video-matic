@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { ThemeProvider } from '@/hooks/useTheme'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import Shell from './Shell'
 
 const queryClient = new QueryClient()
@@ -42,7 +43,9 @@ describe('Shell', () => {
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <Shell />
+            <TooltipProvider>
+              <Shell />
+            </TooltipProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </BrowserRouter>
@@ -55,13 +58,14 @@ describe('Shell', () => {
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <Shell />
+            <TooltipProvider>
+              <Shell />
+            </TooltipProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </BrowserRouter>
     )
-    // Header should contain either a button for theme toggle or have TG status
-    const header = screen.getByRole('banner')
+    const header = screen.getByRole('heading', { level: 1 })
     expect(header).toBeTruthy()
   })
 })

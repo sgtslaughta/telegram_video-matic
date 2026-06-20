@@ -2,8 +2,22 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useSubscription, useCreateSubscription, useUpdateSubscription } from '@/hooks/useSubscriptions'
 import { useChannels, useTopics } from '@/hooks/useChannels'
 import { useSubscriptionEditor } from '@/hooks/useSubscriptionEditor'
-import type * as T from '@/lib/types'
 import { toast } from 'sonner'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import type * as T from '@/lib/types'
 
 const DAYS = [
   { value: 'mon', label: 'Monday' },
@@ -129,7 +143,7 @@ export default function SubscriptionEditor() {
   }
 
   return (
-    <div className="space-y-6 p-6 max-w-2xl">
+    <div className="space-y-6 p-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold">{isNew ? 'New Subscription' : 'Edit Subscription'}</h1>
         <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -138,206 +152,226 @@ export default function SubscriptionEditor() {
       </div>
 
       {/* Channel + Topic */}
-      <div className="space-y-4 border-b pb-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="channel" className="block text-sm font-medium mb-1">Channel</label>
-            <select
-              id="channel"
-              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-              value={editor.state.channelId || ''}
-              onChange={(e) => {
-                editor.update('channelId', e.target.value ? parseInt(e.target.value) : null)
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Channel & Topic</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="channel">Channel</Label>
+              <Select value={editor.state.channelId?.toString() || ''} onValueChange={(v) => {
+                editor.update('channelId', v ? parseInt(v) : null)
                 editor.update('topicId', null)
-              }}
-            >
-              <option value="">Select channel</option>
-              {channels.data?.map((ch) => (
-                <option key={ch.id} value={ch.id}>
-                  {ch.title}
-                </option>
-              ))}
-            </select>
-          </div>
+              }}>
+                <SelectTrigger id="channel">
+                  <SelectValue placeholder="Select channel" />
+                </SelectTrigger>
+                <SelectContent>
+                  {channels.data?.map((ch) => (
+                    <SelectItem key={ch.id} value={ch.id.toString()}>
+                      {ch.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div>
-            <label htmlFor="topic" className="block text-sm font-medium mb-1">Topic</label>
-            <select
-              id="topic"
-              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-              value={editor.state.topicId || ''}
-              onChange={(e) => editor.update('topicId', e.target.value ? parseInt(e.target.value) : null)}
-              disabled={!editor.state.channelId}
-            >
-              <option value="">Select topic</option>
-              {topics.data?.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <Label htmlFor="topic">Topic</Label>
+              <Select value={editor.state.topicId?.toString() || ''} onValueChange={(v) => editor.update('topicId', v ? parseInt(v) : null)} disabled={!editor.state.channelId}>
+                <SelectTrigger id="topic">
+                  <SelectValue placeholder="Select topic" />
+                </SelectTrigger>
+                <SelectContent>
+                  {topics.data?.map((t) => (
+                    <SelectItem key={t.id} value={t.id.toString()}>
+                      {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Filter */}
-      <div className="space-y-4 border-b pb-6">
-        <div>
-          <span className="block text-sm font-medium mb-2">Filter Mode</span>
-          <div className="flex gap-4">
-            {['include', 'exclude'].map((mode) => (
-              <label key={mode} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="filterMode"
-                  value={mode}
-                  checked={editor.state.filterMode === mode}
-                  onChange={(e) => editor.update('filterMode', e.target.value as any)}
-                />
-                <span className="capitalize">{mode} (whitelist)</span>
-              </label>
-            ))}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Filter</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Filter Mode</Label>
+            <div className="flex gap-4">
+              {['include', 'exclude'].map((mode) => (
+                <label key={mode} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="filterMode"
+                    value={mode}
+                    checked={editor.state.filterMode === mode}
+                    onChange={(e) => editor.update('filterMode', e.target.value as any)}
+                  />
+                  <span className="text-sm capitalize">{mode}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label htmlFor="regex" className="block text-sm font-medium mb-1">Filter Regex</label>
-          <textarea
-            id="regex"
-            value={editor.state.filterRegex}
-            onChange={(e) => editor.update('filterRegex', e.target.value)}
-            placeholder="e.g., .*\\.mkv$ to match video files"
-            className="font-mono text-sm w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-            rows={3}
-          />
-          <div className="mt-2 flex items-center gap-2">
-            {editor.state.filterRegex && (
-              <>
-                <span className={editor.regexValid ? 'text-green-600 text-lg' : 'text-red-600 text-lg'}>
-                  {editor.regexValid ? '✅' : '❌'}
-                </span>
-                {!editor.regexValid && <span className="text-xs text-red-600">{editor.regexError}</span>}
-              </>
-            )}
+          <div className="space-y-2">
+            <Label htmlFor="regex">Filter Regex</Label>
+            <Textarea
+              id="regex"
+              value={editor.state.filterRegex}
+              onChange={(e) => editor.update('filterRegex', e.target.value)}
+              placeholder="e.g., .*\\.mkv$ to match video files"
+              className="font-mono text-sm"
+              rows={3}
+            />
+            <div className="flex items-center gap-2 mt-2">
+              {editor.state.filterRegex && (
+                <>
+                  <span className={editor.regexValid ? 'text-green-600' : 'text-red-600'}>
+                    {editor.regexValid ? '✅ Valid' : '❌ Invalid'}
+                  </span>
+                  {!editor.regexValid && <span className="text-xs text-red-600">{editor.regexError}</span>}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Schedule */}
-      <div className="space-y-4 border-b pb-6">
-        <span className="block text-sm font-medium">Schedule Days</span>
-        <div className="grid grid-cols-4 gap-3">
-          {DAYS.map((day) => (
-            <label key={day.value} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={editor.state.scheduleDays.includes(day.value)}
-                onChange={() => editor.toggleScheduleDay(day.value)}
-                className="w-4 h-4 rounded"
-              />
-              <span className="text-sm">{day.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Schedule</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <Label>Schedule Days</Label>
+            <div className="grid grid-cols-4 gap-3">
+              {DAYS.map((day) => (
+                <label key={day.value} className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={editor.state.scheduleDays.includes(day.value)}
+                    onCheckedChange={() => editor.toggleScheduleDay(day.value)}
+                  />
+                  <span className="text-sm">{day.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Size Bounds */}
-      <div className="space-y-4 border-b pb-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="minSize" className="block text-sm font-medium mb-1">Min Size (MB)</label>
-            <input
-              id="minSize"
-              type="number"
-              value={editor.state.minSizeMb ?? ''}
-              onChange={(e) => editor.update('minSizeMb', e.target.value ? parseFloat(e.target.value) : null)}
-              placeholder="0"
-              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-            />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Size Bounds</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="minSize">Min Size (MB)</Label>
+              <Input
+                id="minSize"
+                type="number"
+                value={editor.state.minSizeMb ?? ''}
+                onChange={(e) => editor.update('minSizeMb', e.target.value ? parseFloat(e.target.value) : null)}
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="maxSize">Max Size (MB)</Label>
+              <Input
+                id="maxSize"
+                type="number"
+                value={editor.state.maxSizeMb ?? ''}
+                onChange={(e) => editor.update('maxSizeMb', e.target.value ? parseFloat(e.target.value) : null)}
+                placeholder="1000"
+              />
+            </div>
           </div>
-          <div>
-            <label htmlFor="maxSize" className="block text-sm font-medium mb-1">Max Size (MB)</label>
-            <input
-              id="maxSize"
-              type="number"
-              value={editor.state.maxSizeMb ?? ''}
-              onChange={(e) => editor.update('maxSizeMb', e.target.value ? parseFloat(e.target.value) : null)}
-              placeholder="1000"
-              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-            />
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Storage & Template */}
-      <div className="space-y-4 border-b pb-6">
-        <div>
-          <label htmlFor="path" className="block text-sm font-medium mb-1">Storage Path</label>
-          <input
-            id="path"
-            value={editor.state.storagePath}
-            onChange={(e) => editor.update('storagePath', e.target.value)}
-            placeholder="/media/downloads"
-            className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-          />
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Storage & Naming</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="path">Storage Path</Label>
+            <Input
+              id="path"
+              value={editor.state.storagePath}
+              onChange={(e) => editor.update('storagePath', e.target.value)}
+              placeholder="/media/downloads"
+            />
+          </div>
 
-        <div>
-          <label htmlFor="template" className="block text-sm font-medium mb-1">Rename Template</label>
-          <input
-            id="template"
-            value={editor.state.renameTemplate}
-            onChange={(e) => editor.update('renameTemplate', e.target.value)}
-            placeholder="{channel}/{title}/{season}/{episode}.{ext}"
-            className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-          />
-          <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
-            Preview: <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{previewFilename}</code>
-          </p>
-        </div>
-      </div>
+          <div className="space-y-2">
+            <Label htmlFor="template">Rename Template</Label>
+            <Input
+              id="template"
+              value={editor.state.renameTemplate}
+              onChange={(e) => editor.update('renameTemplate', e.target.value)}
+              placeholder="{channel}/{title}/{season}/{episode}.{ext}"
+            />
+            <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+              Preview: <Badge variant="outline" className="inline-block mt-1">{previewFilename}</Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Advanced */}
-      <div className="space-y-4 border-b pb-6">
-        <div>
-          <label htmlFor="retention" className="block text-sm font-medium mb-1">Retention Days (override global)</label>
-          <input
-            id="retention"
-            type="number"
-            value={editor.state.retentionDays ?? ''}
-            onChange={(e) => editor.update('retentionDays', e.target.value ? parseInt(e.target.value) : null)}
-            placeholder="30"
-            className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
-          />
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Advanced</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="retention">Retention Days (override global)</Label>
+            <Input
+              id="retention"
+              type="number"
+              value={editor.state.retentionDays ?? ''}
+              onChange={(e) => editor.update('retentionDays', e.target.value ? parseInt(e.target.value) : null)}
+              placeholder="30"
+            />
+          </div>
 
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={editor.state.seasonDetection}
-            onChange={(e) => editor.update('seasonDetection', e.target.checked)}
-            className="w-4 h-4 rounded"
-          />
-          <span className="text-sm">Enable season detection</span>
-        </label>
-      </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox
+              checked={editor.state.seasonDetection}
+              onCheckedChange={(checked) => editor.update('seasonDetection', checked as boolean)}
+            />
+            <span className="text-sm">Enable season detection</span>
+          </label>
+        </CardContent>
+      </Card>
 
       {/* Buttons */}
       <div className="flex gap-3">
-        <button
+        <Button
           onClick={handleSubmit}
           disabled={isSubmitting}
-          className="flex-1 px-4 py-2 bg-[#229ED9] text-white rounded-md hover:bg-[#1a7aaf] disabled:opacity-50"
+          className="flex-1 bg-[#229ED9] hover:bg-[#1a7aaf]"
         >
           {isSubmitting ? 'Saving...' : isNew ? 'Create' : 'Update'}
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => navigate('/subscriptions')}
           disabled={isSubmitting}
-          className="px-4 py-2 border rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+          variant="outline"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import SubscriptionsList from './SubscriptionsList'
 import * as subsHook from '@/hooks/useSubscriptions'
 import type { SubscriptionRead } from '@/lib/types'
@@ -11,7 +12,9 @@ const createWrapper = () => {
   return ({ children }: { children: React.ReactNode }) => (
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
-        {children}
+        <TooltipProvider>
+          {children}
+        </TooltipProvider>
       </QueryClientProvider>
     </BrowserRouter>
   )
@@ -93,8 +96,9 @@ describe('SubscriptionsList', () => {
 
     render(<SubscriptionsList />, { wrapper: createWrapper() })
 
-    const disableBtn = screen.getByText('Disable')
-    fireEvent.click(disableBtn)
+    const buttons = screen.getAllByRole('button')
+    const disableBtn = buttons.find(btn => btn.getAttribute('aria-label')?.includes('Disable') || btn.textContent?.includes('Disable'))
+    if (disableBtn) fireEvent.click(disableBtn)
 
     expect(mockMutate).toHaveBeenCalledWith({ enabled: false })
   })

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
+import { Trash2, Edit, RefreshCw, Power } from 'lucide-react'
 import {
   useSubscriptions,
   useUpdateSubscription,
@@ -8,6 +9,9 @@ import {
   useScanSubscription,
 } from '@/hooks/useSubscriptions'
 import { ConfirmDialog, EmptyState, StatusBadge } from '@/components/shared'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import type { SubscriptionRead } from '@/lib/types'
 
 const containerVariants = {
@@ -72,13 +76,13 @@ export default function SubscriptionsList() {
       transition={{ duration: 0.4 }}
     >
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Subscriptions</h1>
-        <button
+        <h1 className="text-3xl font-bold">Subscriptions</h1>
+        <Button
           onClick={() => navigate('/subscriptions/new')}
-          className="rounded-md bg-[#229ED9] px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:bg-[#1a7aaf] hover:shadow-lg hover:scale-[1.02] dark:hover:bg-[#1a7aaf]"
+          className="bg-[#229ED9] hover:bg-[#1a7aaf]"
         >
           Add Subscription
-        </button>
+        </Button>
       </div>
 
       {subscriptions.length === 0 ? (
@@ -101,61 +105,97 @@ export default function SubscriptionsList() {
             <motion.div
               key={sub.id}
               variants={itemVariants}
-              className="flex flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:border-slate-700 dark:bg-slate-900"
+              className="transition-all hover:shadow-lg hover:scale-[1.02]"
             >
-              <div className="mb-3 flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">
-                    Channel {sub.channel_id}
-                  </h3>
-                  {sub.topic_id && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Topic {sub.topic_id}
+              <Card className="flex flex-col h-full">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-base">Channel {sub.channel_id}</CardTitle>
+                      {sub.topic_id && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          Topic {sub.topic_id}
+                        </p>
+                      )}
+                    </div>
+                    <StatusBadge status={sub.enabled ? 'enabled' : 'disabled'} />
+                  </div>
+                </CardHeader>
+
+                <CardContent className="flex-1 space-y-3">
+                  {sub.filter_regex && (
+                    <p className="text-xs text-gray-500">
+                      Filter: {truncate(sub.filter_regex)}
                     </p>
                   )}
-                </div>
-                <StatusBadge status={sub.enabled ? 'enabled' : 'disabled'} />
-              </div>
 
-              {sub.filter_regex && (
-                <p className="mb-2 text-xs text-gray-500 dark:text-gray-500">
-                  Filter: {truncate(sub.filter_regex)}
-                </p>
-              )}
+                  <p className="text-xs text-gray-500">
+                    Last scan:{' '}
+                    {sub.updated_at
+                      ? new Date(sub.updated_at).toLocaleDateString()
+                      : 'Never'}
+                  </p>
 
-              <p className="mb-4 text-xs text-gray-500 dark:text-gray-500">
-                Last scan:{' '}
-                {sub.updated_at
-                  ? new Date(sub.updated_at).toLocaleDateString()
-                  : 'Never'}
-              </p>
+                  <div className="flex flex-wrap gap-2 pt-3">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant={sub.enabled ? 'secondary' : 'outline'}
+                          onClick={() => handleToggle(sub)}
+                          className="flex-1"
+                        >
+                          <Power className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {sub.enabled ? 'Disable' : 'Enable'}
+                      </TooltipContent>
+                    </Tooltip>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => handleToggle(sub)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-gray-600 transition-all hover:bg-gray-700 hover:shadow-md active:scale-95"
-                >
-                  {sub.enabled ? 'Disable' : 'Enable'}
-                </button>
-                <button
-                  onClick={() => navigate(`/subscriptions/${sub.id}`)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-[#229ED9] transition-all hover:bg-[#1a7aaf] hover:shadow-md active:scale-95"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleScan(sub.id)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-green-600 transition-all hover:bg-green-700 hover:shadow-md active:scale-95"
-                >
-                  Scan
-                </button>
-                <button
-                  onClick={() => setDeleteId(sub.id)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-red-600 transition-all hover:bg-red-700 hover:shadow-md active:scale-95"
-                >
-                  Delete
-                </button>
-              </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-[#229ED9] hover:bg-[#1a7aaf]"
+                          onClick={() => navigate(`/subscriptions/${sub.id}`)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Edit</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleScan(sub.id)}
+                          className="flex-1"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Scan</TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setDeleteId(sub.id)}
+                          className="flex-1"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
           ))}
         </motion.div>
