@@ -6,8 +6,10 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/shared'
 import * as api from '@/lib/api'
 
 function fmtBytes(n?: number | null): string {
@@ -29,9 +31,10 @@ export default function Downloads() {
   const qc = useQueryClient()
   const { data, isLoading } = useActiveDownloads()
   const jobs = data ?? []
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const clearAll = async () => {
-    if (!window.confirm('Clear ALL media items and download jobs? (keeps your account, subscriptions, channels)')) return
+    setConfirmOpen(false)
     try {
       await api.media.clear()
       qc.invalidateQueries()
@@ -48,10 +51,19 @@ export default function Downloads() {
           <h1 className="text-2xl font-bold tracking-tight">Downloads</h1>
           <p className="mt-1 text-sm text-muted-foreground">Live progress of active downloads</p>
         </div>
-        <Button variant="outline" size="sm" onClick={clearAll}>
+        <Button variant="outline" size="sm" onClick={() => setConfirmOpen(true)}>
           <Trash2 className="mr-2 h-4 w-4" /> Clear data
         </Button>
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title="Clear all media & downloads?"
+        description="Removes every media item and download job. Your account, subscriptions, and channels are kept. This cannot be undone."
+        confirmText="Clear data"
+        onConfirm={clearAll}
+        onCancel={() => setConfirmOpen(false)}
+      />
 
       {isLoading ? (
         <div className="py-12 text-center text-muted-foreground">Loading…</div>
