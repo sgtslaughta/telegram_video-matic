@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, BookOpen, Compass, ActivitySquare, Settings, Send } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Compass, DownloadCloud, ActivitySquare, Settings, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +15,7 @@ export default function Sidebar({
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
     { label: 'Subscriptions', href: '/subscriptions', icon: BookOpen },
     { label: 'Browse', href: '/browse', icon: Compass },
+    { label: 'Downloads', href: '/downloads', icon: DownloadCloud },
     { label: 'Activity', href: '/activity', icon: ActivitySquare },
     { label: 'Settings', href: '/settings', icon: Settings },
   ]

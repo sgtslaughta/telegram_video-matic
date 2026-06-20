@@ -6,6 +6,7 @@ import Connect from '@/pages/Connect'
 import SubscriptionsList from '@/pages/SubscriptionsList'
 import SubscriptionEditor from '@/pages/SubscriptionEditor'
 import Browse from '@/pages/Browse'
+import Downloads from '@/pages/Downloads'
 import MediaDetail from '@/pages/MediaDetail'
 import Activity from '@/pages/Activity'
 import Settings from '@/pages/Settings'
@@ -20,6 +21,7 @@ export default function Router() {
         <Route path="/subscriptions" element={<SubscriptionsList />} />
         <Route path="/subscriptions/:id" element={<SubscriptionEditor />} />
         <Route path="/browse" element={<Browse />} />
+        <Route path="/downloads" element={<Downloads />} />
         <Route path="/media/:id" element={<MediaDetail />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/settings" element={<Settings />} />
