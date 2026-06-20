@@ -1,5 +1,6 @@
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, desc
 from app.db.models import DownloadJob, JobStatus, MediaStatus
 from app.db.repositories import media
 
@@ -63,3 +64,10 @@ async def finish(
 async def get(session: AsyncSession, job_id: int) -> DownloadJob | None:
     """Get download job by ID."""
     return await session.get(DownloadJob, job_id)
+
+
+async def get_latest_for_media(session: AsyncSession, media_id: int) -> DownloadJob | None:
+    """Get most recent download job for a media item (ordered by updated_at DESC)."""
+    stmt = select(DownloadJob).where(DownloadJob.media_id == media_id).order_by(desc(DownloadJob.updated_at)).limit(1)
+    result = await session.execute(stmt)
+    return result.scalars().first()

@@ -13,6 +13,9 @@ from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatu
 from app.db.repositories import subscriptions, media, events, downloads
 from app.sync.naming import detect_season_episode, render_path
 
+# ponytail: regex compiled once, explicit season/episode pattern detection
+_SE_PATTERN = re.compile(r'(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)', re.IGNORECASE)
+
 
 def classify(subscription, media, today: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """
@@ -205,6 +208,18 @@ class SyncEngine:
                     claimed = await media.claim_pending(session, limit=max_concurrent)
 
                     for item in claimed:
+                        # FIX 2: Check backoff elapsed-time gate for retried items
+                        latest_job = await downloads.get_latest_for_media(session, item.id)
+                        if latest_job and latest_job.attempt > 1 and latest_job.status == JobStatus.QUEUED:
+                            # This item has been retried; check if backoff window has elapsed
+                            backoff_sec = min(2 ** latest_job.attempt * base_backoff, max_backoff)
+                            elapsed = (datetime.now(timezone.utc) - latest_job.updated_at).total_seconds()
+                            if elapsed < backoff_sec:
+                                # Backoff window not yet elapsed; release this item and try next
+                                await media.set_status(session, item.id, MediaStatus.PENDING)
+                                await session.commit()
+                                continue
+
                         try:
                             # Get subscription and validate
                             sub = await subscriptions.get(session, item.subscription_id)
@@ -252,37 +267,32 @@ class SyncEngine:
                                     on_progress=on_progress
                                 )
 
-                                # Render target path using template + season/episode detection
-                                season, episode = detect_season_episode(item.file_name)
-                                title = item.file_name.rsplit(".", 1)[0] if item.file_name else "unknown"
-                                ext = "." + item.file_name.rsplit(".", 1)[-1] if item.file_name else ""
+                                # FIX 1: Explicit season/episode detection decision
+                                # Check if filename/caption has S/E pattern
+                                text = item.file_name or item.caption or ""
+                                has_pattern = bool(_SE_PATTERN.search(text))
+                                use_template = bool(sub.season_detection) and has_pattern
 
-                                tokens = {
-                                    "channel": sub.channel.title or "Unknown",
-                                    "topic": sub.topic.title if sub.topic else "General",
-                                    "season": season,
-                                    "episode": episode,
-                                    "title": title,
-                                    "ext": ext,
-                                    "original": item.file_name or "unknown",
-                                    "date": item.date_posted.isoformat() if item.date_posted else "",
-                                }
+                                if use_template:
+                                    # Pattern found and detection enabled: use template with season/episode
+                                    season, episode = detect_season_episode(text)
+                                    title = item.file_name.rsplit(".", 1)[0] if item.file_name else "unknown"
+                                    ext = "." + item.file_name.rsplit(".", 1)[-1] if item.file_name else ""
 
-                                # Season fallback: if season_detection is off, don't use templated name
-                                if not sub.season_detection or (season, episode) == (1, 1):
-                                    # Check if the filename actually contains a season/episode pattern
-                                    # If it doesn't and season_detection is off, use {original}
-                                    if not re.search(r'S\d+E\d+|\\d+x\\d+|Season.*Episode', item.file_name or "", re.IGNORECASE):
-                                        # Use fallback: try to render with {original}, otherwise use filename
-                                        try:
-                                            target_path = render_path(sub.rename_template, tokens)
-                                        except ValueError:
-                                            # Fallback to original filename
-                                            target_path = item.file_name or "unknown"
-                                    else:
-                                        target_path = render_path(sub.rename_template, tokens)
-                                else:
+                                    tokens = {
+                                        "channel": sub.channel.title or "Unknown",
+                                        "topic": sub.topic.title if sub.topic else "General",
+                                        "season": season,
+                                        "episode": episode,
+                                        "title": title,
+                                        "ext": ext,
+                                        "original": item.file_name or "unknown",
+                                        "date": item.date_posted.isoformat() if item.date_posted else "",
+                                    }
                                     target_path = render_path(sub.rename_template, tokens)
+                                else:
+                                    # No pattern found OR detection disabled: keep original filename
+                                    target_path = item.file_name or f"{item.tg_msg_id}"
 
                                 target_full = Path(sub.storage_path) / target_path
 
@@ -317,20 +327,20 @@ class SyncEngine:
                                 await session.commit()
 
                             except FloodWaitError as e:
-                                # FloodWait: pause without incrementing attempt
+                                # FloodWait: pause without incrementing attempt (acceptable to block here)
                                 await asyncio.sleep(min(e.seconds, 60))
                                 # Mark job back to queued for retry (same attempt)
                                 job.status = JobStatus.QUEUED
                                 await session.commit()
 
                             except Exception as e:
-                                # Download/move error: implement retry logic
+                                # FIX 2: Non-blocking retry with elapsed-time backoff gate
                                 job_db = await downloads.get(session, job.id)
                                 if job_db:
                                     job_db.attempt += 1
 
                                     if job_db.attempt > max_attempts:
-                                        # Max attempts exhausted
+                                        # Final failure: mark as failed
                                         await media.set_status(session, item.id, MediaStatus.FAILED)
                                         job_db.error = str(e)
                                         await downloads.finish(session, job.id, error=str(e))
@@ -342,11 +352,12 @@ class SyncEngine:
                                             message=f"Download failed after {max_attempts} attempts: {e}",
                                         )
                                     else:
-                                        # Retry: calculate backoff
-                                        backoff_sec = min(2 ** job_db.attempt * base_backoff, max_backoff)
-                                        # Mark job back to queued, will retry on next cycle
+                                        # Non-final failure: set media back to PENDING for next cycle
+                                        # ponytail: retries deferred to next poller cycle, backoff gated by elapsed-time check
+                                        await media.set_status(session, item.id, MediaStatus.PENDING)
                                         job_db.status = JobStatus.QUEUED
-                                        await asyncio.sleep(backoff_sec)
+                                        job_db.error = str(e)
+                                        # NO asyncio.sleep here; next cycle will check elapsed time
 
                                     # Clean up temp file
                                     try:

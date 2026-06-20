@@ -247,6 +247,36 @@ async def test_downloads_lifecycle(session):
 
 
 @pytest.mark.asyncio
+async def test_downloads_get_latest_for_media(session):
+    """FIX 2: downloads.get_latest_for_media retrieves most recent job for media."""
+    channel = await channels.upsert(session, 888, "Ch", None, False, None, None)
+    sub = await subscriptions.create(session, channel.id, None, "/media", "{title}", True)
+
+    item = await media.upsert_from_tg(
+        session, channel.id, None, sub.id, 200, "Test", "test.mp4",
+        "video/mp4", 5000000, 300, datetime.now(timezone.utc), None, None,
+    )
+
+    # Start first job
+    job1 = await downloads.start(session, item.id)
+    assert job1.id is not None
+
+    # Start second job (for same media)
+    job2 = await downloads.start(session, item.id)
+    assert job2.id is not None
+    assert job2.id != job1.id
+
+    # Get latest should return job2 (most recent by updated_at)
+    latest = await downloads.get_latest_for_media(session, item.id)
+    assert latest is not None
+    assert latest.id == job2.id
+
+    # Get latest for nonexistent media returns None
+    latest_none = await downloads.get_latest_for_media(session, 99999)
+    assert latest_none is None
+
+
+@pytest.mark.asyncio
 async def test_settings_get_set(session):
     """settings.get/set."""
     await settings.set(session, "test_key", '{"value": 42}')

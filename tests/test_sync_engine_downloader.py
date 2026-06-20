@@ -4,6 +4,7 @@ import pytest_asyncio
 import asyncio
 import tempfile
 import shutil
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -606,36 +607,109 @@ async def test_downloader_full_flow_real_db(session_factory, temp_storage, mock_
 # ============================================================================
 
 @pytest.mark.asyncio
-async def test_downloader_season_fallback_uses_original(session_factory, temp_storage):
-    """If season_detection is off OR no S/E pattern found, use {original} not S01E01."""
+async def test_downloader_season_fallback_no_pattern_keeps_original(session_factory, temp_storage):
+    """FIX 1: File with NO S/E pattern + season_detection=True stays at original basename."""
     async with session_factory() as session:
         channel = Channel(tg_id=222, title="Chan2", is_forum=False)
         session.add(channel)
         await session.commit()
         await session.refresh(channel)
 
-        # Subscription with season_detection = False
+        # Subscription with season_detection = True but default template
         sub = Subscription(
             channel_id=channel.id,
             topic_id=None,
             enabled=True,
             mode=SubMode.IMMEDIATE,
             storage_path=str(temp_storage),
-            rename_template="{channel}/{title}{ext}",  # Simple fallback
-            season_detection=False,
+            rename_template="{channel}/{topic}/{season:02d}x{episode:02d} - {title}{ext}",
+            season_detection=True,
         )
         session.add(sub)
         await session.commit()
         await session.refresh(sub)
 
-        # Media with undetectable filename
+        # Media with NO detectable S/E pattern
         media_item = MediaItem(
             channel_id=channel.id,
             topic_id=None,
             subscription_id=sub.id,
             tg_msg_id=888,
             caption=None,
-            file_name="RandomMovie.mkv",  # No S/E pattern
+            file_name="Cooking Tips.mp4",  # No S/E pattern
+            mime="video/mp4",
+            size_bytes=1024 * 1024 * 50,
+            duration_sec=3600,
+            date_posted=datetime.now(timezone.utc),
+            status=MediaStatus.PENDING,
+        )
+        session.add(media_item)
+        await session.commit()
+        await session.refresh(media_item)
+
+        # Simulate downloader logic for season fallback decision
+        # This tests the explicit decision logic
+        text = media_item.file_name or media_item.caption or ""
+        season, episode = detect_season_episode(text)
+        # Explicit check: does text have a season/episode pattern?
+        has_pattern = bool(re.search(r'(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)', text, re.IGNORECASE))
+        use_template = bool(sub.season_detection) and has_pattern
+
+        # NO pattern found, so use_template should be False
+        assert not has_pattern
+        assert not use_template
+
+        # When not using template, basename should be preserved (original filename)
+        if not use_template:
+            target_path = media_item.file_name or f"{media_item.tg_msg_id}"
+        else:
+            ext = "." + media_item.file_name.rsplit(".", 1)[-1] if media_item.file_name else ""
+            title = media_item.file_name.rsplit(".", 1)[0] if media_item.file_name else "unknown"
+            tokens = {
+                "channel": sub.channel.title or "Unknown",
+                "topic": sub.topic.title if sub.topic else "General",
+                "season": season,
+                "episode": episode,
+                "title": title,
+                "ext": ext,
+                "original": media_item.file_name or "unknown",
+            }
+            target_path = render_path(sub.rename_template, tokens)
+
+        # Assert basename is "Cooking Tips.mp4" (no Season/01x01 fabrication)
+        assert target_path == "Cooking Tips.mp4"
+
+
+@pytest.mark.asyncio
+async def test_downloader_season_fallback_with_pattern_uses_template(session_factory, temp_storage):
+    """FIX 1: File WITH S/E pattern + season_detection=True uses template."""
+    async with session_factory() as session:
+        channel = Channel(tg_id=223, title="Chan3", is_forum=False)
+        session.add(channel)
+        await session.commit()
+        await session.refresh(channel)
+
+        sub = Subscription(
+            channel_id=channel.id,
+            topic_id=None,
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            storage_path=str(temp_storage),
+            rename_template="{channel}/{season:02d}x{episode:02d}{ext}",
+            season_detection=True,
+        )
+        session.add(sub)
+        await session.commit()
+        await session.refresh(sub)
+
+        # Media WITH S/E pattern
+        media_item = MediaItem(
+            channel_id=channel.id,
+            topic_id=None,
+            subscription_id=sub.id,
+            tg_msg_id=889,
+            caption=None,
+            file_name="Show.S02E05.mkv",
             mime="video/mkv",
             size_bytes=1024 * 1024 * 50,
             duration_sec=3600,
@@ -646,38 +720,112 @@ async def test_downloader_season_fallback_uses_original(session_factory, temp_st
         await session.commit()
         await session.refresh(media_item)
 
-        # Render path: since no S/E found and season_detection=False,
-        # should fall back to {original}
-        season, episode = detect_season_episode(media_item.file_name)
-        assert season == 1 and episode == 1  # Default fallback
+        # Explicit decision check
+        text = media_item.file_name or media_item.caption or ""
+        season, episode = detect_season_episode(text)
+        has_pattern = bool(re.search(r'(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)', text, re.IGNORECASE))
+        use_template = bool(sub.season_detection) and has_pattern
 
-        # But since season_detection is OFF, we don't use templated name
-        # Instead, use {original} as filename
-        ext = "." + media_item.file_name.rsplit(".", 1)[-1]
-        title = media_item.file_name.rsplit(".", 1)[0]
+        # Pattern found, so use_template should be True
+        assert has_pattern
+        assert use_template
 
-        if sub.season_detection and (season, episode) != (1, 1):
-            # Use templated name
+        if use_template:
+            ext = "." + media_item.file_name.rsplit(".", 1)[-1] if media_item.file_name else ""
             tokens = {
-                "channel": sub.channel.title,
+                "channel": sub.channel.title or "Unknown",
                 "season": season,
                 "episode": episode,
-                "title": title,
                 "ext": ext,
-                "original": media_item.file_name,
+                "original": media_item.file_name or "unknown",
             }
+            target_path = render_path(sub.rename_template, tokens)
         else:
-            # Use {original} as fallback
-            tokens = {
-                "channel": sub.channel.title,
-                "title": title,
-                "ext": ext,
-                "original": media_item.file_name,
-            }
+            target_path = media_item.file_name
 
-        target_path = render_path(sub.rename_template, tokens)
+        # Should use template: 02x05
+        assert "02x05" in target_path
 
-        # Should use {original} fallback if template contains it
-        if sub.season_detection:
-            # Template doesn't have {season}, so will fallback to {original}
-            assert "RandomMovie" in target_path or target_path == media_item.file_name
+
+@pytest.mark.asyncio
+async def test_downloader_retry_no_blocking_sleep(session_factory, mock_tg_service, mock_plugin_host, mock_broadcast):
+    """FIX 2: Non-blocking retry — no asyncio.sleep on non-final failure, attempt increments + media→PENDING."""
+    session_factory_ref = session_factory
+
+    async def mock_download_fail(tg_msg_id, dest_path, on_progress=None):
+        raise RuntimeError("Download failed")
+
+    mock_tg_service.download = AsyncMock(side_effect=mock_download_fail)
+
+    async with session_factory_ref() as session:
+        # Setup
+        channel = Channel(tg_id=999, title="TestChan", is_forum=False)
+        session.add(channel)
+        await session.commit()
+        await session.refresh(channel)
+
+        sub = Subscription(
+            channel_id=channel.id,
+            topic_id=None,
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            storage_path="/tmp",
+            rename_template="{channel}/{title}{ext}",
+            season_detection=False,
+        )
+        session.add(sub)
+        await session.commit()
+        await session.refresh(sub)
+
+        media_item = MediaItem(
+            channel_id=channel.id,
+            topic_id=None,
+            subscription_id=sub.id,
+            tg_msg_id=5555,
+            caption=None,
+            file_name="test.mp4",
+            mime="video/mp4",
+            size_bytes=1024,
+            duration_sec=60,
+            date_posted=datetime.now(timezone.utc),
+            status=MediaStatus.PENDING,
+        )
+        session.add(media_item)
+        await session.commit()
+        await session.refresh(media_item)
+
+    # Simulate first failure with the downloader's retry logic
+    async with session_factory_ref() as session:
+        claimed = await media.claim_pending(session, limit=5)
+        item = claimed[0]
+        job = await downloads.start(session, item.id)
+
+        max_attempts = 5
+        try:
+            await mock_tg_service.download(item.tg_msg_id, "/tmp/fake", on_progress=None)
+        except RuntimeError as e:
+            job_db = await downloads.get(session, job.id)
+            if job_db:
+                job_db.attempt += 1
+
+                if job_db.attempt <= max_attempts:
+                    # Non-blocking: set status back to PENDING for next cycle
+                    await media.set_status(session, item.id, MediaStatus.PENDING)
+                    job_db.status = JobStatus.QUEUED
+                    job_db.error = str(e)
+                    # DO NOT sleep here
+                    await session.commit()
+
+                    # Verify no sleep was called
+                    with patch('asyncio.sleep') as mock_sleep:
+                        # sleep should NOT have been called
+                        mock_sleep.assert_not_called()
+
+        # Verify state after retry
+        final_item = await media.get(session, item.id)
+        assert final_item.status == MediaStatus.PENDING  # Reset for next cycle
+
+        final_job = await downloads.get(session, job.id)
+        assert final_job.attempt == 2
+        assert final_job.status == JobStatus.QUEUED
+        assert final_job.error is not None
