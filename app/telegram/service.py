@@ -2,6 +2,7 @@ import asyncio
 from typing import Callable, Optional
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.errors import SessionPasswordNeededError
 
 from app.db.models import Account, AccountStatus
 from app.crypto import decrypt, encrypt
@@ -74,3 +75,56 @@ class TelegramService:
 
         # Update status
         await self.account_repo.update_status(self.account.id, AccountStatus.DISCONNECTED)
+
+    async def start_login(self, phone: str) -> None:
+        """Start login: send code request."""
+        async with self._login_lock:
+            if not self.client:
+                raise RuntimeError("Client not initialized")
+
+            sent_code = await self.client.send_code_request(phone)
+            self._phone_code_hash = sent_code.phone_code_hash
+
+            await self.account_repo.update_phone(self.account.id, phone)
+            await self.account_repo.update_status(self.account.id, AccountStatus.AWAITING_CODE)
+
+    async def submit_code(self, code: str) -> None:
+        """Submit code; if 2FA required, status → awaiting_password; else → connected."""
+        async with self._login_lock:
+            if not self.client or not self.account or not self._phone_code_hash:
+                raise RuntimeError("Login not started or client missing")
+
+            try:
+                me = await self.client.sign_in(
+                    self.account.phone,
+                    code,
+                    phone_code_hash=self._phone_code_hash
+                )
+                # Success: persist session and mark connected
+                session_str = self.client.session.get_session_string()
+                await self.account_repo.update_session(self.account.id, encrypt(session_str))
+                await self.account_repo.update_status(self.account.id, AccountStatus.CONNECTED)
+            except SessionPasswordNeededError:
+                # 2FA required
+                await self.account_repo.update_status(self.account.id, AccountStatus.AWAITING_PASSWORD)
+
+    async def submit_password(self, password: str) -> None:
+        """Submit 2FA password; on success, persist session and mark connected."""
+        async with self._login_lock:
+            if not self.client or not self.account:
+                raise RuntimeError("Client not initialized or account missing")
+
+            me = await self.client.sign_in(password=password)
+            session_str = self.client.session.get_session_string()
+            await self.account_repo.update_session(self.account.id, encrypt(session_str))
+            await self.account_repo.update_status(self.account.id, AccountStatus.CONNECTED)
+
+    async def logout(self) -> None:
+        """Logout: call client.log_out(), clear session, mark disconnected."""
+        async with self._login_lock:
+            if not self.client or not self.account:
+                return
+
+            await self.client.log_out()
+            await self.account_repo.update_session(self.account.id, None)
+            await self.account_repo.update_status(self.account.id, AccountStatus.DISCONNECTED)
