@@ -1,9 +1,0 @@
-streamlit
-requests
-sqlalchemy
-telethon
-pandas
-SQLAlchemy
-mysql-connector-python
-tqdm
-nltk
