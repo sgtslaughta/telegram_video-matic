@@ -406,3 +406,291 @@ async def test_sub_create_and_list():
     """Test 14: POST /api/subscriptions creates, GET lists it."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
+
+# ============================================================================
+# TASK 8: Subscriptions Router Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_sub_list_empty():
+    """Test 13: GET /api/subscriptions on empty DB returns empty list."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base
+    from app.api.routers.subscriptions import list_subscriptions
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with SessionLocal() as session:
+        result = await list_subscriptions(session)
+
+    assert result == []
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sub_create_and_list():
+    """Test 14: POST creates subscription, GET lists it."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Channel
+    from app.api.routers.subscriptions import create_subscription, list_subscriptions
+    from app.api.schemas import SubscriptionCreateRequest
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Create channel
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=False)
+        session.add(ch)
+        await session.commit()
+
+    # Create subscription
+    async with SessionLocal() as session:
+        req = SubscriptionCreateRequest(
+            channel_id=1,
+            topic_id=None,
+            enabled=True,
+            storage_path="/tmp/test",
+            rename_template="{name}",
+        )
+        result = await create_subscription(req, session)
+
+    assert result.channel_id == 1
+    assert result.enabled is True
+
+    # List subscriptions
+    async with SessionLocal() as session:
+        items = await list_subscriptions(session)
+
+    assert len(items) == 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sub_create_duplicate_409():
+    """Test 15: POST duplicate (channel_id, topic_id) returns 409."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from fastapi import HTTPException
+    from app.db.models import Base, Channel
+    from app.api.routers.subscriptions import create_subscription
+    from app.api.schemas import SubscriptionCreateRequest
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Create channel
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=False)
+        session.add(ch)
+        await session.commit()
+
+    # Create first subscription
+    async with SessionLocal() as session:
+        req = SubscriptionCreateRequest(
+            channel_id=1,
+            topic_id=None,
+            enabled=True,
+            storage_path="/tmp/test",
+            rename_template="{name}",
+        )
+        await create_subscription(req, session)
+
+    # Try to create duplicate
+    async with SessionLocal() as session:
+        req = SubscriptionCreateRequest(
+            channel_id=1,
+            topic_id=None,
+            enabled=True,
+            storage_path="/tmp/test",
+            rename_template="{name}",
+        )
+        try:
+            await create_subscription(req, session)
+            assert False, "Should have raised 409"
+        except HTTPException as e:
+            assert e.status_code == 409
+            assert "already exists" in e.detail
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sub_create_invalid_regex_pydantic():
+    """Test 16: Invalid filter_regex fails Pydantic validation."""
+    from app.api.schemas import SubscriptionCreateRequest
+    from pydantic import ValidationError
+
+    try:
+        SubscriptionCreateRequest(
+            channel_id=1,
+            topic_id=None,
+            filter_regex="[invalid(regex",
+            storage_path="/tmp/test",
+            rename_template="{name}",
+        )
+        assert False, "Should have raised ValidationError"
+    except ValidationError as e:
+        assert "filter_regex" in str(e)
+
+
+@pytest.mark.asyncio
+async def test_sub_get_single():
+    """Test 17: GET /api/subscriptions/{id} returns single subscription."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from fastapi import HTTPException
+    from app.db.models import Base, Channel
+    from app.db.repositories import subscriptions as sub_repo
+    from app.api.routers.subscriptions import get_subscription
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=False)
+        session.add(ch)
+        await session.commit()
+        await sub_repo.create(
+            session, channel_id=1, topic_id=None, storage_path="/tmp/test", rename_template="{name}"
+        )
+
+    async with SessionLocal() as session:
+        result = await get_subscription(1, session)
+
+    assert result.id == 1
+    assert result.channel_id == 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sub_patch_update():
+    """Test 18: PATCH updates subscription."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Channel
+    from app.db.repositories import subscriptions as sub_repo
+    from app.api.routers.subscriptions import update_subscription
+    from app.api.schemas import SubscriptionUpdateRequest
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=False)
+        session.add(ch)
+        await session.commit()
+        await sub_repo.create(
+            session, channel_id=1, topic_id=None, storage_path="/tmp/test", rename_template="{name}"
+        )
+
+    async with SessionLocal() as session:
+        req = SubscriptionUpdateRequest(enabled=False)
+        result = await update_subscription(1, req, session)
+
+    assert result.enabled is False
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sub_patch_invalid_regex_pydantic():
+    """Test 19: PATCH with invalid filter_regex fails Pydantic validation."""
+    from app.api.schemas import SubscriptionUpdateRequest
+    from pydantic import ValidationError
+
+    try:
+        SubscriptionUpdateRequest(filter_regex="[invalid(regex")
+        assert False, "Should have raised ValidationError"
+    except ValidationError as e:
+        assert "filter_regex" in str(e)
+
+
+@pytest.mark.asyncio
+async def test_sub_delete():
+    """Test 20: DELETE deletes subscription."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from fastapi import HTTPException
+    from app.db.models import Base, Channel
+    from app.db.repositories import subscriptions as sub_repo
+    from app.api.routers.subscriptions import delete_subscription, get_subscription
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=False)
+        session.add(ch)
+        await session.commit()
+        await sub_repo.create(
+            session, channel_id=1, topic_id=None, storage_path="/tmp/test", rename_template="{name}"
+        )
+
+    async with SessionLocal() as session:
+        await delete_subscription(1, session)
+
+    async with SessionLocal() as session:
+        try:
+            await get_subscription(1, session)
+            assert False, "Should have raised 404"
+        except HTTPException as e:
+            assert e.status_code == 404
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_sub_scan():
+    """Test 21: POST /scan returns 200."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Channel
+    from app.db.repositories import subscriptions as sub_repo
+    from app.api.routers.subscriptions import scan_subscription
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=False)
+        session.add(ch)
+        await session.commit()
+        await sub_repo.create(
+            session, channel_id=1, topic_id=None, storage_path="/tmp/test", rename_template="{name}"
+        )
+
+    async with SessionLocal() as session:
+        result = await scan_subscription(1, session)
+
+    assert result["status"] == "scanning"
+
+    await engine.dispose()

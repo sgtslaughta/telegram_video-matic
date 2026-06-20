@@ -90,3 +90,18 @@ async def delete(session: AsyncSession, sub_id: int) -> None:
     if sub:
         await session.delete(sub)
         await session.commit()
+
+
+async def get_by_channel_topic(
+    session: AsyncSession,
+    channel_id: int,
+    topic_id: int | None,
+) -> Subscription | None:
+    """Get subscription by (channel_id, topic_id) for duplicate detection."""
+    result = await session.execute(
+        select(Subscription).where(
+            (Subscription.channel_id == channel_id)
+            & (Subscription.topic_id == topic_id)
+        )
+    )
+    return result.scalar_one_or_none()
