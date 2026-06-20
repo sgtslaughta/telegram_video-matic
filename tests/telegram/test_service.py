@@ -714,3 +714,113 @@ async def test_fetch_comment_count(mock_client, mock_account_repo):
     count = await service.fetch_comment_count(mock_msg)
 
     assert count == 7
+
+
+# ============================================================================
+# Task 6: Download with semaphore and progress callback tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_download_respects_semaphore(mock_client, mock_account_repo, tmp_path):
+    """download() respects max_concurrent_downloads semaphore."""
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    # Mock message with document
+    mock_msg = MagicMock()
+    mock_msg.media = MagicMock()
+    mock_msg.media.document = MagicMock()
+    mock_msg.media.document.size = 1024000
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory,
+        max_concurrent_downloads=2
+    )
+    service.client = mock_client
+
+    # Verify semaphore is created with max_concurrent_downloads=2
+    assert service.download_semaphore._value == 2
+
+    # Mock fast_telethon.download_file
+    from unittest.mock import patch
+    with patch("app.telegram.service.download_file", new_callable=AsyncMock) as mock_download:
+        mock_download.return_value = b"downloaded_data"
+
+        dest_path = str(tmp_path / "test.bin")
+
+        # Call download (should not raise)
+        result = await service.download(mock_msg, dest_path)
+
+        assert result == dest_path
+        mock_download.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_download_forwards_progress_callback(mock_client, mock_account_repo, tmp_path):
+    """download() calls on_progress(bytes_done, bytes_total)."""
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    mock_msg = MagicMock()
+    mock_msg.media = MagicMock()
+    mock_msg.media.document = MagicMock()
+    mock_msg.media.document.size = 1024000
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    progress_calls = []
+
+    def on_progress(bytes_done, bytes_total):
+        progress_calls.append((bytes_done, bytes_total))
+
+    dest_path = str(tmp_path / "test.bin")
+
+    from unittest.mock import patch
+
+    with patch("app.telegram.service.download_file", new_callable=AsyncMock) as mock_download:
+        async def mock_download_impl(client, doc, f, progress_callback):
+            if progress_callback:
+                progress_callback(512000, 1024000)
+                progress_callback(1024000, 1024000)
+            f.write(b"x" * 1024000)
+            return f
+
+        mock_download.side_effect = mock_download_impl
+
+        await service.download(mock_msg, dest_path, on_progress=on_progress)
+
+        # Verify progress was called
+        assert len(progress_calls) == 2
+        assert progress_calls[0] == (512000, 1024000)
+        assert progress_calls[1] == (1024000, 1024000)

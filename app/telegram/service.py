@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import pathlib
 from typing import Callable, Optional
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -9,6 +10,7 @@ from telethon.tl.functions.channels import GetForumTopicsRequest
 from app.db.models import Account, AccountStatus
 from app.crypto import decrypt, encrypt
 from app.telegram.dtos import ChannelDTO, TopicDTO, MediaDTO
+from app.telegram.fast_telethon import download_file
 
 
 class TelegramService:
@@ -333,3 +335,43 @@ class TelegramService:
             return None
 
         return getattr(message.replies, "replies", None)
+
+    # ========================================================================
+    # Task 6: Download with semaphore and progress callback
+    # ========================================================================
+
+    async def download(
+        self,
+        message,
+        dest_path: str,
+        on_progress=None
+    ) -> str:
+        """
+        Download media from message to dest_path using fast_telethon.
+        Respects semaphore for concurrent downloads.
+        Forwards progress callback.
+
+        Args:
+            message: Telethon message object with media.
+            dest_path: Local path to save file.
+            on_progress: Optional callback(bytes_done, bytes_total).
+
+        Returns:
+            dest_path if successful.
+        """
+        if not self.client or not message.media or not message.media.document:
+            raise ValueError("Message must have a downloadable document")
+
+        dest_path_obj = pathlib.Path(dest_path)
+        dest_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+        async with self.download_semaphore:
+            with open(dest_path, "wb") as f:
+                await download_file(
+                    self.client,
+                    message.media.document,
+                    f,
+                    progress_callback=on_progress
+                )
+
+        return dest_path
