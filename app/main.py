@@ -159,8 +159,9 @@ def create_app() -> FastAPI:
     app.include_router(routers.plugins.router)
 
     # Mount WebSocket endpoint at /api/ws with snapshot provider
+    from fastapi import WebSocket as WSType
     @app.websocket("/api/ws")
-    async def ws_endpoint_wrapper(websocket):
+    async def ws_endpoint_wrapper(websocket: WSType):
         from app.api.schemas import WSSnapshot, DownloadJobRead
         from app.db.repositories import downloads as downloads_repo
 
@@ -174,15 +175,14 @@ def create_app() -> FastAPI:
 
                 # Get TG status
                 tg_status = None
-                if hasattr(app.state, "tg_service") and app.state.tg_service:
+                if hasattr(app.state, "tg_service") and app.state.tg_service and app.state.tg_service.account:
                     from app.api.schemas import TelegramStatusRead
-                    if app.state.tg_service.account:
-                        tg_status = TelegramStatusRead.from_orm(app.state.tg_service.account)
+                    tg_status = TelegramStatusRead.from_orm(app.state.tg_service.account)
 
                 return WSSnapshot(active_downloads=active_downloads, tg_status=tg_status)
             except Exception as e:
                 log(f"Snapshot build error: {e}", "ERROR")
-                return WSSnapshot(active_downloads=[], tg_status=None)
+                return WSSnapshot(active_downloads=[])
 
         await websocket_endpoint(websocket, app.state.ws_hub, snapshot_provider)
 

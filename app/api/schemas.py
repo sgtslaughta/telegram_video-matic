@@ -251,4 +251,4 @@ class WSMessage(BaseModel):
 
 class WSSnapshot(BaseModel):
     active_downloads: list[DownloadJobRead]
-    tg_status: TelegramStatusRead
+    tg_status: Optional[TelegramStatusRead] = None
