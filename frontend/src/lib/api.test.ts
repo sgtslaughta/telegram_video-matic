@@ -100,22 +100,41 @@ describe('api', () => {
   })
 
   describe('media.list with filters', () => {
-    it('constructs query params correctly', async () => {
+    it('returns a plain array, not paginated', async () => {
+      const mockData = [
+        { id: 1, channel_id: 123, tg_msg_id: 456, status: 'pending', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+      ]
       global.fetch = vi.fn(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ items: [], total: 0, page: 1, page_size: 20, pages: 0 }), {
+          new Response(JSON.stringify(mockData), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
         )
       )
 
-      await api.media.list({ status: 'pending', page: 2 })
+      const result = await api.media.list({ status: 'pending', limit: 50, offset: 0 })
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toEqual(mockData)
+    })
+
+    it('constructs query params correctly', async () => {
+      global.fetch = vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )
+      )
+
+      await api.media.list({ status: 'pending', limit: 20, offset: 40 })
 
       const callUrl = (global.fetch as any).mock.calls[0][0]
       expect(callUrl).toContain('/api/media')
       expect(callUrl).toContain('status=pending')
-      expect(callUrl).toContain('page=2')
+      expect(callUrl).toContain('limit=20')
+      expect(callUrl).toContain('offset=40')
     })
   })
 
@@ -190,19 +209,67 @@ describe('api', () => {
     it('skips undefined and null params', async () => {
       global.fetch = vi.fn(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ items: [], total: 0, page: 1, page_size: 20, pages: 0 }), {
+          new Response(JSON.stringify([]), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           })
         )
       )
 
-      await api.media.list({ status: 'pending', channel_id: undefined, page: 1 })
+      await api.media.list({ status: 'pending', channel_id: undefined, limit: 50, offset: 0 })
 
       const callUrl = (global.fetch as any).mock.calls[0][0]
       expect(callUrl).not.toContain('channel_id')
       expect(callUrl).toContain('status=pending')
-      expect(callUrl).toContain('page=1')
+      expect(callUrl).toContain('limit=50')
+    })
+  })
+
+  describe('events.list', () => {
+    it('returns a plain array, not paginated', async () => {
+      const mockData = [
+        { id: 1, level: 'info', kind: 'sync', message: 'Test', created_at: '2026-01-01T00:00:00Z' },
+      ]
+      global.fetch = vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify(mockData), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )
+      )
+
+      const result = await api.events.list({ limit: 50, offset: 0 })
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toEqual(mockData)
+    })
+  })
+
+  describe('settings.get', () => {
+    it('returns an array of settings, not a single object', async () => {
+      const mockData = [
+        { key: 'poll_interval_sec', value: '60' },
+        { key: 'max_concurrent_downloads', value: '4' },
+      ]
+      global.fetch = vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify(mockData), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )
+      )
+
+      const result = await api.settings.get()
+      expect(Array.isArray(result)).toBe(true)
+      expect(result).toEqual(mockData)
+    })
+  })
+
+  describe('media.thumbUrl', () => {
+    it('returns the URL string without making a fetch', () => {
+      const url = api.media.thumbUrl(5)
+      expect(url).toBe('/api/media/5/thumb')
     })
   })
 })

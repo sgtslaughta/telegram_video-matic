@@ -122,13 +122,13 @@ export const subscriptions = {
 export const media = {
   list: (filters?: {
     status?: string
+    sub_id?: number
     channel_id?: number
     topic_id?: number
-    subscription_id?: number
-    page?: number
-    page_size?: number
+    limit?: number
+    offset?: number
   }) =>
-    fetchAPI<T.PaginatedResponse<T.MediaItemRead>>('/media', { params: filters }),
+    fetchAPI<T.MediaItemRead[]>('/media', { params: filters }),
 
   get: (id: number) =>
     fetchAPI<T.MediaItemRead>(`/media/${id}`),
@@ -139,8 +139,7 @@ export const media = {
   requeue: (id: number) =>
     fetchAPI<T.DownloadJobRead>(`/media/${id}/requeue`, { method: 'POST' }),
 
-  thumb: (id: number) =>
-    fetchAPI<{ thumb: string }>(`/media/${id}/thumb`),
+  thumbUrl: (id: number) => `/api/media/${id}/thumb`,
 }
 
 // Downloads
@@ -152,10 +151,10 @@ export const downloads = {
 // Settings
 export const settings = {
   get: () =>
-    fetchAPI<T.SettingRead>('/settings'),
+    fetchAPI<T.SettingRead[]>('/settings'),
 
   update: (data: T.SettingPatchRequest) =>
-    fetchAPI<T.SettingRead>('/settings', {
+    fetchAPI<T.SettingRead[]>('/settings', {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
@@ -164,12 +163,12 @@ export const settings = {
 // Events
 export const events = {
   list: (filters?: {
-    page?: number
-    page_size?: number
+    limit?: number
+    offset?: number
     level?: string
     kind?: string
   }) =>
-    fetchAPI<T.PaginatedResponse<T.EventRead>>('/events', { params: filters }),
+    fetchAPI<T.EventRead[]>('/events', { params: filters }),
 }
 
 // Plugins

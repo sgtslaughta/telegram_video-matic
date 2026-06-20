@@ -279,13 +279,6 @@ export interface WSSnapshot {
 // Utility Types
 // ============================================================================
 
-export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-
 export interface ApiError {
   detail: string;
   status: number;
