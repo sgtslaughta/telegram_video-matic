@@ -1,49 +1,74 @@
-import { Moon, Sun } from 'lucide-react'
+import { Moon, Sun, Search, User, LogOut } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useTheme } from '@/hooks/useTheme'
-import { useTgStatus } from '@/hooks/useTgStatus'
-import { useWebSocket } from '@/hooks/useWebSocket'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import * as api from '@/lib/api'
 
-export default function Header() {
+export default function Header({
+  connected,
+  onConnectClick,
+}: {
+  connected: boolean
+  onConnectClick: () => void
+}) {
   const { toggleTheme, effectiveTheme } = useTheme()
-  const { data: tgStatus } = useTgStatus()
-  const wsConnected = useWebSocket()
+  const [params, setParams] = useSearchParams()
+
+  const onSearch = (v: string) => {
+    const next = new URLSearchParams(params)
+    if (v) next.set('q', v)
+    else next.delete('q')
+    setParams(next, { replace: true })
+  }
+
+  const logout = async () => {
+    await api.auth.logout().catch(() => {})
+    window.location.href = '/login'
+  }
 
   return (
-    <header className="h-16 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6">
-      <div className="flex items-center gap-3">
-        {tgStatus?.authenticated && (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-700">
-            TG Connected
-          </Badge>
-        )}
-        {wsConnected && (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-700">
-            WS Connected
-          </Badge>
-        )}
+    <header className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
+      <div className="relative w-full max-w-sm">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search…"
+          defaultValue={params.get('q') ?? ''}
+          onChange={(e) => onSearch(e.target.value)}
+          className="pl-8"
+        />
       </div>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-          >
-            {effectiveTheme === 'dark' ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {effectiveTheme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </TooltipContent>
-      </Tooltip>
+      <div className="ml-auto flex items-center gap-2">
+        <Badge
+          variant="outline"
+          className="cursor-pointer"
+          onClick={onConnectClick}
+        >
+          <span
+            className={`mr-1.5 h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-amber-500'}`}
+          />
+          {connected ? 'Telegram' : 'Connect'}
+        </Badge>
+        <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
+          {effectiveTheme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="User menu">
+              <User className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={logout}>
+              <LogOut className="mr-2 h-4 w-4" /> Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </header>
   )
 }
