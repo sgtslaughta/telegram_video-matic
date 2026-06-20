@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     # Startup
     log("Starting Telegram Video-Matic...", "INFO")
     try:
-        init_crypto()
+        init_crypto(settings.tvm_secret_key)
         log("Crypto initialized", "SUCCESS")
     except ValueError as e:
         log(f"Crypto init failed: {e}", "ERROR")

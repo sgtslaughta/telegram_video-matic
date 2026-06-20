@@ -6,11 +6,11 @@ from cryptography.fernet import Fernet
 _cipher = None
 
 
-def init_crypto() -> None:
-    """Initialize the Fernet cipher from TVM_SECRET_KEY env var."""
+def init_crypto(secret_key: str | None = None) -> None:
+    """Initialize the Fernet cipher from the given key (or TVM_SECRET_KEY env)."""
     global _cipher
 
-    key_str = os.getenv("TVM_SECRET_KEY", "").strip()
+    key_str = (secret_key if secret_key is not None else os.getenv("TVM_SECRET_KEY", "")).strip()
     if not key_str:
         raise ValueError(
             "TVM_SECRET_KEY environment variable must be set and non-empty. "

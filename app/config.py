@@ -6,7 +6,9 @@ from typing import Optional
 class Settings(BaseSettings):
     """App config from env vars + sensible defaults."""
 
-    model_config = ConfigDict(env_file=".env", case_sensitive=False)
+    # extra="ignore": .env documents vars read elsewhere (TVM_APP_PASSWORD via
+    # os.getenv, MEDIA_ROOT, TZ) — don't crash on env keys this model doesn't map.
+    model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
     # Database
     database_url: str = "sqlite+aiosqlite:////data/tvm.sqlite"
