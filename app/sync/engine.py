@@ -3,7 +3,7 @@ import re
 import asyncio
 import tempfile
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Tuple, Callable, Any
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, async_sessionmaker
@@ -391,3 +391,80 @@ class SyncEngine:
 
             # Sleep before next cycle
             await asyncio.sleep(1)
+
+    async def _maintenance_pass(self, session) -> None:
+        """Single pass of maintenance: drift detection and pruning.
+
+        - Missing-file drift: DOWNLOADED items with missing local_path → PENDING + event
+        - Age pruning: DOWNLOADED items older than retention_days → delete file, status=SKIPPED
+        - Disk% pruning: when disk usage >= retention_disk_pct, delete oldest DOWNLOADED files
+        - Orphan tolerance: files on disk not in DB are never touched (no directory scan)
+        """
+        # 1. Missing-file drift: DOWNLOADED items with missing local_path
+        downloaded = await media.list_by_status(session, MediaStatus.DOWNLOADED)
+        for item in downloaded:
+            if item.local_path and not Path(item.local_path).exists():
+                await media.set_status(session, item.id, MediaStatus.PENDING)
+                await events.add(
+                    session,
+                    level=EventLevel.WARNING,
+                    kind="drift",
+                    media_id=item.id,
+                    message="File missing on disk, re-queued",
+                )
+
+        # 2. Age pruning: delete DOWNLOADED items older than retention_days
+        from app.db.repositories import settings
+        retention_days = await settings.get(session, "retention_days", default="90")
+        try:
+            retention_days = int(retention_days) if retention_days else 90
+        except (ValueError, TypeError):
+            retention_days = 90
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        old_items = await media.list_downloaded_before(session, cutoff)
+        for item in old_items:
+            if item.local_path and Path(item.local_path).exists():
+                Path(item.local_path).unlink()
+            await media.set_local_path(session, item.id, None)
+            await media.set_status(session, item.id, MediaStatus.SKIPPED)
+            await events.add(
+                session,
+                level=EventLevel.INFO,
+                kind="prune",
+                media_id=item.id,
+                message=f"Pruned (age > {retention_days} days)",
+            )
+
+        # 3. Disk % pruning: delete oldest DOWNLOADED files until under threshold
+        retention_pct = await settings.get(session, "retention_disk_pct", default="80")
+        try:
+            retention_pct = int(retention_pct) if retention_pct else 80
+        except (ValueError, TypeError):
+            retention_pct = 80
+
+        usage = shutil.disk_usage("/")
+        used_pct = 100 * usage.used / usage.total
+
+        if used_pct >= retention_pct:
+            oldest_items = await media.list_downloaded_oldest_first(session)
+            for item in oldest_items:
+                if item.local_path and Path(item.local_path).exists():
+                    Path(item.local_path).unlink()
+                await media.set_local_path(session, item.id, None)
+                await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                await events.add(
+                    session,
+                    level=EventLevel.INFO,
+                    kind="prune",
+                    media_id=item.id,
+                    message="Pruned (disk usage)",
+                )
+
+                # Re-check disk usage
+                usage = shutil.disk_usage("/")
+                used_pct = 100 * usage.used / usage.total
+                if used_pct < retention_pct:
+                    break
+
+        await session.commit()

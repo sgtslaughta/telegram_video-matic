@@ -172,3 +172,55 @@ async def upsert_from_tg_dto(
         thumb_b64=media_dto.thumb_b64,
         raw=media_dto.raw,
     )
+
+
+async def list_by_status(
+    session: AsyncSession,
+    status: str,
+) -> list[MediaItem]:
+    """List all media items with a given status."""
+    result = await session.execute(
+        select(MediaItem).where(MediaItem.status == status)
+    )
+    return result.scalars().all()
+
+
+async def set_local_path(
+    session: AsyncSession,
+    media_id: int,
+    local_path: str | None,
+) -> MediaItem | None:
+    """Set local_path for a media item."""
+    item = await session.get(MediaItem, media_id)
+    if item:
+        item.local_path = local_path
+        await session.commit()
+    return item
+
+
+async def list_downloaded_before(
+    session: AsyncSession,
+    cutoff: datetime,
+) -> list[MediaItem]:
+    """List DOWNLOADED items with downloaded_at < cutoff."""
+    result = await session.execute(
+        select(MediaItem).where(
+            and_(
+                MediaItem.status == "downloaded",
+                MediaItem.downloaded_at < cutoff,
+            )
+        )
+    )
+    return result.scalars().all()
+
+
+async def list_downloaded_oldest_first(
+    session: AsyncSession,
+) -> list[MediaItem]:
+    """List all DOWNLOADED items ordered by downloaded_at (oldest first)."""
+    result = await session.execute(
+        select(MediaItem)
+        .where(MediaItem.status == "downloaded")
+        .order_by(MediaItem.downloaded_at.asc())
+    )
+    return result.scalars().all()

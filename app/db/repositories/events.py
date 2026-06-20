@@ -1,4 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.db.models import Event
 
 
@@ -21,3 +22,14 @@ async def add(
     session.add(event)
     await session.commit()
     return event
+
+
+async def list_by_kind(
+    session: AsyncSession,
+    kind: str,
+) -> list[Event]:
+    """List all events with a given kind."""
+    result = await session.execute(
+        select(Event).where(Event.kind == kind)
+    )
+    return result.scalars().all()
