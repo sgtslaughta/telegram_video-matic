@@ -1,8 +1,10 @@
 import asyncio
+import base64
 from typing import Callable, Optional
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError
+from telethon.tl.functions.channels import GetForumTopicsRequest
 
 from app.db.models import Account, AccountStatus
 from app.crypto import decrypt, encrypt
@@ -128,3 +130,206 @@ class TelegramService:
             await self.client.log_out()
             await self.account_repo.update_session(self.account.id, None)
             await self.account_repo.update_status(self.account.id, AccountStatus.DISCONNECTED)
+
+    # ========================================================================
+    # Task 5: Read-only fetch methods
+    # ========================================================================
+
+    async def list_channels(self, limit: int = 200) -> list[ChannelDTO]:
+        """List all subscribed channels (Channel type only)."""
+        if not self.client:
+            return []
+
+        dialogs = await self.client.get_dialogs(limit=limit)
+        channels = []
+
+        for dialog in dialogs:
+            from telethon.tl.types import Channel
+            if isinstance(dialog.entity, Channel):
+                channel = ChannelDTO(
+                    tg_id=dialog.entity.id,
+                    title=dialog.entity.title,
+                    username=dialog.entity.username,
+                    is_forum=getattr(dialog.entity, "forum", False),
+                    photo_b64=None,
+                    raw={"entity": dialog.entity}
+                )
+                channels.append(channel)
+
+        return channels
+
+    async def list_topics(self, channel: ChannelDTO, limit: int = 100) -> list[TopicDTO]:
+        """List forum topics in a channel; synthetic General for non-forum."""
+        if not channel.is_forum:
+            # Non-forum: return synthetic General topic
+            return [
+                TopicDTO(
+                    tg_topic_id=1,
+                    title="General",
+                    channel_tg_id=channel.tg_id,
+                    raw={}
+                )
+            ]
+
+        if not self.client:
+            return []
+
+        # Forum channel: fetch topics
+        result = await self.client(GetForumTopicsRequest(
+            channel=channel.tg_id,
+            offset_date=None,
+            offset_id=0,
+            offset_topic=0,
+            limit=limit
+        ))
+
+        topics = []
+        for topic in result.topics:
+            topics.append(TopicDTO(
+                tg_topic_id=topic.id,
+                title=topic.title,
+                channel_tg_id=channel.tg_id,
+                raw={"topic": topic}
+            ))
+
+        return topics
+
+    async def iter_media(
+        self,
+        channel: ChannelDTO,
+        topic: Optional[TopicDTO] = None,
+        since_msg_id: Optional[int] = None
+    ):
+        """Iterate media messages (video/document) in channel/topic, optionally from since_msg_id."""
+        if not self.client:
+            return
+
+        async for message in self.client.iter_messages(
+            channel.tg_id,
+            min_id=since_msg_id or 0,
+            reverse=False
+        ):
+            # Filter for video/document media
+            if not message.media:
+                continue
+
+            from telethon.tl.types import MessageMediaDocument
+            if not isinstance(message.media, MessageMediaDocument):
+                continue
+
+            doc = message.media.document
+            if not doc.mime_type or not doc.mime_type.startswith(("video/", "application/octet-stream")):
+                continue
+
+            # Extract file name from attributes
+            file_name = None
+            duration_sec = None
+            if doc.attributes:
+                from telethon.tl.types import DocumentAttributeFilename, DocumentAttributeVideo
+                for attr in doc.attributes:
+                    if isinstance(attr, DocumentAttributeFilename):
+                        file_name = attr.file_name
+                    elif isinstance(attr, DocumentAttributeVideo):
+                        duration_sec = attr.duration
+
+            # Fetch reactions and comment count
+            reactions_dict = await self.fetch_reactions(message)
+            comments_count = await self.fetch_comment_count(message)
+
+            media = MediaDTO(
+                tg_msg_id=message.id,
+                channel_tg_id=channel.tg_id,
+                topic_tg_id=topic.tg_topic_id if topic else None,
+                caption=message.text or message.message,
+                file_name=file_name,
+                mime=doc.mime_type,
+                size_bytes=doc.size,
+                duration_sec=duration_sec,
+                date_posted=message.date,
+                thumb_b64=None,
+                reactions=reactions_dict,
+                comments_count=comments_count,
+                raw={"message": message}
+            )
+
+            yield media
+
+    async def get_message(self, channel: ChannelDTO, msg_id: int) -> Optional[MediaDTO]:
+        """Fetch a single message by ID."""
+        if not self.client:
+            return None
+
+        message = await self.client.get_messages(channel.tg_id, ids=msg_id)
+        if not message:
+            return None
+
+        # Convert to MediaDTO
+        if not message.media:
+            return None
+
+        from telethon.tl.types import MessageMediaDocument
+        if not isinstance(message.media, MessageMediaDocument):
+            return None
+
+        doc = message.media.document
+        file_name = None
+        duration_sec = None
+        if doc.attributes:
+            from telethon.tl.types import DocumentAttributeFilename, DocumentAttributeVideo
+            for attr in doc.attributes:
+                if isinstance(attr, DocumentAttributeFilename):
+                    file_name = attr.file_name
+                elif isinstance(attr, DocumentAttributeVideo):
+                    duration_sec = attr.duration
+
+        reactions_dict = await self.fetch_reactions(message)
+        comments_count = await self.fetch_comment_count(message)
+
+        return MediaDTO(
+            tg_msg_id=message.id,
+            channel_tg_id=channel.tg_id,
+            topic_tg_id=None,
+            caption=message.text or message.message,
+            file_name=file_name,
+            mime=doc.mime_type,
+            size_bytes=doc.size,
+            duration_sec=duration_sec,
+            date_posted=message.date,
+            thumb_b64=None,
+            reactions=reactions_dict,
+            comments_count=comments_count,
+            raw={"message": message}
+        )
+
+    async def fetch_thumb(self, message) -> Optional[str]:
+        """Download smallest thumbnail; return base64 or None."""
+        if not self.client or not message.media:
+            return None
+
+        try:
+            thumb_bytes = await self.client.download_media(message, thumb=-1, file=bytes)
+            if thumb_bytes:
+                return base64.b64encode(thumb_bytes).decode("utf-8")
+        except Exception:
+            pass
+
+        return None
+
+    async def fetch_reactions(self, message) -> Optional[dict[str, int]]:
+        """Extract reaction emoji → count from message.reactions."""
+        if not hasattr(message, "reactions") or not message.reactions:
+            return None
+
+        reactions_dict = {}
+        for result in message.reactions.results:
+            emoji = result.reaction.emoticon if hasattr(result.reaction, "emoticon") else str(result.reaction)
+            reactions_dict[emoji] = result.count
+
+        return reactions_dict if reactions_dict else None
+
+    async def fetch_comment_count(self, message) -> Optional[int]:
+        """Extract comment count from message.replies."""
+        if not hasattr(message, "replies") or not message.replies:
+            return None
+
+        return getattr(message.replies, "replies", None)

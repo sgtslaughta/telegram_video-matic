@@ -346,3 +346,371 @@ async def test_logout(mock_client, mock_account_repo):
     mock_account_repo.update_session.assert_called_once_with(account.id, None)
     # Status → disconnected
     mock_account_repo.update_status.assert_called_with(account.id, AccountStatus.DISCONNECTED)
+
+
+# ============================================================================
+# Task 5: Read-only fetch methods tests
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_list_channels(mock_client, mock_account_repo):
+    """list_channels() → [ChannelDTO] from dialogs (Channel types only)."""
+    from telethon.tl.types import Channel
+
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    # Mock dialogs with real Channel types
+    mock_channel_1 = MagicMock(spec=Channel)
+    mock_channel_1.id = 123456
+    mock_channel_1.title = "Channel 1"
+    mock_channel_1.username = "channel1"
+    mock_channel_1.forum = False
+    mock_channel_1.photo = None
+
+    mock_channel_2 = MagicMock(spec=Channel)
+    mock_channel_2.id = 654321
+    mock_channel_2.title = "Channel 2"
+    mock_channel_2.username = "channel2"
+    mock_channel_2.forum = True
+    mock_channel_2.photo = None
+
+    mock_dialog_1 = MagicMock()
+    mock_dialog_1.entity = mock_channel_1
+
+    mock_dialog_2 = MagicMock()
+    mock_dialog_2.entity = mock_channel_2
+
+    mock_client.get_dialogs = AsyncMock(return_value=[mock_dialog_1, mock_dialog_2])
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    channels = await service.list_channels(limit=100)
+
+    assert len(channels) == 2
+    assert channels[0].tg_id == 123456
+    assert channels[0].title == "Channel 1"
+    assert channels[0].is_forum is False
+    assert channels[1].tg_id == 654321
+    assert channels[1].is_forum is True
+
+
+@pytest.mark.asyncio
+async def test_list_topics_forum_channel(mock_account_repo):
+    """list_topics(channel) → [TopicDTO] for forum channel."""
+    from telethon.tl.functions.channels import GetForumTopicsRequest
+
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    # Mock forum topics response
+    mock_topic_1 = MagicMock()
+    mock_topic_1.id = 1
+    mock_topic_1.title = "General"
+
+    mock_topic_2 = MagicMock()
+    mock_topic_2.id = 2
+    mock_topic_2.title = "News"
+
+    mock_response = MagicMock()
+    mock_response.topics = [mock_topic_1, mock_topic_2]
+
+    # Create a properly mocked client that supports async __call__
+    mock_client = AsyncMock()
+    mock_client.return_value = mock_response
+    mock_client.side_effect = None
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    from app.telegram.dtos import ChannelDTO
+    channel_dto = ChannelDTO(
+        tg_id=123456,
+        title="Forum Channel",
+        username="forumchan",
+        is_forum=True,
+        photo_b64=None,
+        raw={}
+    )
+
+    topics = await service.list_topics(channel_dto)
+
+    assert len(topics) == 2
+    assert topics[0].tg_topic_id == 1
+    assert topics[0].title == "General"
+    assert topics[1].tg_topic_id == 2
+    assert topics[1].title == "News"
+
+
+@pytest.mark.asyncio
+async def test_list_topics_non_forum_synthetic_general(mock_client, mock_account_repo):
+    """list_topics(non_forum_channel) → [TopicDTO(General)]."""
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    from app.telegram.dtos import ChannelDTO
+    channel_dto = ChannelDTO(
+        tg_id=123456,
+        title="Regular Channel",
+        username="regularchan",
+        is_forum=False,
+        photo_b64=None,
+        raw={}
+    )
+
+    topics = await service.list_topics(channel_dto)
+
+    # Should return synthetic General topic
+    assert len(topics) == 1
+    assert topics[0].tg_topic_id == 1
+    assert topics[0].title == "General"
+
+
+@pytest.mark.asyncio
+async def test_iter_media_yields_media_dtos(mock_client, mock_account_repo):
+    """iter_media(channel, topic) yields MediaDTO for video/document media."""
+    from datetime import datetime
+    from telethon.tl.types import MessageMediaDocument, DocumentAttributeFilename, DocumentAttributeVideo
+
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    # Mock message with video document
+    mock_msg = MagicMock()
+    mock_msg.id = 999
+    mock_msg.message = "Test video"
+    mock_msg.text = None
+    mock_msg.date = datetime(2026, 6, 20, 12, 0, 0)
+
+    # Use real MessageMediaDocument spec
+    mock_media = MagicMock(spec=MessageMediaDocument)
+    mock_doc = MagicMock()
+    mock_doc.mime_type = "video/mp4"
+    mock_doc.size = 1024000
+
+    # Create proper attribute mocks
+    file_attr = MagicMock(spec=DocumentAttributeFilename)
+    file_attr.file_name = "video.mp4"
+
+    video_attr = MagicMock(spec=DocumentAttributeVideo)
+    video_attr.duration = 60
+
+    mock_doc.attributes = [file_attr, video_attr]
+    mock_media.document = mock_doc
+    mock_msg.media = mock_media
+
+    mock_msg.reactions = MagicMock()
+    mock_msg.reactions.results = [
+        MagicMock(reaction=MagicMock(emoticon="👍"), count=5)
+    ]
+    mock_msg.replies = MagicMock()
+    mock_msg.replies.replies = 3
+
+    async def mock_iter_messages(*args, **kwargs):
+        yield mock_msg
+
+    mock_client.iter_messages = mock_iter_messages
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    from app.telegram.dtos import ChannelDTO, TopicDTO
+    channel_dto = ChannelDTO(
+        tg_id=123456,
+        title="Test Channel",
+        username="testchan",
+        is_forum=True,
+        photo_b64=None,
+        raw={}
+    )
+    topic_dto = TopicDTO(
+        tg_topic_id=1,
+        title="General",
+        channel_tg_id=123456,
+        raw={}
+    )
+
+    media_list = []
+    async for media in service.iter_media(channel_dto, topic_dto):
+        media_list.append(media)
+
+    assert len(media_list) == 1
+    media = media_list[0]
+    assert media.tg_msg_id == 999
+    assert media.file_name == "video.mp4"
+    assert media.mime == "video/mp4"
+    assert media.size_bytes == 1024000
+
+
+@pytest.mark.asyncio
+async def test_fetch_thumb_returns_base64(mock_client, mock_account_repo):
+    """fetch_thumb(message) → base64 string of smallest thumbnail."""
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    mock_msg = MagicMock()
+    mock_client.download_media = AsyncMock(return_value=b"thumb_bytes")
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    thumb_b64 = await service.fetch_thumb(mock_msg)
+
+    import base64
+    expected = base64.b64encode(b"thumb_bytes").decode("utf-8")
+    assert thumb_b64 == expected
+
+
+@pytest.mark.asyncio
+async def test_fetch_reactions_counts(mock_client, mock_account_repo):
+    """fetch_reactions(message) → {emoji: count} dict."""
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    mock_msg = MagicMock()
+    mock_msg.reactions = MagicMock()
+    mock_msg.reactions.results = [
+        MagicMock(reaction=MagicMock(emoticon="👍"), count=5),
+        MagicMock(reaction=MagicMock(emoticon="❤️"), count=3),
+    ]
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    reactions = await service.fetch_reactions(mock_msg)
+
+    assert reactions == {"👍": 5, "❤️": 3}
+
+
+@pytest.mark.asyncio
+async def test_fetch_comment_count(mock_client, mock_account_repo):
+    """fetch_comment_count(message) → int from message.replies.replies."""
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    mock_msg = MagicMock()
+    mock_msg.replies = MagicMock()
+    mock_msg.replies.replies = 7
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    count = await service.fetch_comment_count(mock_msg)
+
+    assert count == 7
