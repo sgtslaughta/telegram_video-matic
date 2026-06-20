@@ -59,4 +59,19 @@ describe('Router', () => {
     const mainContent = screen.getByRole('main')
     expect(mainContent.textContent).toContain('Welcome back')
   })
+
+  it('navigates to /subscriptions and renders SubscriptionsList', () => {
+    render(
+      <MemoryRouter initialEntries={['/subscriptions']}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <Router />
+            <Toaster />
+          </ThemeProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('navigation')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1 })).toBeTruthy()
+  })
 })

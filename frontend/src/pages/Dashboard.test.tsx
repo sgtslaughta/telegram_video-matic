@@ -167,4 +167,47 @@ describe('Dashboard', () => {
     expect(screen.getByText('1 active download')).toBeTruthy()
     expect(screen.getByText(/45%/)).toBeTruthy()
   })
+
+  it('updates progress bar width when download progress changes', () => {
+    const mockDownload1 = {
+      id: 1,
+      media_id: 100,
+      status: 'downloading',
+      progress: 30,
+      speed_bps: 1024 * 1024 * 2.4,
+      eta_sec: 120,
+      bytes_done: 50000000,
+      bytes_total: 220000000,
+      attempt: 1,
+    }
+
+    const { rerender } = render(<Dashboard />, { wrapper: createWrapper() })
+
+    vi.spyOn(hooks, 'useActiveDownloads').mockReturnValue({
+      data: [mockDownload1],
+      isLoading: false,
+      isError: false,
+      error: null,
+      status: 'success',
+      refetch: vi.fn(),
+      isPending: false,
+    } as any)
+
+    rerender(<Dashboard />)
+    expect(screen.getByText(/30%/)).toBeTruthy()
+
+    const mockDownload2 = { ...mockDownload1, progress: 75 }
+    vi.spyOn(hooks, 'useActiveDownloads').mockReturnValue({
+      data: [mockDownload2],
+      isLoading: false,
+      isError: false,
+      error: null,
+      status: 'success',
+      refetch: vi.fn(),
+      isPending: false,
+    } as any)
+
+    rerender(<Dashboard />)
+    expect(screen.getByText(/75%/)).toBeTruthy()
+  })
 })
