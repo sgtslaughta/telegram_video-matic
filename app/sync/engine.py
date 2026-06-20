@@ -643,6 +643,80 @@ class SyncEngine:
         except Exception:
             pass
 
+    async def scan_subscription(self, sub_id: int) -> None:
+        """Scan a single subscription: one pass of per-subscription poller logic.
+
+        Fetches new media from Telegram for this subscription, classifies (keep/skip),
+        and updates DB. Reuses _poller_once logic.
+
+        Args:
+            sub_id: Subscription ID to scan
+
+        Raises:
+            RuntimeError: If subscription not found or TG service not ready
+        """
+        try:
+            async with self.session_factory() as session:
+                sub = await subscriptions.get(session, sub_id)
+                if not sub:
+                    raise RuntimeError(f"Subscription {sub_id} not found")
+
+                if not self.tg_service:
+                    raise RuntimeError("Telegram service not available")
+
+                # Get max stored tg_msg_id for incremental fetch
+                last_msg_id = await media.get_max_tg_msg_id(
+                    session, sub.channel_id, sub.topic_id
+                )
+
+                # Fetch new media from TelegramService
+                async for media_dto in self.tg_service.iter_media(
+                    sub.channel_id, sub.topic_id, since_msg_id=last_msg_id
+                ):
+                    # Upsert into DB
+                    item = await media.upsert_from_tg_dto(session, media_dto, sub.id)
+
+                    # Classify: keep or skip
+                    status, reason = classify(sub, item)
+
+                    if status == "skip":
+                        await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                        await events.add(
+                            session,
+                            level=EventLevel.INFO,
+                            kind="filter",
+                            subscription_id=sub.id,
+                            media_id=item.id,
+                            message=reason,
+                        )
+                    else:
+                        await media.set_status(session, item.id, MediaStatus.PENDING)
+
+                    # Dispatch to plugins (wrapped to prevent bad plugins crashing)
+                    try:
+                        await self.plugin_host.dispatch("on_media_discovered", item)
+                    except Exception as e:
+                        await events.add(
+                            session,
+                            level=EventLevel.WARNING,
+                            kind="plugin",
+                            message=f"Plugin error on_media_discovered: {e}",
+                        )
+
+                await session.commit()
+
+        except Exception as e:
+            async with self.session_factory() as session:
+                await events.add(
+                    session,
+                    level=EventLevel.ERROR,
+                    kind="sync",
+                    subscription_id=sub_id,
+                    message=f"Scan subscription error: {e}",
+                )
+                await session.commit()
+            raise
+
     async def stop(self) -> None:
         """Stop the sync engine: cancel all running tasks gracefully.
 

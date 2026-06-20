@@ -1,12 +1,22 @@
 import asyncio
+import pathlib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.config import Settings
 from app.crypto import init_crypto
-from app.db.engine import init_engine, create_tables
+from app.db.engine import init_engine, create_tables, get_session_factory
 from app.utils.log import log
+from app.api import routers
+from app.api.ws import WSHub, websocket_endpoint
+from app.telegram.service import TelegramService
+from app.sync.engine import SyncEngine
+from app.sync.plugins import PluginHost
 
 settings = Settings()
+
+# ponytail: static dir path, may not exist; skip mount if not found
+STATIC_DIR = pathlib.Path(__file__).parent.parent / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -35,12 +45,97 @@ async def lifespan(app: FastAPI):
         log(f"Schema creation failed: {e}", "ERROR")
         raise
 
+    # Get session factory for building services
+    try:
+        session_factory = await get_session_factory()
+    except RuntimeError as e:
+        log(f"Session factory init failed: {e}", "ERROR")
+        raise
+
+    # Build WebSocket hub
+    hub = WSHub()
+    app.state.ws_hub = hub
+
+    # Build event sink for logging to DB
+    async def event_sink(level: str, kind: str, message: str):
+        from app.db.repositories import events as events_repo
+        try:
+            async with session_factory() as session:
+                await events_repo.add(session, level=level, kind=kind, message=message)
+                await session.commit()
+        except Exception as e:
+            log(f"Failed to log event: {e}", "ERROR")
+
+    # Build TelegramService with AccountRepository adapter
+    from app.db.repositories.accounts import AccountRepository
+    account_repo = AccountRepository(session_factory)
+    try:
+        tg_service = TelegramService(
+            account_repo=account_repo,
+            event_sink=event_sink,
+            max_concurrent_downloads=settings.max_concurrent_downloads
+        )
+        # Load account from DB (guard: if no account/secret, leave disconnected)
+        account = await account_repo.get()
+        if account:
+            await tg_service.load_account()
+        app.state.tg_service = tg_service
+        log("Telegram service ready", "SUCCESS")
+    except Exception as e:
+        log(f"Telegram service init failed: {e}", "ERROR")
+        app.state.tg_service = None
+
+    # Build PluginHost
+    try:
+        plugin_host = PluginHost()
+        plugin_host.discover()
+        app.state.plugin_host = plugin_host
+        log("Plugin host ready", "SUCCESS")
+    except Exception as e:
+        log(f"Plugin discovery failed: {e}", "ERROR")
+        app.state.plugin_host = PluginHost()
+
+    # Build SyncEngine
+    try:
+        engine = SyncEngine(
+            session_factory=session_factory,
+            tg_service=app.state.tg_service,
+            plugin_host=app.state.plugin_host,
+            broadcast=hub.broadcast,
+            poll_interval_sec=settings.poll_interval_sec,
+            maintenance_interval_sec=3600,
+        )
+        await engine.start()
+        app.state.engine = engine
+        log("Sync engine started", "SUCCESS")
+    except Exception as e:
+        log(f"Sync engine init failed: {e}", "ERROR")
+        app.state.engine = None
+
+    # Store session factory on app.state for get_db dependency
+    app.state.async_session = session_factory
+
     log("App startup complete", "SUCCESS")
 
     yield
 
     # Shutdown
     log("Shutting down...", "INFO")
+    try:
+        if hasattr(app.state, "engine") and app.state.engine:
+            await app.state.engine.stop()
+            log("Sync engine stopped", "SUCCESS")
+    except Exception as e:
+        log(f"Engine stop error: {e}", "ERROR")
+
+    try:
+        if hasattr(app.state, "tg_service") and app.state.tg_service:
+            await app.state.tg_service.disconnect()
+            log("Telegram service disconnected", "SUCCESS")
+    except Exception as e:
+        log(f"TG service disconnect error: {e}", "ERROR")
+
+    log("Shutdown complete", "SUCCESS")
 
 
 def create_app() -> FastAPI:
@@ -51,7 +146,51 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # TODO: register routers here
+    # Register all routers (each has /api prefix already)
+    app.include_router(routers.health.router)
+    app.include_router(routers.auth.router)
+    app.include_router(routers.telegram.router)
+    app.include_router(routers.channels.router)
+    app.include_router(routers.subscriptions.router)
+    app.include_router(routers.media.router)
+    app.include_router(routers.downloads.router)
+    app.include_router(routers.events.router)
+    app.include_router(routers.settings.router)
+    app.include_router(routers.plugins.router)
+
+    # Mount WebSocket endpoint at /api/ws with snapshot provider
+    @app.websocket("/api/ws")
+    async def ws_endpoint_wrapper(websocket):
+        from app.api.schemas import WSSnapshot, DownloadJobRead
+        from app.db.repositories import downloads as downloads_repo
+
+        async def snapshot_provider():
+            """Build snapshot from active downloads + TG status."""
+            try:
+                # Get active downloads
+                async with app.state.async_session() as session:
+                    active = await downloads_repo.list_active(session)
+                    active_downloads = [DownloadJobRead.from_orm(j) for j in active]
+
+                # Get TG status
+                tg_status = None
+                if hasattr(app.state, "tg_service") and app.state.tg_service:
+                    from app.api.schemas import TelegramStatusRead
+                    if app.state.tg_service.account:
+                        tg_status = TelegramStatusRead.from_orm(app.state.tg_service.account)
+
+                return WSSnapshot(active_downloads=active_downloads, tg_status=tg_status)
+            except Exception as e:
+                log(f"Snapshot build error: {e}", "ERROR")
+                return WSSnapshot(active_downloads=[], tg_status=None)
+
+        await websocket_endpoint(websocket, app.state.ws_hub, snapshot_provider)
+
+    # Mount static SPA at "/" with HTML fallback (if dir exists)
+    if STATIC_DIR.exists():
+        app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+    else:
+        log(f"Static dir not found at {STATIC_DIR}, skipping SPA mount", "WARN")
 
     return app
 

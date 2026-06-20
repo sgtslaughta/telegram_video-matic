@@ -1,7 +1,7 @@
 """Subscriptions router: CRUD + duplicate detection + scan."""
 import re
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db, require_app_auth
@@ -106,10 +106,27 @@ async def delete_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{sub_id}/scan")
-async def scan_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
+async def scan_subscription(
+    sub_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """POST /api/subscriptions/{id}/scan — force manual poll."""
     sub = await repo_module.subscriptions.get(db, sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
-    return {"status": "scanning"}
+    # Guard: engine may not be available in tests or if lifespan failed
+    if not hasattr(request.app.state, "engine") or not request.app.state.engine:
+        raise HTTPException(
+            status_code=503,
+            detail="Sync engine not available",
+        )
+
+    try:
+        await request.app.state.engine.scan_subscription(sub_id)
+        return {"status": "scanning"}
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Scan failed: {e}")

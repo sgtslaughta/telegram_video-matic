@@ -52,6 +52,13 @@ async def get_engine():
     return _engine
 
 
+async def get_session_factory():
+    """Get the async session factory (for building services in lifespan)."""
+    if async_session_factory is None:
+        raise RuntimeError("Engine not initialized; call init_engine() first")
+    return async_session_factory
+
+
 async def get_session() -> AsyncSession:
     """Dependency for FastAPI to get an async session."""
     if async_session_factory is None:

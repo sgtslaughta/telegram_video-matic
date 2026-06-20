@@ -1,2 +1,13 @@
 """API routers package."""
-from . import channels, subscriptions, media
+from . import (
+    health,
+    auth,
+    telegram,
+    channels,
+    subscriptions,
+    media,
+    downloads,
+    events,
+    settings,
+    plugins,
+)

@@ -662,7 +662,8 @@ async def test_sub_delete():
 
 @pytest.mark.asyncio
 async def test_sub_scan():
-    """Test 21: POST /scan returns 200."""
+    """Test 21: POST /scan returns 200 when engine available."""
+    from unittest.mock import AsyncMock, MagicMock
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
     from sqlalchemy.pool import StaticPool
     from app.db.models import Base, Channel
@@ -683,10 +684,17 @@ async def test_sub_scan():
             session, channel_id=1, topic_id=None, storage_path="/tmp/test", rename_template="{name}"
         )
 
+    # Mock request with engine
+    request = MagicMock()
+    mock_engine = AsyncMock()
+    mock_engine.scan_subscription = AsyncMock()
+    request.app.state.engine = mock_engine
+
     async with SessionLocal() as session:
-        result = await scan_subscription(1, session)
+        result = await scan_subscription(1, request, session)
 
     assert result["status"] == "scanning"
+    assert mock_engine.scan_subscription.called
 
     await engine.dispose()
 
@@ -915,3 +923,31 @@ async def test_plugins_patch():
     assert plugin.enabled is True
 
     await engine.dispose()
+
+
+# ============================================================================
+# TASK 14: Real-Wiring Test (App Factory + Lifespan)
+# ============================================================================
+
+
+def test_app_factory_can_create():
+    """
+    Real-wiring test: verify create_app() builds app with routers registered.
+    """
+    from app.main import create_app
+
+    app = create_app()
+
+    # Verify app is created
+    assert app is not None
+    assert app.title == "Telegram Video-Matic"
+
+    # Verify routers are registered (check for prefixes in OpenAPI routes)
+    routes_info = [r.path for r in app.routes]
+
+    # Should have health endpoint
+    assert any("/api/health" in path for path in routes_info)
+    # Should have subscriptions endpoint
+    assert any("/api/subscriptions" in path for path in routes_info)
+    # Should have auth endpoints
+    assert any("/api/auth" in path for path in routes_info)
