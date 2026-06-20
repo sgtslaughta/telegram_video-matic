@@ -196,12 +196,19 @@ def create_app() -> FastAPI:
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
         index_file = STATIC_DIR / "index.html"
 
+        static_root = STATIC_DIR.resolve()
+
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
             if full_path.startswith("api"):
                 raise HTTPException(status_code=404, detail="Not found")
-            candidate = STATIC_DIR / full_path
-            if full_path and candidate.is_file():
+            # Serve a real file only if it resolves to within STATIC_DIR
+            # (guards against path traversal via ../ in the request path).
+            try:
+                candidate = (STATIC_DIR / full_path).resolve()
+            except (OSError, RuntimeError):
+                return FileResponse(str(index_file))
+            if full_path and candidate.is_file() and static_root in candidate.parents:
                 return FileResponse(str(candidate))
             return FileResponse(str(index_file))
     else:
