@@ -1,7 +1,11 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.db.models import MediaItem, MediaStatus, Subscription
+
+if TYPE_CHECKING:
+    from app.telegram.dtos import MediaDTO
 
 
 async def upsert_from_tg(
@@ -110,3 +114,61 @@ async def claim_pending(
 async def get(session: AsyncSession, media_id: int) -> MediaItem | None:
     """Get media item by ID."""
     return await session.get(MediaItem, media_id)
+
+
+async def get_max_tg_msg_id(
+    session: AsyncSession,
+    channel_id: int,
+    topic_id: int | None,
+) -> int | None:
+    """Get maximum tg_msg_id for a channel+topic to use as since_msg_id."""
+    from sqlalchemy import func
+    result = await session.execute(
+        select(func.max(MediaItem.tg_msg_id)).where(
+            and_(
+                MediaItem.channel_id == channel_id,
+                MediaItem.topic_id == topic_id,
+            )
+        )
+    )
+    return result.scalar()
+
+
+async def get_by_tg_msg_id(
+    session: AsyncSession,
+    channel_id: int,
+    tg_msg_id: int,
+) -> MediaItem | None:
+    """Get media item by channel and tg_msg_id."""
+    result = await session.execute(
+        select(MediaItem).where(
+            and_(
+                MediaItem.channel_id == channel_id,
+                MediaItem.tg_msg_id == tg_msg_id,
+            )
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def upsert_from_tg_dto(
+    session: AsyncSession,
+    media_dto: "MediaDTO",
+    subscription_id: int | None,
+) -> MediaItem:
+    """Insert or update media item from a MediaDTO (wrapper for upsert_from_tg)."""
+    return await upsert_from_tg(
+        session=session,
+        channel_id=media_dto.channel_tg_id,
+        topic_id=media_dto.topic_tg_id,
+        subscription_id=subscription_id,
+        tg_msg_id=media_dto.tg_msg_id,
+        caption=media_dto.caption,
+        file_name=media_dto.file_name,
+        mime=media_dto.mime,
+        size_bytes=media_dto.size_bytes,
+        duration_sec=media_dto.duration_sec,
+        date_posted=media_dto.date_posted,
+        thumb_b64=media_dto.thumb_b64,
+        raw=media_dto.raw,
+    )

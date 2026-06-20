@@ -1,9 +1,12 @@
 """Sync engine components: filter classifier, poller, downloader, maintenance."""
 import re
+import asyncio
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable, Any
+from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, async_sessionmaker
 
-from app.db.models import SubMode, FilterMode
+from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel
+from app.db.repositories import subscriptions, media, events
 
 
 def classify(subscription, media, today: Optional[str] = None) -> Tuple[str, Optional[str]]:
@@ -61,3 +64,106 @@ def classify(subscription, media, today: Optional[str] = None) -> Tuple[str, Opt
 
     # All gates passed
     return ("keep", None)
+
+
+class SyncEngine:
+    """Autonomous sync engine: poller, downloader, maintenance."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker,
+        tg_service: Any,
+        plugin_host: Any,
+        broadcast: Optional[Callable] = None,
+        poll_interval_sec: int = 60,
+    ):
+        """Initialize SyncEngine.
+
+        Args:
+            session_factory: async_sessionmaker for DB sessions
+            tg_service: TelegramService instance
+            plugin_host: PluginHost instance
+            broadcast: Optional async callable for WebSocket progress
+            poll_interval_sec: Poller sleep interval (seconds)
+        """
+        self.session_factory = session_factory
+        self.tg_service = tg_service
+        self.plugin_host = plugin_host
+        self.broadcast = broadcast or (lambda x: None)
+        self.poll_interval_sec = poll_interval_sec
+        self._tasks = []
+        self._stop_event = asyncio.Event()
+
+    async def _poller_once(self, session: AsyncSession) -> None:
+        """Single pass of the poller: fetch media for enabled subscriptions.
+
+        Args:
+            session: Active database session
+        """
+        try:
+            # Get all enabled subscriptions
+            subs = await subscriptions.list(session, enabled_only=True)
+
+            for sub in subs:
+                try:
+                    # Get max stored tg_msg_id for incremental fetch
+                    last_msg_id = await media.get_max_tg_msg_id(
+                        session, sub.channel_id, sub.topic_id
+                    )
+
+                    # Fetch new media from TelegramService
+                    async for media_dto in self.tg_service.iter_media(
+                        sub.channel_id, sub.topic_id, since_msg_id=last_msg_id
+                    ):
+                        # Upsert into DB
+                        item = await media.upsert_from_tg_dto(session, media_dto, sub.id)
+
+                        # Classify: keep or skip
+                        status, reason = classify(sub, item)
+
+                        if status == "skip":
+                            await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                            await events.add(
+                                session,
+                                level=EventLevel.INFO,
+                                kind="filter",
+                                subscription_id=sub.id,
+                                media_id=item.id,
+                                message=reason,
+                            )
+                        else:
+                            await media.set_status(session, item.id, MediaStatus.PENDING)
+
+                        # Dispatch to plugins (wrapped to prevent bad plugins crashing loop)
+                        try:
+                            await self.plugin_host.dispatch("on_media_discovered", item)
+                        except Exception as e:
+                            await events.add(
+                                session,
+                                level=EventLevel.WARNING,
+                                kind="plugin",
+                                message=f"Plugin error on_media_discovered: {e}",
+                            )
+
+                    await session.commit()
+
+                except Exception as e:
+                    # Log subscription error but continue to next subscription
+                    await events.add(
+                        session,
+                        level=EventLevel.ERROR,
+                        kind="sync",
+                        subscription_id=sub.id,
+                        message=f"Sync error: {e}",
+                    )
+                    await session.commit()
+
+        except Exception as e:
+            # Global error (e.g., can't fetch subscriptions)
+            await events.add(
+                session,
+                level=EventLevel.ERROR,
+                kind="sync",
+                message=f"Poller error: {e}",
+            )
+            await session.commit()
