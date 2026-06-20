@@ -38,7 +38,7 @@ describe('Router', () => {
       </MemoryRouter>
     )
     // Login page should NOT have sidebar (nav should not exist)
-    expect(screen.getByText('Login')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Login' })).toBeTruthy()
     expect(screen.queryByRole('navigation')).toBeFalsy()
   })
 
@@ -55,8 +55,8 @@ describe('Router', () => {
     )
     // Dashboard should have sidebar
     expect(screen.getByRole('navigation')).toBeTruthy()
-    // Check for main dashboard div not sidebar link
+    // Check for main dashboard content (hero banner or stat cards)
     const mainContent = screen.getByRole('main')
-    expect(mainContent.textContent).toContain('Dashboard')
+    expect(mainContent.textContent).toContain('Welcome back')
   })
 })
