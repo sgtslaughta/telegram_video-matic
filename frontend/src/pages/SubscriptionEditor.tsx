@@ -44,7 +44,6 @@ export default function SubscriptionEditor() {
 
   const channels = useChannels()
   const existingSubscription = useSubscription(isNew ? 0 : parseInt(id!))
-  const topics = useTopics(existingSubscription.data?.channel_id ?? null)
   const createMutation = useCreateSubscription()
   const updateMutation = useUpdateSubscription(isNew ? 0 : parseInt(id!))
 
@@ -66,6 +65,9 @@ export default function SubscriptionEditor() {
         }
       : undefined
   )
+
+  // Topics for the currently-selected channel (not the existing sub's channel).
+  const topics = useTopics(editor.state.channelId)
 
   const previewFilename = editor.state.renameTemplate
     ? editor.state.renameTemplate

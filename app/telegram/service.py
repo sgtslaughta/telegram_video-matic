@@ -252,10 +252,15 @@ class TelegramService:
 
         try:
             entity = await self._channel_input(channel.tg_id)
+            # For forum channels, scope messages to the chosen topic.
+            extra = {}
+            if topic and channel.is_forum:
+                extra["reply_to"] = topic.tg_topic_id
             async for message in self.client.iter_messages(
                 entity,
                 min_id=since_msg_id or 0,
-                reverse=False
+                reverse=False,
+                **extra
             ):
                 # Filter for video/document media
                 if not message.media:

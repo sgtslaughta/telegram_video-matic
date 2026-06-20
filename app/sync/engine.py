@@ -9,8 +9,9 @@ from typing import Optional, Tuple, Callable, Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from telethon.errors import FloodWaitError
 
-from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatus
+from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatus, Channel, Topic
 from app.db.repositories import subscriptions, media, events, downloads
+from app.telegram.dtos import ChannelDTO, TopicDTO
 from app.sync.naming import detect_season_episode, render_path
 
 # ponytail: regex compiled once, explicit season/episode pattern detection
@@ -122,8 +123,9 @@ class SyncEngine:
                     )
 
                     # Fetch new media from TelegramService
+                    chan_dto, topic_dto = await self._sub_dtos(session, sub)
                     async for media_dto in self.tg_service.iter_media(
-                        sub.channel_id, sub.topic_id, since_msg_id=last_msg_id
+                        chan_dto, topic_dto, since_msg_id=last_msg_id
                     ):
                         # Upsert into DB
                         item = await media.upsert_from_tg_dto(session, media_dto, sub.id)
@@ -426,8 +428,9 @@ class SyncEngine:
         for sub in subs:
             try:
                 # Full iter_media (no incremental)
+                chan_dto, topic_dto = await self._sub_dtos(session, sub)
                 async for media_dto in self.tg_service.iter_media(
-                    sub.channel_id, sub.topic_id, since_msg_id=None
+                    chan_dto, topic_dto, since_msg_id=None
                 ):
                     # Check if already stored
                     existing = await media.get_by_tg_msg_id(
@@ -643,6 +646,26 @@ class SyncEngine:
         except Exception:
             pass
 
+    async def _sub_dtos(self, session, sub) -> Tuple[ChannelDTO, Optional[TopicDTO]]:
+        """Build Channel/Topic DTOs (with Telegram ids) from a subscription's DB rows.
+
+        iter_media needs tg ids, not the DB FK ids stored on the subscription.
+        """
+        ch = await session.get(Channel, sub.channel_id)
+        chan_dto = ChannelDTO(
+            tg_id=ch.tg_id, title=ch.title, username=ch.username,
+            is_forum=ch.is_forum, photo_b64=ch.photo_b64, raw={},
+        )
+        topic_dto = None
+        if sub.topic_id:
+            tp = await session.get(Topic, sub.topic_id)
+            if tp:
+                topic_dto = TopicDTO(
+                    tg_topic_id=tp.tg_topic_id, title=tp.title,
+                    channel_tg_id=ch.tg_id, raw={},
+                )
+        return chan_dto, topic_dto
+
     async def scan_subscription(self, sub_id: int) -> None:
         """Scan a single subscription: one pass of per-subscription poller logic.
 
@@ -670,8 +693,9 @@ class SyncEngine:
                 )
 
                 # Fetch new media from TelegramService
+                chan_dto, topic_dto = await self._sub_dtos(session, sub)
                 async for media_dto in self.tg_service.iter_media(
-                    sub.channel_id, sub.topic_id, since_msg_id=last_msg_id
+                    chan_dto, topic_dto, since_msg_id=last_msg_id
                 ):
                     # Upsert into DB
                     item = await media.upsert_from_tg_dto(session, media_dto, sub.id)
