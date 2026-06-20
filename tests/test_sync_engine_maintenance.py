@@ -4,7 +4,7 @@ import pytest_asyncio
 import asyncio
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -120,7 +120,7 @@ async def test_maintenance_missing_file_drift(session_factory, session, channel,
     engine = SyncEngine(
         session_factory=session_factory,
         tg_service=AsyncMock(),
-        plugin_host=AsyncMock(),
+        plugin_host=MagicMock(),
         poll_interval_sec=60,
     )
 
@@ -180,7 +180,7 @@ async def test_maintenance_age_prune(session_factory, session, channel, subscrip
         engine = SyncEngine(
             session_factory=session_factory,
             tg_service=AsyncMock(),
-            plugin_host=AsyncMock(),
+            plugin_host=MagicMock(),
             poll_interval_sec=60,
         )
 
@@ -281,7 +281,7 @@ async def test_maintenance_disk_pct_prune(session_factory, session, channel, sub
             engine = SyncEngine(
                 session_factory=session_factory,
                 tg_service=AsyncMock(),
-                plugin_host=AsyncMock(),
+                plugin_host=MagicMock(),
                 poll_interval_sec=60,
             )
 
@@ -384,7 +384,7 @@ async def test_maintenance_does_not_touch_pending_queued_failed(session_factory,
         engine = SyncEngine(
             session_factory=session_factory,
             tg_service=AsyncMock(),
-            plugin_host=AsyncMock(),
+            plugin_host=MagicMock(),
             poll_interval_sec=60,
         )
 
@@ -450,7 +450,7 @@ async def test_maintenance_orphans_untouched(session_factory, session, channel, 
         engine = SyncEngine(
             session_factory=session_factory,
             tg_service=AsyncMock(),
-            plugin_host=AsyncMock(),
+            plugin_host=MagicMock(),
             poll_interval_sec=60,
         )
 
@@ -462,3 +462,200 @@ async def test_maintenance_orphans_untouched(session_factory, session, channel, 
     assert orphan_file.exists(), "Orphan file on disk should never be deleted"
     # Tracked file is deleted because it's in DB and old
     assert not file1.exists(), "Tracked old file should be deleted"
+
+
+@pytest.mark.asyncio
+async def test_maintenance_gap_reconcile_new_media(session_factory, session, channel, subscription):
+    """Gap reconcile: full iter_media reveals msg_id not in DB → insert as PENDING."""
+    # Setup: DB has msg_ids {1, 2}
+    item1 = MediaItem(
+        channel_id=channel.id,
+        topic_id=None,
+        subscription_id=subscription.id,
+        tg_msg_id=1,
+        caption="First",
+        file_name="first.mp4",
+        mime="video/mp4",
+        size_bytes=1024 * 1024,
+        duration_sec=60,
+        date_posted=datetime.now(timezone.utc),
+        status=MediaStatus.DOWNLOADED,
+    )
+    item2 = MediaItem(
+        channel_id=channel.id,
+        topic_id=None,
+        subscription_id=subscription.id,
+        tg_msg_id=2,
+        caption="Second",
+        file_name="second.mp4",
+        mime="video/mp4",
+        size_bytes=1024 * 1024,
+        duration_sec=60,
+        date_posted=datetime.now(timezone.utc),
+        status=MediaStatus.DOWNLOADED,
+    )
+    session.add(item1)
+    session.add(item2)
+    await session.commit()
+
+    # Mock tg_service.iter_media to return {1, 2, 3} (msg 3 is new)
+    mock_tg_service = MagicMock()
+
+    async def mock_iter_media(channel_id, topic_id, since_msg_id=None):
+        # Return all three regardless of since_msg_id (full fetch for gap reconcile)
+        dtos = [
+            MediaDTO(
+                channel_tg_id=channel.tg_id,
+                topic_tg_id=None,
+                tg_msg_id=1,
+                caption="First",
+                file_name="first.mp4",
+                mime="video/mp4",
+                size_bytes=1024 * 1024,
+                duration_sec=60,
+                date_posted=datetime.now(timezone.utc),
+                thumb_b64=None,
+                reactions=None,
+                comments_count=None,
+                raw=None,
+            ),
+            MediaDTO(
+                channel_tg_id=channel.tg_id,
+                topic_tg_id=None,
+                tg_msg_id=2,
+                caption="Second",
+                file_name="second.mp4",
+                mime="video/mp4",
+                size_bytes=1024 * 1024,
+                duration_sec=60,
+                date_posted=datetime.now(timezone.utc),
+                thumb_b64=None,
+                reactions=None,
+                comments_count=None,
+                raw=None,
+            ),
+            MediaDTO(
+                channel_tg_id=channel.tg_id,
+                topic_tg_id=None,
+                tg_msg_id=3,
+                caption="Third (new)",
+                file_name="third.mp4",
+                mime="video/mp4",
+                size_bytes=1024 * 1024,
+                duration_sec=60,
+                date_posted=datetime.now(timezone.utc),
+                thumb_b64=None,
+                reactions=None,
+                comments_count=None,
+                raw=None,
+            ),
+        ]
+        for dto in dtos:
+            yield dto
+
+    mock_tg_service.iter_media = mock_iter_media
+
+    # Create engine and run maintenance
+    engine = SyncEngine(
+        session_factory=session_factory,
+        tg_service=mock_tg_service,
+        plugin_host=MagicMock(),
+        poll_interval_sec=60,
+    )
+
+    # Run single maintenance pass
+    async with session_factory() as maint_session:
+        await engine._maintenance_pass(maint_session)
+
+    # Verify: msg 3 was inserted with PENDING status
+    async with session_factory() as check_session:
+        item3 = await media.get_by_tg_msg_id(check_session, channel.id, 3)
+        assert item3 is not None, "Gap item (msg 3) should be inserted"
+        assert item3.status == MediaStatus.PENDING, f"Expected PENDING, got {item3.status}"
+        assert item3.subscription_id == subscription.id
+
+    # Verify: items 1 and 2 remain unchanged
+    async with session_factory() as check_session:
+        check_item1 = await media.get_by_tg_msg_id(check_session, channel.id, 1)
+        check_item2 = await media.get_by_tg_msg_id(check_session, channel.id, 2)
+        assert check_item1.status == MediaStatus.DOWNLOADED
+        assert check_item2.status == MediaStatus.DOWNLOADED
+
+    # Verify: drift event logged for gap item (only if gap_count > 0)
+    async with session_factory() as check_session:
+        drift_events = await events.list_by_kind(check_session, "drift")
+        gap_events = [e for e in drift_events if "gap" in (e.message or "").lower()]
+        assert len(gap_events) > 0, "Expected gap drift event"
+
+
+@pytest.mark.asyncio
+async def test_maintenance_gap_reconcile_skip_filtered(session_factory, session, channel, subscription):
+    """Gap reconcile: if gap item is filtered (skip), set status to SKIPPED + event."""
+    # Setup: subscription has a filter that excludes "skip_me"
+    sub_filtered = Subscription(
+        channel_id=channel.id,
+        topic_id=None,
+        storage_path="/tmp/test",
+        rename_template="{original}",
+        enabled=True,
+        mode=SubMode.IMMEDIATE,
+        filter_regex="skip_me",
+        filter_mode=FilterMode.EXCLUDE,
+        min_size_mb=None,
+        max_size_mb=None,
+        season_detection=True,
+    )
+    session.add(sub_filtered)
+    # Disable the default fixture subscription so only sub_filtered (the one
+    # with the exclude filter) owns the gap message. Two channel-level subs on
+    # one channel is allowed (topic_id NULL is distinct under UNIQUE), so we
+    # isolate the filtered sub to assert its skip behavior unambiguously.
+    subscription.enabled = False
+    session.add(subscription)
+    await session.commit()
+    await session.refresh(sub_filtered)
+
+    # Mock tg_service.iter_media to return one media that should be skipped
+    mock_tg_service = MagicMock()
+
+    async def mock_iter_media(channel_id, topic_id, since_msg_id=None):
+        yield MediaDTO(
+            channel_tg_id=channel.tg_id,
+            topic_tg_id=None,
+            tg_msg_id=100,
+            caption="skip_me",
+            file_name="skip_me.mp4",
+            mime="video/mp4",
+            size_bytes=1024 * 1024,
+            duration_sec=60,
+            date_posted=datetime.now(timezone.utc),
+            thumb_b64=None,
+            reactions=None,
+            comments_count=None,
+            raw=None,
+        )
+
+    mock_tg_service.iter_media = mock_iter_media
+
+    # Create engine and run maintenance
+    engine = SyncEngine(
+        session_factory=session_factory,
+        tg_service=mock_tg_service,
+        plugin_host=MagicMock(),
+        poll_interval_sec=60,
+    )
+
+    # Run single maintenance pass
+    async with session_factory() as maint_session:
+        await engine._maintenance_pass(maint_session)
+
+    # Verify: item was inserted with SKIPPED status
+    async with session_factory() as check_session:
+        item = await media.get_by_tg_msg_id(check_session, channel.id, 100)
+        assert item is not None, "Gap item should be inserted even if filtered"
+        assert item.status == MediaStatus.SKIPPED, f"Expected SKIPPED, got {item.status}"
+
+    # Verify: filter event logged
+    async with session_factory() as check_session:
+        filter_events = await events.list_by_kind(check_session, "filter")
+        assert len(filter_events) > 0, "Expected filter event"

@@ -1,2 +1,11 @@
 plans/
 docs/superpowers/
+__pycache__/
+*.pyc
+.idea/
+.venv/
+data/
+media/
+.env
+node_modules/
+frontend/dist/

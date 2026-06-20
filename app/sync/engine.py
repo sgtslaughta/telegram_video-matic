@@ -396,6 +396,7 @@ class SyncEngine:
         """Single pass of maintenance: drift detection and pruning.
 
         - Missing-file drift: DOWNLOADED items with missing local_path → PENDING + event
+        - Gap drift: full iter_media reconcile finds missing media → insert + classify → PENDING/SKIPPED
         - Age pruning: DOWNLOADED items older than retention_days → delete file, status=SKIPPED
         - Disk% pruning: when disk usage >= retention_disk_pct, delete oldest DOWNLOADED files
         - Orphan tolerance: files on disk not in DB are never touched (no directory scan)
@@ -413,7 +414,76 @@ class SyncEngine:
                     message="File missing on disk, re-queued",
                 )
 
-        # 2. Age pruning: delete DOWNLOADED items older than retention_days
+        # 2. Gap drift: full reconcile for each enabled subscription
+        gap_count = 0
+        subs = await subscriptions.list(session, enabled_only=True)
+        for sub in subs:
+            try:
+                # Full iter_media (no incremental)
+                async for media_dto in self.tg_service.iter_media(
+                    sub.channel_id, sub.topic_id, since_msg_id=None
+                ):
+                    # Check if already stored
+                    existing = await media.get_by_tg_msg_id(
+                        session, sub.channel_id, media_dto.tg_msg_id
+                    )
+                    if not existing:
+                        # New gap item: upsert via lower-level function using channel_id (DB ID, not tg_id)
+                        item = await media.upsert_from_tg(
+                            session,
+                            channel_id=sub.channel_id,
+                            topic_id=media_dto.topic_tg_id,
+                            subscription_id=sub.id,
+                            tg_msg_id=media_dto.tg_msg_id,
+                            caption=media_dto.caption,
+                            file_name=media_dto.file_name,
+                            mime=media_dto.mime,
+                            size_bytes=media_dto.size_bytes,
+                            duration_sec=media_dto.duration_sec,
+                            date_posted=media_dto.date_posted,
+                            thumb_b64=media_dto.thumb_b64,
+                            raw=media_dto.raw,
+                        )
+                        status, reason = classify(sub, item)
+
+                        if status == "skip":
+                            await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                            await events.add(
+                                session,
+                                level=EventLevel.INFO,
+                                kind="filter",
+                                subscription_id=sub.id,
+                                media_id=item.id,
+                                message=reason,
+                            )
+                        else:
+                            await media.set_status(session, item.id, MediaStatus.PENDING)
+
+                        gap_count += 1
+
+                await session.commit()
+
+            except Exception as e:
+                # Log subscription error but continue to next subscription
+                await events.add(
+                    session,
+                    level=EventLevel.ERROR,
+                    kind="sync",
+                    subscription_id=sub.id,
+                    message=f"Gap reconcile error: {e}",
+                )
+                await session.commit()
+
+        # Emit summary event if gap items found
+        if gap_count > 0:
+            await events.add(
+                session,
+                level=EventLevel.INFO,
+                kind="drift",
+                message=f"Gap reconcile: recovered {gap_count} missing media items",
+            )
+
+        # 3. Age pruning: delete DOWNLOADED items older than retention_days
         from app.db.repositories import settings
         retention_days = await settings.get(session, "retention_days", default="90")
         try:
@@ -436,7 +506,7 @@ class SyncEngine:
                 message=f"Pruned (age > {retention_days} days)",
             )
 
-        # 3. Disk % pruning: delete oldest DOWNLOADED files until under threshold
+        # 4. Disk % pruning: delete oldest DOWNLOADED files until under threshold
         retention_pct = await settings.get(session, "retention_disk_pct", default="80")
         try:
             retention_pct = int(retention_pct) if retention_pct else 80

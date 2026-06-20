@@ -236,3 +236,31 @@ async def test_list_downloaded_oldest_first(session, channel, subscription):
     assert result[0].tg_msg_id == 4001  # oldest
     assert result[1].tg_msg_id == 4002  # middle
     assert result[2].tg_msg_id == 4003  # newest
+
+
+@pytest.mark.asyncio
+async def test_set_status_downloaded_at_is_utc(session, channel, subscription):
+    """set_status to DOWNLOADED sets downloaded_at in UTC and tz-aware."""
+    item = MediaItem(
+        channel_id=channel.id,
+        subscription_id=subscription.id,
+        tg_msg_id=5001,
+        file_name="test.mp4",
+        status=MediaStatus.PENDING,
+        date_posted=datetime.now(timezone.utc),
+    )
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+
+    # Set status to DOWNLOADED
+    before = datetime.now(timezone.utc)
+    await media.set_status(session, item.id, MediaStatus.DOWNLOADED)
+    after = datetime.now(timezone.utc)
+
+    # Verify: downloaded_at is set and tz-aware in UTC
+    updated = await media.get(session, item.id)
+    assert updated.downloaded_at is not None, "downloaded_at should be set"
+    assert updated.downloaded_at.tzinfo is not None, "downloaded_at should be tz-aware"
+    assert updated.downloaded_at.tzinfo == timezone.utc, "downloaded_at should be UTC"
+    assert before <= updated.downloaded_at <= after, "downloaded_at should be recent"

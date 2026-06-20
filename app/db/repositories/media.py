@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -74,7 +74,7 @@ async def set_status(
     if item:
         item.status = status
         if status == MediaStatus.DOWNLOADED:
-            item.downloaded_at = datetime.now(datetime.now().astimezone().tzinfo)
+            item.downloaded_at = datetime.now(timezone.utc)
         await session.commit()
     return item
 
