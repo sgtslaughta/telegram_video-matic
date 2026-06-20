@@ -61,6 +61,16 @@ class TelegramService:
             session = StringSession()
         self.client = self.client_factory(session, api_id, api_hash)
 
+        # A half-completed login (awaiting code/password) cannot resume after a
+        # restart — the in-memory phone_code_hash is gone. Reset to disconnected
+        # so the UI starts the login over instead of stranding on the code step.
+        if not self.account.session_enc and str(self.account.status) in (
+            AccountStatus.AWAITING_CODE,
+            AccountStatus.AWAITING_PASSWORD,
+        ):
+            await self.account_repo.update_status(self.account.id, AccountStatus.DISCONNECTED)
+            self.account.status = AccountStatus.DISCONNECTED
+
     async def connect(self) -> None:
         """Connect to Telegram; update status to connected if authorized."""
         if not self.client:
