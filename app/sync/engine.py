@@ -627,6 +627,22 @@ class SyncEngine:
         Each loop catches exceptions internally to prevent the task from dying.
         """
         self._stop_event.clear()
+
+        # Requeue downloads interrupted by a previous shutdown/crash: items left
+        # at queued/downloading never resume (the downloader only claims pending).
+        try:
+            from sqlalchemy import update
+            from app.db.models import MediaItem
+            async with self.session_factory() as session:
+                await session.execute(
+                    update(MediaItem)
+                    .where(MediaItem.status.in_([MediaStatus.QUEUED, MediaStatus.DOWNLOADING]))
+                    .values(status=MediaStatus.PENDING)
+                )
+                await session.commit()
+        except Exception:
+            pass
+
         self._tasks = [
             asyncio.create_task(self._poller()),
             asyncio.create_task(self._downloader()),
