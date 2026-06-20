@@ -76,9 +76,9 @@ async def get_thumb(media_id: int, request: Request, db: AsyncSession = Depends(
         svc = getattr(request.app.state, "tg_service", None)
         ch = await db.get(Channel, item.channel_id)
         if svc and svc.client and ch:
-            data = await svc.fetch_thumb(ch.tg_id, item.tg_msg_id)
-            if data:
-                item.thumb_b64 = base64.b64encode(data).decode()
+            b64 = await svc.thumb_b64_for(ch.tg_id, item.tg_msg_id)
+            if b64:
+                item.thumb_b64 = b64
                 await db.commit()
 
     if not item.thumb_b64:

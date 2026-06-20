@@ -240,8 +240,8 @@ class TelegramService:
 
         return topics
 
-    async def fetch_thumb(self, channel_tg_id: int, msg_id: int) -> Optional[bytes]:
-        """Download a message's thumbnail bytes (smallest size), or None."""
+    async def thumb_b64_for(self, channel_tg_id: int, msg_id: int) -> Optional[str]:
+        """Resolve a message by id and return its thumbnail as base64, or None."""
         if not self.client:
             return None
         try:
@@ -249,7 +249,7 @@ class TelegramService:
             msg = await self.client.get_messages(entity, ids=msg_id)
             if not msg:
                 return None
-            return await self.client.download_media(msg, thumb=-1, file=bytes)
+            return await self.fetch_thumb(msg)
         except Exception:
             return None
 
