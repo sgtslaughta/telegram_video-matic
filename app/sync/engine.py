@@ -1,12 +1,17 @@
 """Sync engine components: filter classifier, poller, downloader, maintenance."""
 import re
 import asyncio
-from datetime import datetime
+import tempfile
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Tuple, Callable, Any
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, async_sessionmaker
+from telethon.errors import FloodWaitError
 
-from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel
-from app.db.repositories import subscriptions, media, events
+from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatus
+from app.db.repositories import subscriptions, media, events, downloads
+from app.sync.naming import detect_season_episode, render_path
 
 
 def classify(subscription, media, today: Optional[str] = None) -> Tuple[str, Optional[str]]:
@@ -167,3 +172,211 @@ class SyncEngine:
                 message=f"Poller error: {e}",
             )
             await session.commit()
+
+    async def _downloader(self) -> None:
+        """Download manager: claims pending media, downloads, renames, moves into place.
+
+        Flow:
+        1. Claim pending media items (pending→queued atomic flip)
+        2. For each item:
+           a. Start download job
+           b. Get message from Telegram
+           c. Download file with progress callback
+           d. Render target path using subscription template + season/episode detection
+           e. Move file into place
+           f. Update media status→downloaded, set local_path
+           g. Finish job (success)
+           h. Dispatch on_post_download hook
+        3. On download/move error:
+           a. Increment attempt counter
+           b. If attempt <= max_attempts (5): sleep(min(2^attempt*5, 3600)) and retry
+           c. If FloodWaitError: pause without incrementing attempt, retry
+           d. If attempt > max_attempts: status→failed, log event, finish job with error
+        """
+        max_concurrent = 3  # TODO: read from config
+        max_attempts = 5
+        base_backoff = 5
+        max_backoff = 3600
+
+        while not self._stop_event.is_set():
+            try:
+                async with self.session_factory() as session:
+                    # Claim pending media
+                    claimed = await media.claim_pending(session, limit=max_concurrent)
+
+                    for item in claimed:
+                        try:
+                            # Get subscription and validate
+                            sub = await subscriptions.get(session, item.subscription_id)
+                            if not sub:
+                                await media.set_status(session, item.id, MediaStatus.FAILED)
+                                await events.add(
+                                    session,
+                                    level=EventLevel.ERROR,
+                                    kind="download",
+                                    media_id=item.id,
+                                    message="Subscription not found",
+                                )
+                                await session.commit()
+                                continue
+
+                            # Start job
+                            job = await downloads.start(session, item.id)
+
+                            # Create temp file for download
+                            temp_file = tempfile.mktemp(suffix=".tmp")
+
+                            try:  # Download attempt
+                                # Throttle broadcast: track last broadcast time
+                                last_broadcast_time = [None]
+
+                                async def on_progress(current_bytes, total_bytes):
+                                    """Progress callback with ~1 Hz throttle."""
+                                    now = datetime.now(timezone.utc)
+                                    if last_broadcast_time[0] is None or \
+                                       (now - last_broadcast_time[0]).total_seconds() >= 1.0:
+                                        last_broadcast_time[0] = now
+                                        await self.broadcast({
+                                            "type": "download_progress",
+                                            "job_id": job.id,
+                                            "media_id": item.id,
+                                            "progress": current_bytes / total_bytes if total_bytes else 0,
+                                            "bytes_done": current_bytes,
+                                            "bytes_total": total_bytes,
+                                        })
+
+                                # Download from Telegram
+                                await self.tg_service.download(
+                                    item.tg_msg_id,
+                                    temp_file,
+                                    on_progress=on_progress
+                                )
+
+                                # Render target path using template + season/episode detection
+                                season, episode = detect_season_episode(item.file_name)
+                                title = item.file_name.rsplit(".", 1)[0] if item.file_name else "unknown"
+                                ext = "." + item.file_name.rsplit(".", 1)[-1] if item.file_name else ""
+
+                                tokens = {
+                                    "channel": sub.channel.title or "Unknown",
+                                    "topic": sub.topic.title if sub.topic else "General",
+                                    "season": season,
+                                    "episode": episode,
+                                    "title": title,
+                                    "ext": ext,
+                                    "original": item.file_name or "unknown",
+                                    "date": item.date_posted.isoformat() if item.date_posted else "",
+                                }
+
+                                # Season fallback: if season_detection is off, don't use templated name
+                                if not sub.season_detection or (season, episode) == (1, 1):
+                                    # Check if the filename actually contains a season/episode pattern
+                                    # If it doesn't and season_detection is off, use {original}
+                                    if not re.search(r'S\d+E\d+|\\d+x\\d+|Season.*Episode', item.file_name or "", re.IGNORECASE):
+                                        # Use fallback: try to render with {original}, otherwise use filename
+                                        try:
+                                            target_path = render_path(sub.rename_template, tokens)
+                                        except ValueError:
+                                            # Fallback to original filename
+                                            target_path = item.file_name or "unknown"
+                                    else:
+                                        target_path = render_path(sub.rename_template, tokens)
+                                else:
+                                    target_path = render_path(sub.rename_template, tokens)
+
+                                target_full = Path(sub.storage_path) / target_path
+
+                                # Move file into place
+                                target_full.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.move(temp_file, str(target_full))
+
+                                # Update DB: mark as downloaded
+                                item.local_path = str(target_full)
+                                item.downloaded_at = datetime.now(timezone.utc)
+                                await media.set_status(session, item.id, MediaStatus.DOWNLOADED)
+
+                                # Finish job
+                                await downloads.finish(session, job.id, error=None)
+
+                                # Dispatch plugin hook
+                                try:
+                                    await self.plugin_host.dispatch(
+                                        "on_post_download",
+                                        item,
+                                        str(target_full)
+                                    )
+                                except Exception as e:
+                                    # Log but don't fail the download
+                                    await events.add(
+                                        session,
+                                        level=EventLevel.WARNING,
+                                        kind="plugin",
+                                        message=f"Plugin error on_post_download: {e}",
+                                    )
+
+                                await session.commit()
+
+                            except FloodWaitError as e:
+                                # FloodWait: pause without incrementing attempt
+                                await asyncio.sleep(min(e.seconds, 60))
+                                # Mark job back to queued for retry (same attempt)
+                                job.status = JobStatus.QUEUED
+                                await session.commit()
+
+                            except Exception as e:
+                                # Download/move error: implement retry logic
+                                job_db = await downloads.get(session, job.id)
+                                if job_db:
+                                    job_db.attempt += 1
+
+                                    if job_db.attempt > max_attempts:
+                                        # Max attempts exhausted
+                                        await media.set_status(session, item.id, MediaStatus.FAILED)
+                                        job_db.error = str(e)
+                                        await downloads.finish(session, job.id, error=str(e))
+                                        await events.add(
+                                            session,
+                                            level=EventLevel.ERROR,
+                                            kind="download",
+                                            media_id=item.id,
+                                            message=f"Download failed after {max_attempts} attempts: {e}",
+                                        )
+                                    else:
+                                        # Retry: calculate backoff
+                                        backoff_sec = min(2 ** job_db.attempt * base_backoff, max_backoff)
+                                        # Mark job back to queued, will retry on next cycle
+                                        job_db.status = JobStatus.QUEUED
+                                        await asyncio.sleep(backoff_sec)
+
+                                    # Clean up temp file
+                                    try:
+                                        Path(temp_file).unlink(missing_ok=True)
+                                    except Exception:
+                                        pass
+
+                                    await session.commit()
+
+                        except Exception as e:
+                            # Item-level error: log but continue to next item
+                            await events.add(
+                                session,
+                                level=EventLevel.ERROR,
+                                kind="download",
+                                media_id=item.id,
+                                message=f"Download error: {e}",
+                            )
+                            await session.commit()
+
+            except Exception as e:
+                # Outer error: log and continue
+                async with self.session_factory() as session:
+                    await events.add(
+                        session,
+                        level=EventLevel.ERROR,
+                        kind="sync",
+                        message=f"Downloader error: {e}",
+                    )
+                    await session.commit()
+
+            # Sleep before next cycle
+            await asyncio.sleep(1)
