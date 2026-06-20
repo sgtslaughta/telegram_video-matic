@@ -1,6 +1,8 @@
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
+import { ThemeProvider } from '@/hooks/useTheme'
+import Router from '@/Router'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,13 +16,12 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <div className="h-screen bg-white dark:bg-black">
-          <h1 className="text-2xl font-bold p-4">Video-Matic</h1>
-          <p className="p-4">Frontend scaffold ready.</p>
-        </div>
-        <Toaster position="bottom-right" />
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <Router />
+          <Toaster position="bottom-right" />
+        </BrowserRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   )
 }
