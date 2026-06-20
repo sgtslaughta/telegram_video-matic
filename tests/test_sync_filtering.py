@@ -1,0 +1,340 @@
+"""Test suite for subscription filter classifier (Task 3: Filtering)."""
+import pytest
+from datetime import datetime, timezone
+from dataclasses import dataclass
+from typing import Optional
+
+from app.sync.engine import classify
+from app.db.models import SubMode, FilterMode
+
+
+# Mock Subscription and MediaDTO for testing
+@dataclass
+class MockSubscription:
+    """Minimal subscription for testing."""
+    enabled: bool = True
+    mode: str = SubMode.IMMEDIATE
+    schedule_days: Optional[list] = None
+    filter_regex: Optional[str] = None
+    filter_mode: str = FilterMode.INCLUDE
+    min_size_mb: Optional[int] = None
+    max_size_mb: Optional[int] = None
+
+
+@dataclass
+class MockMedia:
+    """Minimal media for testing."""
+    file_name: Optional[str] = None
+    caption: Optional[str] = None
+    size_bytes: Optional[int] = None
+
+
+class TestClassifyEnabledGate:
+    """Gate 1: Enabled check."""
+
+    def test_classify_disabled_subscription(self):
+        """Disabled subscription → skip."""
+        sub = MockSubscription(enabled=False)
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert reason == "Subscription disabled"
+
+    def test_classify_enabled_subscription(self):
+        """Enabled subscription passes enabled gate."""
+        sub = MockSubscription(enabled=True, mode=SubMode.IMMEDIATE)
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        # Should pass enabled gate and reach other gates; all other defaults pass
+        assert decision == "keep"
+        assert reason is None
+
+
+class TestClassifyScheduleGate:
+    """Gate 2: Schedule gate."""
+
+    def test_classify_schedule_immediate(self):
+        """SubMode.immediate always passes schedule gate."""
+        sub = MockSubscription(enabled=True, mode=SubMode.IMMEDIATE)
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_schedule_scheduled_match(self):
+        """Scheduled mode with matching weekday passes."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.SCHEDULED,
+            schedule_days=["mon", "wed"]
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        # Monday = 0, inject as "mon"
+        decision, reason = classify(sub, media, today="mon")
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_schedule_scheduled_no_match(self):
+        """Scheduled mode with non-matching weekday skips."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.SCHEDULED,
+            schedule_days=["mon"]
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media, today="fri")
+        assert decision == "skip"
+        assert "Not scheduled for fri" in reason
+
+
+class TestClassifyRegexGate:
+    """Gate 3: Regex filter gate."""
+
+    def test_classify_regex_include_match(self):
+        """Include filter matches → keep."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex="anime",
+            filter_mode=FilterMode.INCLUDE
+        )
+        media = MockMedia(file_name="My.Anime.Show.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_regex_include_no_match(self):
+        """Include filter doesn't match → skip."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex="anime",
+            filter_mode=FilterMode.INCLUDE
+        )
+        media = MockMedia(file_name="Movie.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "Does not match filter" in reason
+
+    def test_classify_regex_exclude_match(self):
+        """Exclude filter matches → skip."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex="trailer",
+            filter_mode=FilterMode.EXCLUDE
+        )
+        media = MockMedia(file_name="Movie.trailer.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "Matches exclude filter" in reason
+
+    def test_classify_regex_exclude_no_match(self):
+        """Exclude filter doesn't match → keep."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex="trailer",
+            filter_mode=FilterMode.EXCLUDE
+        )
+        media = MockMedia(file_name="Movie.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_regex_include_match_caption(self):
+        """Include filter matches caption."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex="anime",
+            filter_mode=FilterMode.INCLUDE
+        )
+        media = MockMedia(file_name="show.mkv", caption="New anime episode", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_regex_case_insensitive(self):
+        """Regex matching is case-insensitive."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex="ANIME",
+            filter_mode=FilterMode.INCLUDE
+        )
+        media = MockMedia(file_name="My.anime.Show.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_regex_none_filter(self):
+        """None filter_regex means no regex gate (passes through)."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex=None,
+            filter_mode=FilterMode.INCLUDE
+        )
+        media = MockMedia(file_name="anything.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+
+class TestClassifySizeGate:
+    """Gate 4: Size bounds gate."""
+
+    def test_classify_size_within_bounds(self):
+        """Size within min/max bounds → keep."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            min_size_mb=100,
+            max_size_mb=500
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=200*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_size_below_minimum(self):
+        """Size below minimum → skip."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            min_size_mb=500
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "Below minimum size" in reason
+
+    def test_classify_size_exceeds_maximum(self):
+        """Size exceeds maximum → skip."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            max_size_mb=500
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=1000*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "Exceeds maximum size" in reason
+
+    def test_classify_size_none_size_bytes(self):
+        """None size_bytes passes size gate."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            min_size_mb=100
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=None)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_size_none_min_max(self):
+        """None min/max size skips size gate."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            min_size_mb=None,
+            max_size_mb=None
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=999999999999)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+
+class TestClassifyAllGatesPassing:
+    """Integration: all gates pass."""
+
+    def test_classify_all_gates_pass(self):
+        """All gates pass → keep with no reason."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            schedule_days=["mon", "wed"],
+            filter_regex="anime",
+            filter_mode=FilterMode.INCLUDE,
+            min_size_mb=100,
+            max_size_mb=500
+        )
+        media = MockMedia(
+            file_name="My.Anime.Show.mkv",
+            caption="New episode",
+            size_bytes=200*1024*1024
+        )
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_gate_order_enabled_first(self):
+        """Disabled subscription skips before other gates."""
+        sub = MockSubscription(
+            enabled=False,
+            mode=SubMode.SCHEDULED,
+            schedule_days=["invalid"],
+            filter_regex="[invalid-regex",
+            min_size_mb=99999
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=1)
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "Subscription disabled" in reason
+
+
+class TestClassifyEdgeCases:
+    """Edge cases and corner scenarios."""
+
+    def test_classify_empty_file_name_and_caption(self):
+        """Empty/None file_name and caption."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            filter_regex="test"
+        )
+        media = MockMedia(file_name=None, caption=None, size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "Does not match filter" in reason
+
+    def test_classify_scheduled_with_today_param(self):
+        """Inject today parameter for deterministic schedule test."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.SCHEDULED,
+            schedule_days=["mon", "tue", "wed"]
+        )
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media, today="tue")
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_min_size_at_boundary(self):
+        """Size exactly at minimum boundary."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            min_size_mb=100
+        )
+        # Exactly 100 MB
+        media = MockMedia(file_name="test.mkv", size_bytes=100*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
+
+    def test_classify_max_size_at_boundary(self):
+        """Size exactly at maximum boundary."""
+        sub = MockSubscription(
+            enabled=True,
+            mode=SubMode.IMMEDIATE,
+            max_size_mb=500
+        )
+        # Exactly 500 MB
+        media = MockMedia(file_name="test.mkv", size_bytes=500*1024*1024)
+        decision, reason = classify(sub, media)
+        assert decision == "keep"
+        assert reason is None
