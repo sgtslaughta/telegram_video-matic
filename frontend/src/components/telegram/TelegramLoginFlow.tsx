@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import { useTgStatus, useTgLoginPhone, useTgLoginCode, useTgLoginPassword, useTgLogout } from '@/hooks/useTgStatus'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -55,7 +56,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     try {
       await loginPhone.mutateAsync(phone)
     } catch (err) {
-      console.error(err)
+      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
@@ -65,7 +66,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     try {
       await loginCode.mutateAsync(code)
     } catch (err) {
-      console.error(err)
+      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
@@ -75,7 +76,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     try {
       await loginPassword.mutateAsync(password)
     } catch (err) {
-      console.error(err)
+      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
@@ -86,7 +87,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
       setCode('')
       setPassword('')
     } catch (err) {
-      console.error(err)
+      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 

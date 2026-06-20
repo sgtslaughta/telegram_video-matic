@@ -23,6 +23,7 @@
     --secondary-foreground: 0 0% 9.0%;
     --ring: 0 0% 3.6%;
     --telegram-blue: #229ed9;
+    --radius: 0.5rem;
   }
 
   .dark {
