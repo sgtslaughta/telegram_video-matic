@@ -1,9 +1,10 @@
 """Media router: list/get/download/requeue/thumb."""
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, require_app_auth
 from app.api.schemas import MediaItemRead
+from app.db.models import Channel
 from app.db.repositories import media
 import base64
 
@@ -64,11 +65,28 @@ async def requeue_media(media_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{media_id}/thumb")
-async def get_thumb(media_id: int, db: AsyncSession = Depends(get_db)):
-    """GET /api/media/{id}/thumb — serve base64 thumbnail."""
+async def get_thumb(media_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """GET /api/media/{id}/thumb — serve cached thumbnail, fetching it lazily."""
     item = await media.get(db, media_id)
-    if not item or not item.thumb_b64:
+    if not item:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    # Lazily fetch + cache the thumbnail from Telegram on first request.
+    if not item.thumb_b64:
+        svc = getattr(request.app.state, "tg_service", None)
+        ch = await db.get(Channel, item.channel_id)
+        if svc and svc.client and ch:
+            data = await svc.fetch_thumb(ch.tg_id, item.tg_msg_id)
+            if data:
+                item.thumb_b64 = base64.b64encode(data).decode()
+                await db.commit()
+
+    if not item.thumb_b64:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
 
     thumb_bytes = base64.b64decode(item.thumb_b64)
-    return StreamingResponse(iter([thumb_bytes]), media_type="image/jpeg")
+    return StreamingResponse(
+        iter([thumb_bytes]),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

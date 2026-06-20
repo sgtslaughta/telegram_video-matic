@@ -240,6 +240,19 @@ class TelegramService:
 
         return topics
 
+    async def fetch_thumb(self, channel_tg_id: int, msg_id: int) -> Optional[bytes]:
+        """Download a message's thumbnail bytes (smallest size), or None."""
+        if not self.client:
+            return None
+        try:
+            entity = await self._channel_input(channel_tg_id)
+            msg = await self.client.get_messages(entity, ids=msg_id)
+            if not msg:
+                return None
+            return await self.client.download_media(msg, thumb=-1, file=bytes)
+        except Exception:
+            return None
+
     async def iter_media(
         self,
         channel: ChannelDTO,
