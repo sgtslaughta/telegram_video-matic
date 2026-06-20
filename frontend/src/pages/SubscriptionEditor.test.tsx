@@ -184,7 +184,9 @@ describe('SubscriptionEditor - UI Badge Color', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText(/Invalid/)).toBeTruthy()
+        // Look for the specific validation error message in the validation section
+        const errorMsg = screen.getByText(/❌ Invalid/)
+        expect(errorMsg).toBeTruthy()
       },
       { timeout: 2000 }
     )

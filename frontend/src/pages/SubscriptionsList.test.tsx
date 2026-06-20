@@ -96,9 +96,11 @@ describe('SubscriptionsList', () => {
 
     render(<SubscriptionsList />, { wrapper: createWrapper() })
 
+    // Find the power button (first icon button in the card actions)
     const buttons = screen.getAllByRole('button')
-    const disableBtn = buttons.find(btn => btn.getAttribute('aria-label')?.includes('Disable') || btn.textContent?.includes('Disable'))
-    if (disableBtn) fireEvent.click(disableBtn)
+    const powerBtn = buttons.find(btn => btn.querySelector('svg[class*="lucide-power"]'))
+
+    if (powerBtn) fireEvent.click(powerBtn)
 
     expect(mockMutate).toHaveBeenCalledWith({ enabled: false })
   })
