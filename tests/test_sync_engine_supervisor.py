@@ -353,3 +353,34 @@ async def test_sync_engine_start_stop_idempotent(session_factory, mock_tg_servic
     await engine.stop()
 
     assert True, "Multiple cycles should work"
+
+
+@pytest.mark.asyncio
+async def test_sync_engine_stop_is_prompt_with_large_intervals(
+    session_factory, mock_tg_service, mock_plugin_host
+):
+    """Regression guard: stop() must return quickly even when poll/maintenance
+    intervals are large. The loops wait on the stop event (not a plain sleep),
+    so setting it breaks the wait immediately. A revert to asyncio.sleep(interval)
+    would make stop() hang until the per-task timeout and fail this test."""
+    engine = SyncEngine(
+        session_factory=session_factory,
+        tg_service=mock_tg_service,
+        plugin_host=mock_plugin_host,
+        poll_interval_sec=3600,
+        maintenance_interval_sec=3600,
+    )
+
+    async def mock_iter_media(*args, **kwargs):
+        return
+        yield
+
+    mock_tg_service.iter_media = mock_iter_media
+
+    await engine.start()
+    await asyncio.sleep(0.02)  # let each loop run its first iteration
+    # stop() must complete well under the 30s per-task timeout
+    await asyncio.wait_for(engine.stop(), timeout=2)
+
+    for task in engine._tasks:
+        assert task.done()

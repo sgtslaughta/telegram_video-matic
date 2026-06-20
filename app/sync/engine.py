@@ -84,6 +84,7 @@ class SyncEngine:
         plugin_host: Any,
         broadcast: Optional[Callable] = None,
         poll_interval_sec: int = 60,
+        maintenance_interval_sec: int = 3600,
     ):
         """Initialize SyncEngine.
 
@@ -99,6 +100,7 @@ class SyncEngine:
         self.plugin_host = plugin_host
         self.broadcast = broadcast or (lambda x: None)
         self.poll_interval_sec = poll_interval_sec
+        self.maintenance_interval_sec = maintenance_interval_sec
         self._tasks = []
         self._stop_event = asyncio.Event()
 
@@ -389,8 +391,12 @@ class SyncEngine:
                     )
                     await session.commit()
 
-            # Sleep before next cycle
-            await asyncio.sleep(1)
+            # Wait ~1s before next cycle, but exit promptly on stop.
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=1)
+                break
+            except asyncio.TimeoutError:
+                pass
 
     async def _maintenance_pass(self, session) -> None:
         """Single pass of maintenance: drift detection and pruning.
@@ -564,9 +570,14 @@ class SyncEngine:
                 except Exception:
                     pass
 
-            # Sleep until next poll interval
+            # Wait for the interval OR an early stop signal, whichever first.
             try:
-                await asyncio.sleep(self.poll_interval_sec)
+                await asyncio.wait_for(
+                    self._stop_event.wait(), timeout=self.poll_interval_sec
+                )
+                break  # stop event set -> exit loop promptly
+            except asyncio.TimeoutError:
+                pass  # interval elapsed normally -> next iteration
             except asyncio.CancelledError:
                 raise
 
@@ -575,7 +586,6 @@ class SyncEngine:
 
         Repeatedly calls _maintenance_pass(), catching exceptions to keep loop alive.
         """
-        maintenance_interval_sec = 3600  # 1 hour
         while not self._stop_event.is_set():
             try:
                 async with self.session_factory() as session:
@@ -596,9 +606,14 @@ class SyncEngine:
                 except Exception:
                     pass
 
-            # Sleep until next maintenance cycle
+            # Wait for the interval OR an early stop signal, whichever first.
             try:
-                await asyncio.sleep(maintenance_interval_sec)
+                await asyncio.wait_for(
+                    self._stop_event.wait(), timeout=self.maintenance_interval_sec
+                )
+                break  # stop event set -> exit loop promptly
+            except asyncio.TimeoutError:
+                pass  # interval elapsed normally -> next iteration
             except asyncio.CancelledError:
                 raise
 
