@@ -538,3 +538,133 @@ class SyncEngine:
                     break
 
         await session.commit()
+
+    async def _poller(self) -> None:
+        """Loop: poll for new media at poll_interval_sec.
+
+        Repeatedly calls _poller_once(), catching exceptions to keep loop alive.
+        """
+        while not self._stop_event.is_set():
+            try:
+                async with self.session_factory() as session:
+                    await self._poller_once(session)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # Log unexpected error but continue looping
+                try:
+                    async with self.session_factory() as session:
+                        await events.add(
+                            session,
+                            level=EventLevel.ERROR,
+                            kind="sync",
+                            message=f"Poller loop error: {e}",
+                        )
+                        await session.commit()
+                except Exception:
+                    pass
+
+            # Sleep until next poll interval
+            try:
+                await asyncio.sleep(self.poll_interval_sec)
+            except asyncio.CancelledError:
+                raise
+
+    async def _maintenance(self) -> None:
+        """Loop: run maintenance periodically (hourly).
+
+        Repeatedly calls _maintenance_pass(), catching exceptions to keep loop alive.
+        """
+        maintenance_interval_sec = 3600  # 1 hour
+        while not self._stop_event.is_set():
+            try:
+                async with self.session_factory() as session:
+                    await self._maintenance_pass(session)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # Log unexpected error but continue looping
+                try:
+                    async with self.session_factory() as session:
+                        await events.add(
+                            session,
+                            level=EventLevel.ERROR,
+                            kind="sync",
+                            message=f"Maintenance loop error: {e}",
+                        )
+                        await session.commit()
+                except Exception:
+                    pass
+
+            # Sleep until next maintenance cycle
+            try:
+                await asyncio.sleep(maintenance_interval_sec)
+            except asyncio.CancelledError:
+                raise
+
+    async def start(self) -> None:
+        """Start the sync engine: launch poller, downloader, and maintenance loops.
+
+        Creates three long-running asyncio tasks that run until stop() is called.
+        Each loop catches exceptions internally to prevent the task from dying.
+        """
+        self._stop_event.clear()
+        self._tasks = [
+            asyncio.create_task(self._poller()),
+            asyncio.create_task(self._downloader()),
+            asyncio.create_task(self._maintenance()),
+        ]
+
+        # Log startup
+        try:
+            async with self.session_factory() as session:
+                await events.add(
+                    session,
+                    level=EventLevel.SUCCESS,
+                    kind="sync",
+                    message="Sync engine started",
+                )
+                await session.commit()
+        except Exception:
+            pass
+
+    async def stop(self) -> None:
+        """Stop the sync engine: cancel all running tasks gracefully.
+
+        Sets the stop event to signal loops to exit, then waits for tasks to finish
+        (with timeout), cancelling any that don't finish in time. Cleans up gracefully
+        with no orphan tasks or warnings.
+        """
+        # Signal all loops to stop
+        self._stop_event.set()
+
+        # Wait for tasks to finish (with timeout per task)
+        timeout_sec = 30
+        for task in self._tasks:
+            try:
+                await asyncio.wait_for(task, timeout=timeout_sec)
+            except asyncio.TimeoutError:
+                # Task didn't finish in time, cancel it
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=5)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                # Ignore other exceptions (task already failed)
+                pass
+
+        # Log shutdown
+        try:
+            async with self.session_factory() as session:
+                await events.add(
+                    session,
+                    level=EventLevel.SUCCESS,
+                    kind="sync",
+                    message="Sync engine stopped",
+                )
+                await session.commit()
+        except Exception:
+            pass
