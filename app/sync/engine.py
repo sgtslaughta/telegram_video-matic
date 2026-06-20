@@ -242,29 +242,47 @@ class SyncEngine:
                                 await session.commit()
                                 continue
 
-                            # Start job
+                            # Start job, mark running with known total size
                             job = await downloads.start(session, item.id)
+                            await downloads.running(session, job.id, item.size_bytes)
 
                             # Create temp file for download
                             temp_file = tempfile.mktemp(suffix=".tmp")
 
                             try:  # Download attempt
-                                # Throttle broadcast: track last broadcast time
+                                # Throttle broadcast to ~1 Hz; track last sample for speed/ETA.
                                 last_broadcast_time = [None]
+                                last_bytes = [0]
 
                                 async def on_progress(current_bytes, total_bytes):
-                                    """Progress callback with ~1 Hz throttle."""
+                                    """Progress callback with ~1 Hz throttle + speed/ETA."""
                                     now = datetime.now(timezone.utc)
-                                    if last_broadcast_time[0] is None or \
-                                       (now - last_broadcast_time[0]).total_seconds() >= 1.0:
+                                    prev = last_broadcast_time[0]
+                                    if prev is None or (now - prev).total_seconds() >= 1.0:
+                                        speed_bps = None
+                                        eta_sec = None
+                                        if prev is not None:
+                                            dt = (now - prev).total_seconds()
+                                            if dt > 0:
+                                                speed_bps = int((current_bytes - last_bytes[0]) / dt)
+                                                if speed_bps > 0 and total_bytes:
+                                                    eta_sec = int((total_bytes - current_bytes) / speed_bps)
                                         last_broadcast_time[0] = now
+                                        last_bytes[0] = current_bytes
+                                        await downloads.update_progress(
+                                            session, job.id, current_bytes,
+                                            eta_sec=eta_sec, speed_bps=speed_bps,
+                                        )
                                         await self.broadcast({
-                                            "type": "download_progress",
+                                            "kind": "download_progress",
                                             "job_id": job.id,
                                             "media_id": item.id,
+                                            "status": "running",
                                             "progress": current_bytes / total_bytes if total_bytes else 0,
                                             "bytes_done": current_bytes,
                                             "bytes_total": total_bytes,
+                                            "speed_bps": speed_bps,
+                                            "eta_sec": eta_sec,
                                         })
 
                                 # Download from Telegram (resolve message by channel+id)
@@ -637,12 +655,19 @@ class SyncEngine:
         # at queued/downloading never resume (the downloader only claims pending).
         try:
             from sqlalchemy import update
-            from app.db.models import MediaItem
+            from app.db.models import MediaItem, DownloadJob, JobStatus
             async with self.session_factory() as session:
                 await session.execute(
                     update(MediaItem)
                     .where(MediaItem.status.in_([MediaStatus.QUEUED, MediaStatus.DOWNLOADING]))
                     .values(status=MediaStatus.PENDING)
+                )
+                # Orphaned jobs from a prior run aren't actually downloading: cancel
+                # them so they vanish from the active list (media is requeued above).
+                await session.execute(
+                    update(DownloadJob)
+                    .where(DownloadJob.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
+                    .values(status=JobStatus.CANCELED)
                 )
                 await session.commit()
         except Exception:

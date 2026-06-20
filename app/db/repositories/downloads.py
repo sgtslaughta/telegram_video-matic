@@ -19,6 +19,21 @@ async def start(session: AsyncSession, media_id: int) -> DownloadJob:
     return job
 
 
+async def running(
+    session: AsyncSession,
+    job_id: int,
+    bytes_total: int | None = None,
+) -> DownloadJob | None:
+    """Mark a job as actively downloading; record total size if known."""
+    job = await session.get(DownloadJob, job_id)
+    if job:
+        job.status = JobStatus.RUNNING
+        if bytes_total:
+            job.bytes_total = bytes_total
+        await session.commit()
+    return job
+
+
 async def update_progress(
     session: AsyncSession,
     job_id: int,

@@ -94,7 +94,7 @@ export default function MediaDetail() {
               {isDownloading && activeDownload && (
                 <div className="space-y-1">
                   <ProgressBar
-                    progress={activeDownload.progress || 0}
+                    progress={(activeDownload.progress || 0) * 100}
                     animated
                   />
                   <div className="text-xs text-muted-foreground">

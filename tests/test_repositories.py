@@ -223,6 +223,26 @@ async def test_media_claim_pending_atomicity(session):
     claimed4 = await media.claim_pending(session, limit=10)
     assert len(claimed4) == 0  # No pending items left (all queued or in disabled sub)
 
+    # Test: ad-hoc items (subscription_id=None) ARE claimed
+    m_adhoc = await media.upsert_from_tg(
+        session=session,
+        channel_id=channel.id,
+        topic_id=None,
+        subscription_id=None,
+        tg_msg_id=4,
+        caption="Ad-hoc",
+        file_name="adhoc.mp4",
+        mime="video/mp4",
+        size_bytes=4000000,
+        duration_sec=240,
+        date_posted=datetime.now(timezone.utc),
+        thumb_b64=None,
+        raw=None,
+    )
+    claimed5 = await media.claim_pending(session, limit=10)
+    assert [c.id for c in claimed5] == [m_adhoc.id]
+    assert claimed5[0].status == MediaStatus.QUEUED
+
 
 @pytest.mark.asyncio
 async def test_downloads_lifecycle(session):

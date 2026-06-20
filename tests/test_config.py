@@ -31,5 +31,6 @@ def test_settings_fails_without_tvm_secret_key(monkeypatch):
     """Settings initialization fails if TVM_SECRET_KEY unset."""
     monkeypatch.delenv("TVM_SECRET_KEY", raising=False)
 
+    # _env_file=None so a developer's local .env doesn't supply the key.
     with pytest.raises(ValueError):
-        Settings()
+        Settings(_env_file=None)

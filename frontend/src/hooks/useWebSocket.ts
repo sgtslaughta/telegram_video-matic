@@ -56,11 +56,12 @@ export function useWebSocket() {
       } else if (msg.kind === 'download_progress') {
         // Update active downloads list
         const current = qc.getQueryData<T.DownloadJob[]>(downloadKeys.active()) || []
+        const patch = { progress: msg.progress, status: msg.status, bytes_done: msg.bytes_done, bytes_total: msg.bytes_total, speed_bps: msg.speed_bps, eta_sec: msg.eta_sec }
         const updated = current.map((j) =>
-          j.id === msg.media_id ? { ...j, progress: msg.progress, speed_bps: msg.speed_bps, eta_sec: msg.eta_sec, status: msg.status } : j
+          j.media_id === msg.media_id ? { ...j, ...patch } : j
         )
-        if (!updated.some((j) => j.id === msg.media_id)) {
-          updated.push({ id: msg.media_id, media_id: msg.media_id, status: msg.status, progress: msg.progress, speed_bps: msg.speed_bps, eta_sec: msg.eta_sec, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as any)
+        if (!updated.some((j) => j.media_id === msg.media_id)) {
+          updated.push({ id: msg.job_id, media_id: msg.media_id, attempt: 1, error: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...patch } as any)
         }
         qc.setQueryData(downloadKeys.active(), updated)
       } else if (msg.kind === 'media_status') {

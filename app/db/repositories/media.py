@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from app.db.models import MediaItem, MediaStatus, Subscription
 
 if TYPE_CHECKING:
@@ -84,21 +84,22 @@ async def claim_pending(
     limit: int = 10,
 ) -> list[MediaItem]:
     """
-    Atomically claim pending media items from enabled subscriptions.
-    Flips status pending→queued in a single transaction.
+    Atomically claim pending media items: ad-hoc (no subscription) or from
+    enabled subscriptions. Flips status pending→queued in a single transaction.
     """
-    # Select pending items from enabled subscriptions
+    # Outer join so ad-hoc items (subscription_id IS NULL) are included.
     result = await session.execute(
-        select(MediaItem).where(
-            and_(
-                MediaItem.status == MediaStatus.PENDING,
-                MediaItem.subscription_id.isnot(None),
-            )
-        ).join(
+        select(MediaItem).outerjoin(
             Subscription,
             MediaItem.subscription_id == Subscription.id,
         ).where(
-            Subscription.enabled.is_(True),
+            and_(
+                MediaItem.status == MediaStatus.PENDING,
+                or_(
+                    MediaItem.subscription_id.is_(None),
+                    Subscription.enabled.is_(True),
+                ),
+            )
         ).limit(limit)
     )
     items = result.scalars().all()

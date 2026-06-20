@@ -7,7 +7,6 @@ import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/shared'
 import * as api from '@/lib/api'
@@ -70,27 +69,25 @@ export default function Downloads() {
       ) : jobs.length === 0 ? (
         <EmptyState title="No active downloads" message="Queued and in-progress downloads will appear here in real time." />
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-border rounded-lg border">
           {jobs.map((job) => (
-            <Card key={job.id}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Download #{job.id}</CardTitle>
+            <div key={job.id} className="flex items-center gap-4 px-4 py-2.5">
+              <div className="flex w-40 shrink-0 items-center gap-2">
                 <StatusBadge status={job.status} />
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <ProgressBar progress={job.progress} animated showLabel />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>
-                    {job.bytes_total
-                      ? `${fmtBytes(job.bytes_done)} / ${fmtBytes(job.bytes_total)}`
-                      : fmtBytes(job.bytes_done)}
-                  </span>
-                  <span>{job.speed_bps ? `${fmtBytes(job.speed_bps)}/s` : '—'}</span>
-                  <span>ETA {fmtEta(job.eta_sec)}</span>
-                </div>
-                {job.error && <p className="text-xs text-destructive">{job.error}</p>}
-              </CardContent>
-            </Card>
+                <span className="truncate text-xs text-muted-foreground">#{job.id}</span>
+              </div>
+              <div className="flex-1">
+                <ProgressBar progress={(job.progress ?? 0) * 100} animated />
+                {job.error && <p className="mt-1 text-xs text-destructive">{job.error}</p>}
+              </div>
+              <div className="flex w-44 shrink-0 justify-end gap-3 text-xs tabular-nums text-muted-foreground">
+                <span className="w-12 text-right font-medium text-foreground">
+                  {Math.round((job.progress ?? 0) * 100)}%
+                </span>
+                <span>{job.speed_bps ? `${fmtBytes(job.speed_bps)}/s` : '—'}</span>
+                <span>{fmtEta(job.eta_sec)}</span>
+              </div>
+            </div>
           ))}
         </div>
       )}
