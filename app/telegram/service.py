@@ -75,7 +75,7 @@ class TelegramService:
             return
 
         # Persist session
-        session_str = self.client.session.get_session_string()
+        session_str = self.client.session.save()
         await self.account_repo.update_session(self.account.id, encrypt(session_str))
 
         # Disconnect
@@ -120,7 +120,7 @@ class TelegramService:
                     phone_code_hash=self._phone_code_hash
                 )
                 # Success: persist session and mark connected
-                session_str = self.client.session.get_session_string()
+                session_str = self.client.session.save()
                 await self.account_repo.update_session(self.account.id, encrypt(session_str))
                 await self.account_repo.update_status(self.account.id, AccountStatus.CONNECTED)
             except SessionPasswordNeededError:
@@ -134,7 +134,7 @@ class TelegramService:
                 raise RuntimeError("Client not initialized or account missing")
 
             await self.client.sign_in(password=password)
-            session_str = self.client.session.get_session_string()
+            session_str = self.client.session.save()
             await self.account_repo.update_session(self.account.id, encrypt(session_str))
             await self.account_repo.update_status(self.account.id, AccountStatus.CONNECTED)
 
