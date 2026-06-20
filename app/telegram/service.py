@@ -42,23 +42,24 @@ class TelegramService:
         self.event_sink = event_sink
 
     async def load_account(self) -> None:
-        """Load Account from DB; build client if session exists."""
+        """Load Account from DB; build client whenever API credentials exist.
+
+        Builds with the saved session if present, else an empty session so a
+        configured-but-not-yet-logged-in account survives restarts (login can
+        proceed without re-entering credentials).
+        """
         self.account = await self.account_repo.get()
-        if self.account and self.account.session_enc:
-            session_str = decrypt(self.account.session_enc)
-            api_id = int(decrypt(self.account.api_id_enc))
-            api_hash = decrypt(self.account.api_hash_enc)
-            # Try to create StringSession; if invalid (test mode), pass None and let factory handle it
-            try:
-                session = StringSession(session_str)
-            except ValueError:
-                # Invalid session string in test mode; pass None
-                session = StringSession(None)
-            self.client = self.client_factory(
-                session,
-                api_id,
-                api_hash
-            )
+        if not self.account or not self.account.api_id_enc:
+            return
+        api_id = int(decrypt(self.account.api_id_enc))
+        api_hash = decrypt(self.account.api_hash_enc)
+        session_str = decrypt(self.account.session_enc) if self.account.session_enc else None
+        try:
+            session = StringSession(session_str) if session_str else StringSession()
+        except ValueError:
+            # Invalid session string (e.g., test mode) → empty session
+            session = StringSession()
+        self.client = self.client_factory(session, api_id, api_hash)
 
     async def connect(self) -> None:
         """Connect to Telegram; update status to connected if authorized."""
