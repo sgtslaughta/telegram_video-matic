@@ -35,3 +35,9 @@ async def set(
 
     await session.commit()
     return setting
+
+
+async def list(session: AsyncSession) -> list[Setting]:
+    """List all settings."""
+    result = await session.execute(select(Setting))
+    return result.scalars().all()
