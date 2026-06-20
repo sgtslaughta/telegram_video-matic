@@ -1,10 +1,15 @@
 import { Link, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { LayoutDashboard, BookOpen, Compass, ActivitySquare, Settings } from 'lucide-react'
+import { LayoutDashboard, BookOpen, Compass, ActivitySquare, Settings, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
-export default function Sidebar() {
+export default function Sidebar({
+  connected,
+  onConnectClick,
+}: {
+  connected: boolean
+  onConnectClick: () => void
+}) {
   const location = useLocation()
   const links = [
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -13,41 +18,46 @@ export default function Sidebar() {
     { label: 'Activity', href: '/activity', icon: ActivitySquare },
     { label: 'Settings', href: '/settings', icon: Settings },
   ]
-
-  const isActive = (href: string) => {
-    if (href === '/') {
-      return location.pathname === '/'
-    }
-    return location.pathname.startsWith(href)
-  }
+  const isActive = (href: string) =>
+    href === '/' ? location.pathname === '/' : location.pathname.startsWith(href)
 
   return (
-    <nav className="w-64 h-screen bg-slate-900 text-white overflow-y-auto flex flex-col border-r border-slate-700">
-      <div className="p-6 border-b border-slate-700">
-        <h1 className="text-xl font-bold">Video-Matic</h1>
+    <nav className="flex h-screen w-60 flex-col border-r border-border bg-card">
+      <div className="flex h-16 items-center border-b border-border px-6">
+        <h1 className="text-lg font-semibold tracking-tight">Video-Matic</h1>
       </div>
-      <div className="flex-1 p-4 space-y-2">
+      <div className="flex-1 space-y-1 p-3">
         {links.map((link) => {
           const active = isActive(link.href)
           const Icon = link.icon
           return (
-            <motion.div key={link.href} whileHover={{ x: 4 }}>
-              <Link to={link.href}>
-                <Button
-                  variant={active ? 'default' : 'ghost'}
-                  className={`w-full justify-start ${
-                    active
-                      ? 'bg-[#229ED9] hover:bg-[#1a7aaf] text-white'
-                      : 'text-gray-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <Icon className="mr-2 h-4 w-4" />
-                  {link.label}
-                </Button>
-              </Link>
-            </motion.div>
+            <Link key={link.href} to={link.href}>
+              <Button
+                variant="ghost"
+                className={cn(
+                  'w-full justify-start gap-2 font-normal',
+                  active && 'bg-secondary font-medium text-secondary-foreground'
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {link.label}
+              </Button>
+            </Link>
           )
         })}
+      </div>
+      <div className="border-t border-border p-3">
+        <Button variant="ghost" className="w-full justify-start gap-2 font-normal" onClick={onConnectClick}>
+          <Send className="h-4 w-4" />
+          <span className="flex-1 text-left">Telegram</span>
+          <span
+            className={cn(
+              'h-2 w-2 rounded-full',
+              connected ? 'bg-green-500' : 'bg-amber-500'
+            )}
+            aria-label={connected ? 'connected' : 'not connected'}
+          />
+        </Button>
       </div>
     </nav>
   )
