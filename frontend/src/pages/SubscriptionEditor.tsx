@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useSubscription, useCreateSubscription, useUpdateSubscription } from '@/hooks/useSubscriptions'
-import { useChannels, useTopics } from '@/hooks/useChannelsTopics'
+import { useChannels, useTopics } from '@/hooks/useChannels'
 import { useSubscriptionEditor } from '@/hooks/useSubscriptionEditor'
 import type * as T from '@/lib/types'
 import { toast } from 'sonner'
@@ -141,10 +141,10 @@ export default function SubscriptionEditor() {
       <div className="space-y-4 border-b pb-6">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="channel">Channel</Label>
+            <label htmlFor="channel" className="block text-sm font-medium mb-1">Channel</label>
             <select
               id="channel"
-              className="w-full px-3 py-2 border rounded-md bg-background"
+              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
               value={editor.state.channelId || ''}
               onChange={(e) => {
                 editor.update('channelId', e.target.value ? parseInt(e.target.value) : null)
@@ -161,10 +161,10 @@ export default function SubscriptionEditor() {
           </div>
 
           <div>
-            <Label htmlFor="topic">Topic</Label>
+            <label htmlFor="topic" className="block text-sm font-medium mb-1">Topic</label>
             <select
               id="topic"
-              className="w-full px-3 py-2 border rounded-md bg-background"
+              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
               value={editor.state.topicId || ''}
               onChange={(e) => editor.update('topicId', e.target.value ? parseInt(e.target.value) : null)}
               disabled={!editor.state.channelId}
@@ -183,7 +183,7 @@ export default function SubscriptionEditor() {
       {/* Filter */}
       <div className="space-y-4 border-b pb-6">
         <div>
-          <Label className="mb-2 block">Filter Mode</Label>
+          <span className="block text-sm font-medium mb-2">Filter Mode</span>
           <div className="flex gap-4">
             {['include', 'exclude'].map((mode) => (
               <label key={mode} className="flex items-center gap-2 cursor-pointer">
@@ -201,13 +201,14 @@ export default function SubscriptionEditor() {
         </div>
 
         <div>
-          <Label htmlFor="regex">Filter Regex</Label>
-          <Textarea
+          <label htmlFor="regex" className="block text-sm font-medium mb-1">Filter Regex</label>
+          <textarea
             id="regex"
             value={editor.state.filterRegex}
             onChange={(e) => editor.update('filterRegex', e.target.value)}
             placeholder="e.g., .*\\.mkv$ to match video files"
-            className="font-mono text-sm"
+            className="font-mono text-sm w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
+            rows={3}
           />
           <div className="mt-2 flex items-center gap-2">
             {editor.state.filterRegex && (
@@ -224,13 +225,15 @@ export default function SubscriptionEditor() {
 
       {/* Schedule */}
       <div className="space-y-4 border-b pb-6">
-        <Label className="block">Schedule Days</Label>
+        <span className="block text-sm font-medium">Schedule Days</span>
         <div className="grid grid-cols-4 gap-3">
           {DAYS.map((day) => (
             <label key={day.value} className="flex items-center gap-2 cursor-pointer">
-              <Checkbox
+              <input
+                type="checkbox"
                 checked={editor.state.scheduleDays.includes(day.value)}
-                onCheckedChange={() => editor.toggleScheduleDay(day.value)}
+                onChange={() => editor.toggleScheduleDay(day.value)}
+                className="w-4 h-4 rounded"
               />
               <span className="text-sm">{day.label}</span>
             </label>
@@ -242,23 +245,25 @@ export default function SubscriptionEditor() {
       <div className="space-y-4 border-b pb-6">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="minSize">Min Size (MB)</Label>
-            <Input
+            <label htmlFor="minSize" className="block text-sm font-medium mb-1">Min Size (MB)</label>
+            <input
               id="minSize"
               type="number"
               value={editor.state.minSizeMb ?? ''}
               onChange={(e) => editor.update('minSizeMb', e.target.value ? parseFloat(e.target.value) : null)}
               placeholder="0"
+              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
             />
           </div>
           <div>
-            <Label htmlFor="maxSize">Max Size (MB)</Label>
-            <Input
+            <label htmlFor="maxSize" className="block text-sm font-medium mb-1">Max Size (MB)</label>
+            <input
               id="maxSize"
               type="number"
               value={editor.state.maxSizeMb ?? ''}
               onChange={(e) => editor.update('maxSizeMb', e.target.value ? parseFloat(e.target.value) : null)}
               placeholder="1000"
+              className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
             />
           </div>
         </div>
@@ -267,22 +272,24 @@ export default function SubscriptionEditor() {
       {/* Storage & Template */}
       <div className="space-y-4 border-b pb-6">
         <div>
-          <Label htmlFor="path">Storage Path</Label>
-          <Input
+          <label htmlFor="path" className="block text-sm font-medium mb-1">Storage Path</label>
+          <input
             id="path"
             value={editor.state.storagePath}
             onChange={(e) => editor.update('storagePath', e.target.value)}
             placeholder="/media/downloads"
+            className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
           />
         </div>
 
         <div>
-          <Label htmlFor="template">Rename Template</Label>
-          <Input
+          <label htmlFor="template" className="block text-sm font-medium mb-1">Rename Template</label>
+          <input
             id="template"
             value={editor.state.renameTemplate}
             onChange={(e) => editor.update('renameTemplate', e.target.value)}
             placeholder="{channel}/{title}/{season}/{episode}.{ext}"
+            className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
           />
           <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
             Preview: <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{previewFilename}</code>
@@ -293,20 +300,23 @@ export default function SubscriptionEditor() {
       {/* Advanced */}
       <div className="space-y-4 border-b pb-6">
         <div>
-          <Label htmlFor="retention">Retention Days (override global)</Label>
-          <Input
+          <label htmlFor="retention" className="block text-sm font-medium mb-1">Retention Days (override global)</label>
+          <input
             id="retention"
             type="number"
             value={editor.state.retentionDays ?? ''}
             onChange={(e) => editor.update('retentionDays', e.target.value ? parseInt(e.target.value) : null)}
             placeholder="30"
+            className="w-full px-3 py-2 border rounded-md bg-background border-gray-300 dark:border-gray-600"
           />
         </div>
 
         <label className="flex items-center gap-2 cursor-pointer">
-          <Checkbox
+          <input
+            type="checkbox"
             checked={editor.state.seasonDetection}
-            onCheckedChange={(checked) => editor.update('seasonDetection', !!checked)}
+            onChange={(e) => editor.update('seasonDetection', e.target.checked)}
+            className="w-4 h-4 rounded"
           />
           <span className="text-sm">Enable season detection</span>
         </label>
@@ -314,12 +324,20 @@ export default function SubscriptionEditor() {
 
       {/* Buttons */}
       <div className="flex gap-3">
-        <Button onClick={handleSubmit} disabled={isSubmitting} className="flex-1">
+        <button
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+          className="flex-1 px-4 py-2 bg-[#229ED9] text-white rounded-md hover:bg-[#1a7aaf] disabled:opacity-50"
+        >
           {isSubmitting ? 'Saving...' : isNew ? 'Create' : 'Update'}
-        </Button>
-        <Button variant="outline" onClick={() => navigate('/subscriptions')} disabled={isSubmitting}>
+        </button>
+        <button
+          onClick={() => navigate('/subscriptions')}
+          disabled={isSubmitting}
+          className="px-4 py-2 border rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+        >
           Cancel
-        </Button>
+        </button>
       </div>
     </div>
   )
