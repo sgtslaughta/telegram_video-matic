@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { useChannels, useTopics } from '@/hooks/useChannelsTopics'
 import { useMedia, useDownloadMedia } from '@/hooks/useMedia'
@@ -41,6 +41,8 @@ const itemVariants = {
 
 export default function Browse() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const q = (params.get('q') ?? '').toLowerCase()
   const [selectedChannel, setSelectedChannel] = useState<number | null>(null)
   const [selectedTopic, setSelectedTopic] = useState<number | null>(null)
 
@@ -70,8 +72,8 @@ export default function Browse() {
       transition={{ duration: 0.4 }}
     >
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Browse Media</h1>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Filter and download media from your channels</p>
+        <h1 className="text-2xl font-bold text-foreground">Browse Media</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Filter and download media from your channels</p>
       </div>
 
       <motion.div
@@ -137,23 +139,37 @@ export default function Browse() {
           message="Choose a channel above to browse and download media"
         />
       ) : media.isLoading ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">Loading media...</div>
+        <div className="text-center py-12 text-muted-foreground">Loading media...</div>
       ) : !media.data?.length ? (
         <EmptyState
           title="No media found"
           message="This channel has no media available"
         />
       ) : (
-        <motion.div
-          className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          {media.data.map((item) => (
-            <MediaCard key={item.id} item={item} />
-          ))}
-        </motion.div>
+        <>
+          {(() => {
+            const visible = (media.data ?? []).filter(
+              (item) => !q || (item.caption ?? '').toLowerCase().includes(q)
+            )
+            return visible.length === 0 ? (
+              <EmptyState
+                title="No media matches"
+                message="Try a different search"
+              />
+            ) : (
+              <motion.div
+                className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+              >
+                {visible.map((item) => (
+                  <MediaCard key={item.id} item={item} />
+                ))}
+              </motion.div>
+            )
+          })()}
+        </>
       )}
     </motion.div>
   )
@@ -181,7 +197,7 @@ function MediaCard({ item }: { item: any }) {
         </button>
         <CardContent className="flex-1 flex flex-col p-3 space-y-3">
           {item.caption && (
-            <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2">{item.caption}</p>
+            <p className="text-xs text-foreground line-clamp-2">{item.caption}</p>
           )}
           <div className="flex items-center justify-between mt-auto">
             <StatusBadge status={item.status} />
@@ -191,7 +207,7 @@ function MediaCard({ item }: { item: any }) {
                   size="sm"
                   onClick={() => download.mutate()}
                   disabled={download.isPending}
-                  className="bg-[#229ED9] hover:bg-[#1a7aaf]"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   <Download className="h-3 w-3" />
                 </Button>
