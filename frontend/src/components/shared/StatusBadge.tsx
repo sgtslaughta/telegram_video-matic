@@ -29,8 +29,8 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
   // AccountStatus
   [AccountStatus.CONNECTED]: { bg: 'bg-green-100', text: 'text-green-800', label: 'Connected' },
   [AccountStatus.DISCONNECTED]: {
-    bg: 'bg-gray-100',
-    text: 'text-gray-800',
+    bg: 'bg-muted',
+    text: 'text-foreground',
     label: 'Disconnected',
   },
   [AccountStatus.WAITING_PHONE]: {
@@ -62,8 +62,8 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const config = STATUS_COLORS[status] || {
-    bg: 'bg-gray-100',
-    text: 'text-gray-800',
+    bg: 'bg-muted',
+    text: 'text-foreground',
     label: status,
   }
 

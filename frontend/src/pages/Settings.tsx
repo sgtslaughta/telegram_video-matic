@@ -207,11 +207,11 @@ export default function Settings() {
                     key={plugin.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:shadow-md transition-all dark:border-slate-700"
+                    className="flex items-center justify-between p-3 border border-border rounded-lg hover:shadow-md transition-all"
                   >
                     <div>
                       <p className="font-medium">{plugin.name}</p>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">v{plugin.version}</p>
+                      <p className="text-sm text-muted-foreground">v{plugin.version}</p>
                     </div>
                     <Switch
                       aria-label={plugin.name}
@@ -224,7 +224,7 @@ export default function Settings() {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500">No plugins installed</p>
+              <p className="text-muted-foreground">No plugins installed</p>
             )}
           </CardContent>
         </Card>
@@ -235,7 +235,7 @@ export default function Settings() {
         <Button
           onClick={handleSave}
           disabled={updateSettings.isPending || updatePlugin.isPending}
-          className="w-full bg-[#229ED9] hover:bg-[#1a7aaf]"
+          className="w-full bg-primary hover:bg-primary/90"
           size="lg"
         >
           Save Changes

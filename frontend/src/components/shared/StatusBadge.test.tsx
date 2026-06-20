@@ -28,8 +28,8 @@ describe('StatusBadge', () => {
   it('renders gray badge for disconnected account status', () => {
     render(<StatusBadge status={AccountStatus.DISCONNECTED} />)
     const badge = screen.getByText('Disconnected')
-    expect(badge.className).toContain('bg-gray-100')
-    expect(badge.className).toContain('text-gray-800')
+    expect(badge.className).toContain('bg-muted')
+    expect(badge.className).toContain('text-foreground')
   })
 
   it('renders green badge for connected account status', () => {

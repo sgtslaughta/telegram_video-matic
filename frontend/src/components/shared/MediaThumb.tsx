@@ -19,7 +19,7 @@ function Skeleton({ size }: { size: 'sm' | 'md' | 'lg' }) {
     <div
       className={clsx(
         SIZE_CLASSES[size],
-        'animate-pulse rounded-md bg-gray-200'
+        'animate-pulse rounded-md bg-muted'
       )}
     />
   )
@@ -39,7 +39,7 @@ export function MediaThumb({
       <div
         className={clsx(
           SIZE_CLASSES[size],
-          'flex items-center justify-center rounded-md bg-gray-100',
+          'flex items-center justify-center rounded-md bg-muted',
           className
         )}
       >

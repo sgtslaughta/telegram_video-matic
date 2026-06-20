@@ -88,7 +88,7 @@ describe('Polish Pass - Telegram Accents & Animations', () => {
 
     it('ProgressBar has proper background color class', () => {
       const { container } = render(<ProgressBar progress={50} />)
-      const barContainer = container.querySelector('.bg-gray-200')
+      const barContainer = container.querySelector('.bg-muted')
       expect(barContainer).toBeTruthy()
     })
   })

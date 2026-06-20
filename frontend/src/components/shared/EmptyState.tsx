@@ -20,7 +20,7 @@ export function EmptyState({
 }: EmptyStateProps) {
   const defaultIcon = (
     <svg
-      className="h-12 w-12 text-gray-400"
+      className="h-12 w-12 text-muted-foreground"
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
@@ -37,17 +37,17 @@ export function EmptyState({
   return (
     <div
       className={clsx(
-        'flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 px-6 py-12 text-center',
+        'flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-12 text-center',
         className
       )}
     >
       <div className="mb-4">{icon || defaultIcon}</div>
-      <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-      <p className="mt-2 text-sm text-gray-600">{message}</p>
+      <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+      <p className="mt-2 text-sm text-muted-foreground">{message}</p>
       {action && (
         <button
           onClick={action.onClick}
-          className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           {action.label}
         </button>

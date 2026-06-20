@@ -34,11 +34,11 @@ const EVENT_KINDS = [
 ]
 
 const LEVEL_COLORS: Record<string, string> = {
-  debug: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
-  info: 'bg-blue-100 text-blue-800 dark:bg-[#229ED9]/20 dark:text-blue-300',
-  success: 'bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-200',
-  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-700 dark:text-amber-200',
-  error: 'bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-200',
+  debug: 'bg-muted text-foreground',
+  info: 'bg-primary/10 text-primary',
+  success: 'bg-green-100 text-green-800',
+  warning: 'bg-amber-100 text-amber-800',
+  error: 'bg-red-100 text-red-800',
 }
 
 const containerVariants = {
@@ -98,8 +98,8 @@ export default function Activity() {
     >
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Activity</h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">View and filter system events</p>
+        <h1 className="text-3xl font-bold text-foreground">Activity</h1>
+        <p className="mt-2 text-muted-foreground">View and filter system events</p>
       </div>
 
       {/* Filters */}
@@ -165,7 +165,7 @@ export default function Activity() {
           </CardHeader>
           <CardContent>
             {events.isLoading ? (
-              <div className="py-8 text-center text-gray-600 dark:text-gray-400">
+              <div className="py-8 text-center text-muted-foreground">
                 Loading...
               </div>
             ) : events.data && events.data.length > 0 ? (
@@ -180,7 +180,7 @@ export default function Activity() {
                     <motion.div
                       key={event.id}
                       variants={itemVariants}
-                      className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      className="flex items-start gap-3 p-3 rounded-lg border border-border transition-colors hover:bg-muted/50"
                     >
                       {/* Level Badge */}
                       <div className="flex-shrink-0 pt-0.5">
@@ -192,7 +192,7 @@ export default function Activity() {
                       {/* Message and Details */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm">{event.message}</p>
-                        <div className="mt-1 flex gap-3 text-xs text-gray-500">
+                        <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
                           <span>{event.kind}</span>
                           <span>
                             {new Date(event.created_at).toLocaleDateString()} at{' '}
@@ -205,7 +205,7 @@ export default function Activity() {
                 </motion.div>
 
                 {/* Pagination */}
-                <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between pt-4 border-t border-border">
                   <Button
                     onClick={handlePrevious}
                     disabled={!canGoPrevious}
@@ -215,7 +215,7 @@ export default function Activity() {
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
 
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="text-sm text-muted-foreground">
                     Offset: {offset}
                   </span>
 

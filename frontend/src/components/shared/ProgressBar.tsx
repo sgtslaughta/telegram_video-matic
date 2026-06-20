@@ -18,16 +18,16 @@ export function ProgressBar({
 
   return (
     <div className={clsx('w-full', className)}>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-slate-700">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
         <motion.div
-          className="h-full bg-[#229ED9]"
+          className="h-full bg-primary"
           initial={animated ? { width: 0 } : { width: `${clampedProgress}%` }}
           animate={{ width: `${clampedProgress}%` }}
           transition={{ duration: animated ? 0.5 : 0, ease: 'easeOut' }}
         />
       </div>
       {showLabel && (
-        <p className="mt-1 text-right text-xs text-gray-600 dark:text-gray-400">{Math.round(clampedProgress)}%</p>
+        <p className="mt-1 text-right text-xs text-muted-foreground">{Math.round(clampedProgress)}%</p>
       )}
     </div>
   )
