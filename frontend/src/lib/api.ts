@@ -60,6 +60,12 @@ export const tg = {
   status: () =>
     fetchAPI<T.TelegramStatusRead>('/tg/status'),
 
+  setCredentials: (api_id: string, api_hash: string) =>
+    fetchAPI<void>('/tg/credentials', {
+      method: 'POST',
+      body: JSON.stringify({ api_id, api_hash }),
+    }),
+
   loginPhone: (phone: string) =>
     fetchAPI<void>('/tg/login', {
       method: 'POST',

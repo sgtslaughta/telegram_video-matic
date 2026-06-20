@@ -24,6 +24,7 @@ class AuthMeRead(BaseModel):
 class TelegramStatusRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     status: str
+    configured: bool = False
     username: Optional[str] = None
     display_name: Optional[str] = None
     phone: Optional[str] = None
@@ -39,6 +40,25 @@ class TelegramStatusRead(BaseModel):
 # ============================================================================
 # Telegram login flow
 # ============================================================================
+
+class TelegramCredentialsRequest(BaseModel):
+    api_id: str
+    api_hash: str
+
+    @field_validator("api_id")
+    @classmethod
+    def api_id_numeric(cls, v):
+        if not str(v).strip().isdigit():
+            raise ValueError("api_id must be numeric")
+        return str(v).strip()
+
+    @field_validator("api_hash")
+    @classmethod
+    def api_hash_present(cls, v):
+        if not str(v).strip():
+            raise ValueError("api_hash is required")
+        return str(v).strip()
+
 
 class TelegramPhoneRequest(BaseModel):
     phone: str

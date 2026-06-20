@@ -21,7 +21,7 @@ describe('Connect', () => {
 
   it('shows phone step when status is disconnected', () => {
     vi.spyOn(tgHook, 'useTgStatus').mockReturnValue({
-      data: { status: AccountStatus.DISCONNECTED },
+      data: { status: AccountStatus.DISCONNECTED, configured: true },
       isLoading: false,
       isError: false,
       error: null,
@@ -82,7 +82,7 @@ describe('Connect', () => {
 
   it('shows code step when status is awaiting_code', () => {
     vi.spyOn(tgHook, 'useTgStatus').mockReturnValue({
-      data: { status: AccountStatus.WAITING_CODE },
+      data: { status: AccountStatus.WAITING_CODE, configured: true },
       isLoading: false,
       isError: false,
       error: null,
@@ -145,6 +145,7 @@ describe('Connect', () => {
     vi.spyOn(tgHook, 'useTgStatus').mockReturnValue({
       data: {
         status: AccountStatus.CONNECTED,
+        configured: true,
         username: 'testuser',
         display_name: 'Test User',
         phone: '+1234567890',

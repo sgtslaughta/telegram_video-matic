@@ -14,7 +14,7 @@ describe('TelegramLoginDialog', () => {
   beforeEach(() => {
     qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
     vi.clearAllMocks()
-    vi.mocked(api.tg.status).mockResolvedValue({ status: 'disconnected' } as any)
+    vi.mocked(api.tg.status).mockResolvedValue({ status: 'disconnected', configured: true } as any)
   })
 
   it('renders the login flow when open', async () => {

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from app.api.deps import require_app_auth
 from app.api.schemas import (
     TelegramStatusRead,
+    TelegramCredentialsRequest,
     TelegramPhoneRequest,
     TelegramCodeRequest,
     TelegramPasswordRequest,
@@ -18,12 +19,14 @@ async def _get_tg_status(request: Request) -> TelegramStatusRead:
     account = svc.account
     if not account:
         # Fresh install / not yet configured: report disconnected so the UI
-        # shows the connect wizard rather than erroring.
+        # shows the credentials step rather than erroring.
         return TelegramStatusRead(
-            status="disconnected", username=None, display_name=None, phone=None
+            status="disconnected", configured=False,
+            username=None, display_name=None, phone=None
         )
     return TelegramStatusRead(
         status=account.status.value,
+        configured=bool(account.api_id_enc),
         username=account.username,
         display_name=account.display_name,
         phone=account.phone,
@@ -34,6 +37,17 @@ async def _get_tg_status(request: Request) -> TelegramStatusRead:
 async def tg_status(request: Request):
     """GET /api/tg/status — current Telegram account state."""
     return await _get_tg_status(request)
+
+
+@router.post("/credentials", dependencies=[Depends(require_app_auth)])
+async def tg_credentials(req: TelegramCredentialsRequest, request: Request):
+    """POST /api/tg/credentials — store API id/hash and build the client."""
+    svc = request.app.state.tg_service
+    try:
+        await svc.set_credentials(req.api_id, req.api_hash)
+        return await _get_tg_status(request)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/login", dependencies=[Depends(require_app_auth)])

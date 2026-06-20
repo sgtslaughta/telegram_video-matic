@@ -83,6 +83,13 @@ class TelegramService:
         # Update status
         await self.account_repo.update_status(self.account.id, AccountStatus.DISCONNECTED)
 
+    async def set_credentials(self, api_id: str, api_hash: str) -> None:
+        """Store Telegram API credentials and build a fresh client for login."""
+        async with self._login_lock:
+            await self.account_repo.upsert_credentials(api_id, api_hash)
+            self.account = await self.account_repo.get()
+            self.client = self.client_factory(StringSession(None), int(api_id), api_hash)
+
     async def start_login(self, phone: str) -> None:
         """Start login: send code request."""
         async with self._login_lock:

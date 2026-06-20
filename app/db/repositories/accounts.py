@@ -99,3 +99,8 @@ class AccountRepository:
         """Update Account phone."""
         async with self._sf() as session:
             await update_phone(session, account_id, phone)
+
+    async def upsert_credentials(self, api_id: str, api_hash: str) -> Account:
+        """Insert/update the single account row with encrypted API credentials."""
+        async with self._sf() as session:
+            return await upsert(session, api_id, api_hash)

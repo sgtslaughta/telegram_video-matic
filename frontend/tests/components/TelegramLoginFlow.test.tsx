@@ -16,14 +16,20 @@ describe('TelegramLoginFlow', () => {
     vi.clearAllMocks()
   })
 
-  it('shows the phone step when disconnected', async () => {
-    vi.mocked(api.tg.status).mockResolvedValue({ status: 'disconnected' } as any)
+  it('shows the credentials step when not configured', async () => {
+    vi.mocked(api.tg.status).mockResolvedValue({ status: 'disconnected', configured: false } as any)
+    render(wrap(qc, <TelegramLoginFlow />))
+    expect(await screen.findByText(/Telegram API credentials/i)).toBeTruthy()
+  })
+
+  it('shows the phone step when configured but disconnected', async () => {
+    vi.mocked(api.tg.status).mockResolvedValue({ status: 'disconnected', configured: true } as any)
     render(wrap(qc, <TelegramLoginFlow />))
     expect(await screen.findByText(/Enter phone number/i)).toBeTruthy()
   })
 
   it('calls onConnected when status is connected', async () => {
-    vi.mocked(api.tg.status).mockResolvedValue({ status: 'connected', username: 'bob' } as any)
+    vi.mocked(api.tg.status).mockResolvedValue({ status: 'connected', configured: true, username: 'bob' } as any)
     const onConnected = vi.fn()
     render(wrap(qc, <TelegramLoginFlow onConnected={onConnected} />))
     await screen.findByText(/Connected/i)

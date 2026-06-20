@@ -14,6 +14,17 @@ export function useTgStatus() {
   })
 }
 
+export function useTgSetCredentials() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ apiId, apiHash }: { apiId: string; apiHash: string }) =>
+      api.tg.setCredentials(apiId, apiHash),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: tgKeys.status() })
+    },
+  })
+}
+
 export function useTgLoginPhone() {
   const qc = useQueryClient()
   return useMutation({

@@ -67,6 +67,7 @@ export interface AuthMeRead {
 
 export interface TelegramStatusRead {
   status: string;
+  configured?: boolean;
   username?: string | null;
   display_name?: string | null;
   phone?: string | null;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
-import { useTgStatus, useTgLoginPhone, useTgLoginCode, useTgLoginPassword, useTgLogout } from '@/hooks/useTgStatus'
+import { useTgStatus, useTgSetCredentials, useTgLoginPhone, useTgLoginCode, useTgLoginPassword, useTgLogout } from '@/hooks/useTgStatus'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,15 +9,18 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AccountStatus } from '@/lib/types'
 
-type Step = 'phone' | 'code' | 'password' | 'confirmation'
+type Step = 'credentials' | 'phone' | 'code' | 'password' | 'confirmation'
 
 export default function TelegramLoginFlow({ onConnected }: { onConnected?: () => void }): JSX.Element {
   const tgStatus = useTgStatus()
+  const setCreds = useTgSetCredentials()
   const loginPhone = useTgLoginPhone()
   const loginCode = useTgLoginCode()
   const loginPassword = useTgLoginPassword()
   const logout = useTgLogout()
 
+  const [apiId, setApiId] = useState('')
+  const [apiHash, setApiHash] = useState('')
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
@@ -25,6 +28,8 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
   // Determine current step based on status
   const getStep = (): Step => {
     if (!tgStatus.data) return 'phone'
+    // No API credentials yet → collect them before phone login
+    if (!tgStatus.data.configured) return 'credentials'
     switch (tgStatus.data.status) {
       case AccountStatus.DISCONNECTED:
         return 'phone'
@@ -49,6 +54,16 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
       onConnected?.()
     }
   }, [tgStatus.data?.status, onConnected])
+
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!apiId.trim() || !apiHash.trim()) return
+    try {
+      await setCreds.mutateAsync({ apiId: apiId.trim(), apiHash: apiHash.trim() })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
+    }
+  }
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -107,7 +122,8 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
 
   return (
     <div className="w-full">
-      {/* Stepper Header */}
+      {/* Stepper Header (hidden on the pre-req credentials step) */}
+      {currentStep !== 'credentials' && (
       <div className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div
@@ -170,11 +186,75 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
           </div>
         </div>
       </div>
+      )}
 
       {/* Step Content */}
       <Card>
         <CardContent className="pt-8">
           <AnimatePresence mode="wait">
+            {/* Credentials Step */}
+            {currentStep === 'credentials' && (
+              <motion.form
+                key="credentials"
+                variants={stepVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                onSubmit={handleCredentialsSubmit}
+                className="space-y-4"
+              >
+                <div>
+                  <h2 className="mb-2 text-xl font-bold">Telegram API credentials</h2>
+                  <p className="mb-4 text-xs text-muted-foreground">
+                    Get these from{' '}
+                    <a
+                      href="https://my.telegram.org/apps"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline underline-offset-2"
+                    >
+                      my.telegram.org/apps
+                    </a>
+                    : log in with your phone → <span className="font-medium">API development tools</span> →
+                    create an app (any title) → copy your <span className="font-medium">api_id</span> and{' '}
+                    <span className="font-medium">api_hash</span>.
+                  </p>
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="api_id">api_id</Label>
+                      <Input
+                        id="api_id"
+                        inputMode="numeric"
+                        value={apiId}
+                        onChange={(e) => setApiId(e.target.value.replace(/\D/g, ''))}
+                        disabled={setCreds.isPending}
+                        placeholder="1234567"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="api_hash">api_hash</Label>
+                      <Input
+                        id="api_hash"
+                        value={apiHash}
+                        onChange={(e) => setApiHash(e.target.value)}
+                        disabled={setCreds.isPending}
+                        placeholder="0123456789abcdef0123456789abcdef"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={setCreds.isPending || !apiId.trim() || !apiHash.trim()}
+                  className="w-full"
+                >
+                  {setCreds.isPending ? 'Saving...' : 'Continue'}
+                </Button>
+              </motion.form>
+            )}
+
             {/* Phone Step */}
             {currentStep === 'phone' && (
               <motion.form
