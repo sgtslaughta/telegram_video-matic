@@ -18,7 +18,11 @@ async def _get_tg_status(request: Request) -> TelegramStatusRead:
     svc = request.app.state.tg_service
     account = svc.account
     if not account:
-        raise HTTPException(status_code=500, detail="Account not initialized")
+        # Fresh install / not yet configured: report disconnected so the UI
+        # shows the connect wizard rather than erroring.
+        return TelegramStatusRead(
+            status="disconnected", username=None, display_name=None, phone=None
+        )
     return TelegramStatusRead(
         status=account.status.value,
         username=account.username,
