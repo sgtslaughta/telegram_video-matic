@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { useTgStatus, useTgSetCredentials, useTgLoginPhone, useTgLoginCode, useTgLoginPassword, useTgLogout } from '@/hooks/useTgStatus'
@@ -22,6 +22,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
   const [apiId, setApiId] = useState('')
   const [apiHash, setApiHash] = useState('')
   const [editCreds, setEditCreds] = useState(false)
+  const [stepOverride, setStepOverride] = useState<Step | null>(null)
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
@@ -47,7 +48,31 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     }
   }
 
-  const currentStep = getStep()
+  // Step ordering for clamping manual (backward) navigation.
+  const STEP_ORDER: Record<Step, number> = {
+    credentials: 0, phone: 1, code: 2, password: 3, confirmation: 4,
+  }
+  const STEPPER: { step: Step; label: string; n: number }[] = [
+    { step: 'phone', label: 'Phone', n: 1 },
+    { step: 'code', label: 'Code', n: 2 },
+    { step: 'password', label: 'Auth', n: 3 },
+  ]
+  const derivedStep = getStep()
+  // Allow jumping back to an earlier step (corrections); never skip ahead.
+  const currentStep =
+    stepOverride && STEP_ORDER[stepOverride] <= STEP_ORDER[derivedStep]
+      ? stepOverride
+      : derivedStep
+
+  // A stepper number is reachable only if it's at or before the real progress.
+  const goToStep = (target: Step) => {
+    if (STEP_ORDER[target] <= STEP_ORDER[derivedStep]) setStepOverride(target)
+  }
+
+  // Clear manual override whenever the backend status advances.
+  useEffect(() => {
+    setStepOverride(null)
+  }, [tgStatus.data?.status])
 
   // Call onConnected when status becomes CONNECTED
   useEffect(() => {
@@ -72,6 +97,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     if (!phone.trim()) return
     try {
       await loginPhone.mutateAsync(phone)
+      setStepOverride(null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Telegram request failed')
     }
@@ -82,6 +108,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     if (!code.trim()) return
     try {
       await loginCode.mutateAsync(code)
+      setStepOverride(null)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Telegram request failed')
     }
@@ -127,66 +154,33 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
       {/* Stepper Header (hidden on the pre-req credentials step) */}
       {currentStep !== 'credentials' && (
       <div className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div
-            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-              ['phone', 'code'].includes(currentStep)
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            1
-          </div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Phone
-          </div>
-        </div>
-
-        <div
-          className={`h-0.5 flex-1 mx-2 ${
-            ['code', 'password', 'confirmation'].includes(currentStep)
-              ? 'bg-primary'
-              : 'bg-muted'
-          }`}
-        />
-
-        <div className="flex items-center gap-4">
-          <div
-            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-              ['code', 'password', 'confirmation'].includes(currentStep)
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            2
-          </div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Code
-          </div>
-        </div>
-
-        <div
-          className={`h-0.5 flex-1 mx-2 ${
-            ['password', 'confirmation'].includes(currentStep)
-              ? 'bg-primary'
-              : 'bg-muted'
-          }`}
-        />
-
-        <div className="flex items-center gap-4">
-          <div
-            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-              ['password', 'confirmation'].includes(currentStep)
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            3
-          </div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            Auth
-          </div>
-        </div>
+        {STEPPER.map((s, i) => {
+          const reached = STEP_ORDER[derivedStep] >= STEP_ORDER[s.step]
+          const active = STEP_ORDER[currentStep] >= STEP_ORDER[s.step]
+          return (
+            <Fragment key={s.step}>
+              {i > 0 && (
+                <div className={`mx-2 h-0.5 flex-1 ${active ? 'bg-primary' : 'bg-muted'}`} />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => goToStep(s.step)}
+                  disabled={!reached}
+                  aria-label={`Go to ${s.label} step`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+                    active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  } ${reached ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
+                >
+                  {s.n}
+                </button>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {s.label}
+                </div>
+              </div>
+            </Fragment>
+          )
+        })}
       </div>
       )}
 
