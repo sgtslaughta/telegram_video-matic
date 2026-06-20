@@ -1,6 +1,5 @@
 """API routers package."""
 from . import (
-    health,
     auth,
     telegram,
     channels,
@@ -11,3 +10,6 @@ from . import (
     settings,
     plugins,
 )
+
+# Import health router for registration in main.py
+from . import health  # noqa: F401

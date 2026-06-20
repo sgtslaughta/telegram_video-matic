@@ -1,8 +1,7 @@
 """FastAPI dependency injection: DB session and auth."""
 import logging
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.engine import get_session
 from app.api.auth import verify_session, get_app_password, COOKIE_NAME
 
 logger = logging.getLogger(__name__)
