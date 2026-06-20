@@ -1,7 +1,7 @@
 """Sync engine components: filter classifier, poller, downloader, maintenance."""
 import re
+import os
 import asyncio
-import tempfile
 import shutil
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -13,6 +13,14 @@ from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatu
 from app.db.repositories import subscriptions, media, events, downloads
 from app.telegram.dtos import ChannelDTO, TopicDTO
 from app.sync.naming import detect_season_episode, render_path
+
+
+class _DownloadCanceled(Exception):
+    """Raised mid-download when a cancel was requested (discard partial)."""
+
+
+class _DownloadPaused(Exception):
+    """Raised mid-download when a pause was requested (keep partial)."""
 
 # ponytail: regex compiled once, explicit season/episode pattern detection
 _SE_PATTERN = re.compile(r'(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)', re.IGNORECASE)
@@ -106,6 +114,16 @@ class SyncEngine:
         self.download_root = download_root
         self._tasks = []
         self._stop_event = asyncio.Event()
+        # media_id -> "cancel" | "pause"; checked cooperatively during download.
+        self._control: dict[int, str] = {}
+
+    def request_cancel(self, media_id: int) -> None:
+        """Signal an in-flight download to abort and discard its partial."""
+        self._control[media_id] = "cancel"
+
+    def request_pause(self, media_id: int) -> None:
+        """Signal an in-flight download to stop but keep its partial for resume."""
+        self._control[media_id] = "pause"
 
     async def _poller_once(self, session: AsyncSession) -> None:
         """Single pass of the poller: fetch media for enabled subscriptions.
@@ -242,12 +260,16 @@ class SyncEngine:
                                 await session.commit()
                                 continue
 
-                            # Start job, mark running with known total size
-                            job = await downloads.start(session, item.id)
+                            # Reuse a paused/queued job (resume) or start fresh.
+                            job = await downloads.get_or_start(session, item.id)
                             await downloads.running(session, job.id, item.size_bytes)
 
-                            # Create temp file for download
-                            temp_file = tempfile.mktemp(suffix=".tmp")
+                            # Stable partial path so a paused download can resume
+                            # from its byte offset instead of restarting.
+                            partial_dir = Path(self.download_root) / ".partial"
+                            partial_dir.mkdir(parents=True, exist_ok=True)
+                            temp_file = str(partial_dir / f"{item.id}.part")
+                            resume_offset = os.path.getsize(temp_file) if os.path.exists(temp_file) else 0
 
                             try:  # Download attempt
                                 # Throttle broadcast to ~1 Hz; track last sample for speed/ETA.
@@ -255,7 +277,12 @@ class SyncEngine:
                                 last_bytes = [0]
 
                                 async def on_progress(current_bytes, total_bytes):
-                                    """Progress callback with ~1 Hz throttle + speed/ETA."""
+                                    """Progress callback: cancel/pause check + ~1 Hz throttle + speed/ETA."""
+                                    action = self._control.get(item.id)
+                                    if action == "cancel":
+                                        raise _DownloadCanceled()
+                                    if action == "pause":
+                                        raise _DownloadPaused()
                                     now = datetime.now(timezone.utc)
                                     prev = last_broadcast_time[0]
                                     if prev is None or (now - prev).total_seconds() >= 1.0:
@@ -290,7 +317,8 @@ class SyncEngine:
                                     channel.tg_id,
                                     item.tg_msg_id,
                                     temp_file,
-                                    on_progress=on_progress
+                                    on_progress=on_progress,
+                                    offset=resume_offset,
                                 )
 
                                 # FIX 1: Explicit season/episode detection decision
@@ -333,6 +361,7 @@ class SyncEngine:
                                 await media.set_status(session, item.id, MediaStatus.DOWNLOADED)
 
                                 # Finish job
+                                self._control.pop(item.id, None)
                                 await downloads.finish(session, job.id, error=None)
 
                                 # Dispatch plugin hook
@@ -351,6 +380,21 @@ class SyncEngine:
                                         message=f"Plugin error on_post_download: {e}",
                                     )
 
+                                await session.commit()
+
+                            except _DownloadCanceled:
+                                # Discard the partial; mark canceled, no retry.
+                                self._control.pop(item.id, None)
+                                Path(temp_file).unlink(missing_ok=True)
+                                await downloads.set_status(session, job.id, JobStatus.CANCELED)
+                                await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                                await session.commit()
+
+                            except _DownloadPaused:
+                                # Keep the partial so resume continues from offset.
+                                self._control.pop(item.id, None)
+                                await downloads.set_status(session, job.id, JobStatus.PAUSED)
+                                await media.set_status(session, item.id, MediaStatus.PAUSED)
                                 await session.commit()
 
                             except FloodWaitError as e:

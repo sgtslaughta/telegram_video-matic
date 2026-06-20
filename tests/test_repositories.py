@@ -267,6 +267,34 @@ async def test_downloads_lifecycle(session):
 
 
 @pytest.mark.asyncio
+async def test_downloads_pause_resume_reuses_job(session):
+    """pause->resume reuses the same job (get_or_start) and shows in list_active."""
+    from app.db.models import JobStatus
+    channel = await channels.upsert(session, 991, "Ch", None, False, None, None)
+    sub = await subscriptions.create(session, channel.id, None, "/media", "{t}", True)
+    item = await media.upsert_from_tg(
+        session, channel.id, None, sub.id, 7, "x", "x.mp4",
+        "video/mp4", 100, 10, datetime.now(timezone.utc), None, None,
+    )
+
+    job = await downloads.get_or_start(session, item.id)  # fresh
+    # Pause it
+    await downloads.set_status(session, job.id, JobStatus.PAUSED)
+    active = await downloads.list_active(session)
+    assert job.id in [j.id for j in active]  # paused jobs are still "active"
+
+    # Resume reuses the SAME job, not a new row
+    resumed = await downloads.get_or_start(session, item.id)
+    assert resumed.id == job.id
+    assert resumed.status == JobStatus.RUNNING
+
+    # Cancel removes it from active
+    await downloads.set_status(session, job.id, JobStatus.CANCELED)
+    active2 = await downloads.list_active(session)
+    assert job.id not in [j.id for j in active2]
+
+
+@pytest.mark.asyncio
 async def test_downloads_get_latest_for_media(session):
     """FIX 2: downloads.get_latest_for_media retrieves most recent job for media."""
     channel = await channels.upsert(session, 888, "Ch", None, False, None, None)

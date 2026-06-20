@@ -52,11 +52,13 @@ class MediaStatus(StrEnum):
     DOWNLOADED = "downloaded"
     FAILED = "failed"
     SKIPPED = "skipped"
+    PAUSED = "paused"
 
 
 class JobStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
+    PAUSED = "paused"
     DONE = "done"
     ERROR = "error"
     CANCELED = "canceled"

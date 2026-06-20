@@ -19,6 +19,31 @@ async def start(session: AsyncSession, media_id: int) -> DownloadJob:
     return job
 
 
+async def get_or_start(session: AsyncSession, media_id: int) -> DownloadJob:
+    """Reuse the latest non-terminal job for a media item (resume case), else
+    start a fresh one. Avoids duplicate job rows when a paused download resumes."""
+    existing = await get_latest_for_media(session, media_id)
+    if existing and existing.status in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.PAUSED):
+        existing.status = JobStatus.RUNNING
+        existing.error = None
+        await session.commit()
+        return existing
+    return await start(session, media_id)
+
+
+async def set_status(
+    session: AsyncSession,
+    job_id: int,
+    status: JobStatus,
+) -> DownloadJob | None:
+    """Set a job's status directly (cancel/pause)."""
+    job = await session.get(DownloadJob, job_id)
+    if job:
+        job.status = status
+        await session.commit()
+    return job
+
+
 async def running(
     session: AsyncSession,
     job_id: int,
@@ -90,6 +115,8 @@ async def get_latest_for_media(session: AsyncSession, media_id: int) -> Download
 
 async def list_active(session: AsyncSession) -> list[DownloadJob]:
     """List active (non-terminal) download jobs."""
-    stmt = select(DownloadJob).where(DownloadJob.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
+    stmt = select(DownloadJob).where(
+        DownloadJob.status.in_([JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.PAUSED])
+    )
     result = await session.execute(stmt)
     return result.scalars().all()

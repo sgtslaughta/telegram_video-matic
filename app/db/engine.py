@@ -32,6 +32,9 @@ async def init_engine() -> None:
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA journal_mode=WAL")
+            # Wait up to 5s for a lock instead of erroring: the sync-engine loops
+            # and API write concurrently to one SQLite file.
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.close()
 
     # Create session factory

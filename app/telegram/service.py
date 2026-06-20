@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import inspect
 import pathlib
 from typing import Callable, Optional
 from telethon import TelegramClient
@@ -448,7 +449,7 @@ class TelegramService:
     # Task 6: Download with semaphore and progress callback
     # ========================================================================
 
-    async def download_by_id(self, channel_tg_id: int, msg_id: int, dest_path: str, on_progress=None) -> str:
+    async def download_by_id(self, channel_tg_id: int, msg_id: int, dest_path: str, on_progress=None, offset: int = 0) -> str:
         """Resolve a message by (channel, id) then download it. The downloader
         stores ids, but download() needs the Telethon message object."""
         if not self.client:
@@ -457,13 +458,14 @@ class TelegramService:
         msg = await self.client.get_messages(entity, ids=msg_id)
         if not msg:
             raise ValueError(f"Message {msg_id} not found")
-        return await self.download(msg, dest_path, on_progress=on_progress)
+        return await self.download(msg, dest_path, on_progress=on_progress, offset=offset)
 
     async def download(
         self,
         message,
         dest_path: str,
-        on_progress=None
+        on_progress=None,
+        offset: int = 0,
     ) -> str:
         """
         Download media from message to dest_path using fast_telethon.
@@ -481,16 +483,29 @@ class TelegramService:
         if not self.client or not message.media or not message.media.document:
             raise ValueError("Message must have a downloadable document")
 
+        doc = message.media.document
         dest_path_obj = pathlib.Path(dest_path)
         dest_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
+        # Resume offset must be 4096-aligned for iter_download; drop the unaligned
+        # tail of the partial file so we re-fetch from a clean boundary.
+        offset = (offset // 4096) * 4096
+
         async with self.download_semaphore:
-            with open(dest_path, "wb") as f:
-                await download_file(
-                    self.client,
-                    message.media.document,
-                    f,
-                    progress_callback=on_progress
-                )
+            if offset <= 0:
+                # Fresh download: parallel fast path.
+                with open(dest_path, "wb") as f:
+                    await download_file(self.client, doc, f, progress_callback=on_progress)
+            else:
+                # Resume: single-stream from the byte offset, append into the partial.
+                with open(dest_path, "r+b") as f:
+                    f.seek(offset)
+                    f.truncate()
+                    async for chunk in self.client.iter_download(doc, offset=offset, request_size=512 * 1024):
+                        f.write(chunk)
+                        if on_progress:
+                            r = on_progress(f.tell(), doc.size)
+                            if inspect.isawaitable(r):
+                                await r
 
         return dest_path

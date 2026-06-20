@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Pause, Play, X } from 'lucide-react'
 import { useActiveDownloads } from '@/hooks/useDownloads'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { ProgressBar } from '@/components/shared/ProgressBar'
@@ -40,6 +40,16 @@ export default function Downloads() {
       toast.success('Cleared media & download jobs')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Clear failed')
+    }
+  }
+
+  const act = async (fn: () => Promise<unknown>, label: string) => {
+    try {
+      await fn()
+      qc.invalidateQueries({ queryKey: ['downloads', 'active'] })
+      toast.success(label)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `${label} failed`)
     }
   }
 
@@ -86,6 +96,24 @@ export default function Downloads() {
                 </span>
                 <span>{job.speed_bps ? `${fmtBytes(job.speed_bps)}/s` : '—'}</span>
                 <span>{fmtEta(job.eta_sec)}</span>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                {job.status === 'paused' ? (
+                  <Button size="icon" variant="ghost" aria-label="Resume"
+                    onClick={() => act(() => api.downloads.resume(job.id), 'Resumed')}>
+                    <Play className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button size="icon" variant="ghost" aria-label="Pause"
+                    onClick={() => act(() => api.downloads.pause(job.id), 'Paused')}>
+                    <Pause className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button size="icon" variant="ghost" aria-label="Cancel"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => act(() => api.downloads.cancel(job.id), 'Canceled')}>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           ))}

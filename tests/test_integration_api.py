@@ -22,7 +22,13 @@ def test_app():
     old_poll = os.environ.get("POLL_INTERVAL_SEC")
     old_pwd = os.environ.get("TVM_APP_PASSWORD")
 
-    os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+    # Temp file (not :memory:) so every connection/event-loop shares one DB —
+    # ":memory:" gives each connection its own DB, so seed() and the request
+    # handler saw different databases (flaky 404s).
+    import tempfile
+    _fd, _dbpath = tempfile.mkstemp(suffix=".sqlite")
+    os.close(_fd)
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_dbpath}"
     os.environ["POLL_INTERVAL_SEC"] = "999"
     os.environ.pop("TVM_APP_PASSWORD", None)
 
@@ -41,6 +47,12 @@ def test_app():
     app.state.tg_service = mock_tg_service
 
     yield app
+
+    # Remove temp DB file
+    try:
+        os.unlink(_dbpath)
+    except OSError:
+        pass
 
     # Restore env
     if old_db:
