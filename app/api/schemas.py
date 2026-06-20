@@ -2,7 +2,6 @@
 from pydantic import BaseModel, ConfigDict, field_validator, Field
 from typing import Optional
 from datetime import datetime
-import re
 
 
 # ============================================================================
@@ -93,16 +92,8 @@ class SubscriptionCreateRequest(BaseModel):
     season_detection: bool = True
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
-
-    @field_validator("filter_regex")
-    @classmethod
-    def validate_regex(cls, v):
-        if v:
-            try:
-                re.compile(v)
-            except re.error as e:
-                raise ValueError(f"Invalid regex: {e}")
-        return v
+    # filter_regex is validated in the subscriptions router (-> HTTP 400),
+    # not here, so a bad pattern returns 400 rather than Pydantic's 422.
 
 
 class SubscriptionUpdateRequest(BaseModel):
@@ -118,17 +109,7 @@ class SubscriptionUpdateRequest(BaseModel):
     season_detection: Optional[bool] = None
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
-
-    @field_validator("filter_regex")
-    @classmethod
-    def validate_regex(cls, v):
-        if v is not None:
-            if v:  # non-empty string
-                try:
-                    re.compile(v)
-                except re.error as e:
-                    raise ValueError(f"Invalid regex: {e}")
-        return v
+    # filter_regex validated in the router (-> HTTP 400), see SubscriptionCreateRequest.
 
 
 class SubscriptionRead(BaseModel):

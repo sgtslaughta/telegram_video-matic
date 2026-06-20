@@ -531,22 +531,17 @@ async def test_sub_create_duplicate_409():
 
 
 @pytest.mark.asyncio
-async def test_sub_create_invalid_regex_pydantic():
-    """Test 16: Invalid filter_regex fails Pydantic validation."""
-    from app.api.schemas import SubscriptionCreateRequest
-    from pydantic import ValidationError
+async def test_sub_create_invalid_regex_400():
+    """Invalid filter_regex is rejected by the router with HTTP 400 (not 422)."""
+    from fastapi import HTTPException
+    from app.api.routers.subscriptions import _validate_regex
 
     try:
-        SubscriptionCreateRequest(
-            channel_id=1,
-            topic_id=None,
-            filter_regex="[invalid(regex",
-            storage_path="/tmp/test",
-            rename_template="{name}",
-        )
-        assert False, "Should have raised ValidationError"
-    except ValidationError as e:
-        assert "filter_regex" in str(e)
+        _validate_regex("[invalid(regex")
+        assert False, "Should have raised HTTPException"
+    except HTTPException as e:
+        assert e.status_code == 400
+        assert "filter_regex" in e.detail
 
 
 @pytest.mark.asyncio
@@ -616,16 +611,16 @@ async def test_sub_patch_update():
 
 
 @pytest.mark.asyncio
-async def test_sub_patch_invalid_regex_pydantic():
-    """Test 19: PATCH with invalid filter_regex fails Pydantic validation."""
-    from app.api.schemas import SubscriptionUpdateRequest
-    from pydantic import ValidationError
+async def test_sub_patch_invalid_regex_400():
+    """PATCH with invalid filter_regex is rejected by the router with HTTP 400."""
+    from fastapi import HTTPException
+    from app.api.routers.subscriptions import _validate_regex
 
     try:
-        SubscriptionUpdateRequest(filter_regex="[invalid(regex")
-        assert False, "Should have raised ValidationError"
-    except ValidationError as e:
-        assert "filter_regex" in str(e)
+        _validate_regex("[invalid(regex")
+        assert False, "Should have raised HTTPException"
+    except HTTPException as e:
+        assert e.status_code == 400
 
 
 @pytest.mark.asyncio

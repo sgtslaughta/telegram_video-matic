@@ -1,4 +1,6 @@
 """Subscriptions router: CRUD + duplicate detection + scan."""
+import re
+
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -20,12 +22,22 @@ async def list_subscriptions(db: AsyncSession = Depends(get_db)):
     return [SubscriptionRead.model_validate(s) for s in subs]
 
 
+def _validate_regex(pattern):
+    """Reject an invalid filter regex with HTTP 400 (plan-specified code)."""
+    if pattern:
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            raise HTTPException(status_code=400, detail=f"Invalid filter_regex: {e}")
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_subscription(
     req: SubscriptionCreateRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """POST /api/subscriptions — create subscription."""
+    _validate_regex(req.filter_regex)
     existing = await repo_module.subscriptions.get_by_channel_topic(
         db, req.channel_id, req.topic_id
     )
@@ -81,6 +93,8 @@ async def update_subscription(
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     update_data = req.model_dump(exclude_unset=True)
+    if "filter_regex" in update_data:
+        _validate_regex(update_data["filter_regex"])
     updated = await repo_module.subscriptions.update(db, sub_id, **update_data)
     return SubscriptionRead.model_validate(updated)
 

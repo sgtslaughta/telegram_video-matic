@@ -245,16 +245,18 @@ class TestSubscriptionCreateRequestValidation:
         )
         assert req.filter_regex == r".*\.mp4$"
 
-    def test_invalid_regex_rejected(self):
-        """SubscriptionCreateRequest rejects invalid regex."""
-        with pytest.raises(ValueError, match="Invalid regex"):
-            SubscriptionCreateRequest(
-                channel_id=1,
-                enabled=True,
-                storage_path="/downloads",
-                rename_template="%(title)s",
-                filter_regex="[invalid(regex",
-            )
+    def test_invalid_regex_accepted_by_schema(self):
+        """The schema no longer validates filter_regex; the subscriptions router
+        does, returning HTTP 400. So schema construction with a bad pattern
+        succeeds (validation deferred to the request handler)."""
+        req = SubscriptionCreateRequest(
+            channel_id=1,
+            enabled=True,
+            storage_path="/downloads",
+            rename_template="%(title)s",
+            filter_regex="[invalid(regex",
+        )
+        assert req.filter_regex == "[invalid(regex"
 
     def test_null_regex_accepted(self):
         """SubscriptionCreateRequest accepts null regex."""
