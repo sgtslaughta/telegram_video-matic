@@ -1,8 +1,9 @@
 import asyncio
 import pathlib
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.config import Settings
 from app.crypto import init_crypto
 from app.db.engine import init_engine, create_tables, get_session_factory
@@ -186,9 +187,23 @@ def create_app() -> FastAPI:
 
         await websocket_endpoint(websocket, app.state.ws_hub, snapshot_provider)
 
-    # Mount static SPA at "/" with HTML fallback (if dir exists)
+    # Serve the built SPA: hashed assets via StaticFiles, everything else falls
+    # back to index.html so client-side routes (e.g. /subscriptions) work on
+    # deep-link / refresh. Unmatched /api paths still 404 as JSON.
     if STATIC_DIR.exists():
-        app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+        assets_dir = STATIC_DIR / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+        index_file = STATIC_DIR / "index.html"
+
+        @app.get("/{full_path:path}")
+        async def spa_fallback(full_path: str):
+            if full_path.startswith("api"):
+                raise HTTPException(status_code=404, detail="Not found")
+            candidate = STATIC_DIR / full_path
+            if full_path and candidate.is_file():
+                return FileResponse(str(candidate))
+            return FileResponse(str(index_file))
     else:
         log(f"Static dir not found at {STATIC_DIR}, skipping SPA mount", "WARN")
 
