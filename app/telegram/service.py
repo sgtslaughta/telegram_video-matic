@@ -4,7 +4,7 @@ import pathlib
 from typing import Callable, Optional
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.errors import SessionPasswordNeededError
+from telethon.errors import SessionPasswordNeededError, FloodWaitError
 from telethon.tl.functions.channels import GetForumTopicsRequest
 
 from app.db.models import Account, AccountStatus
@@ -20,7 +20,8 @@ class TelegramService:
         self,
         account_repo,
         client_factory: Callable = TelegramClient,
-        max_concurrent_downloads: int = 5
+        max_concurrent_downloads: int = 5,
+        event_sink: Optional[Callable] = None
     ):
         """
         Initialize service.
@@ -29,6 +30,7 @@ class TelegramService:
             account_repo: AccountRepository for DB access.
             client_factory: Factory to create TelegramClient (injectable for testing).
             max_concurrent_downloads: Semaphore bound for downloads.
+            event_sink: Optional async callable(level, kind, message) for emitting events on errors.
         """
         self.account_repo = account_repo
         self.client_factory = client_factory
@@ -37,6 +39,7 @@ class TelegramService:
         self.download_semaphore = asyncio.Semaphore(max_concurrent_downloads)
         self._login_lock = asyncio.Lock()
         self._phone_code_hash: Optional[str] = None
+        self.event_sink = event_sink
 
     async def load_account(self) -> None:
         """Load Account from DB; build client if session exists."""
@@ -142,7 +145,19 @@ class TelegramService:
         if not self.client:
             return []
 
-        dialogs = await self.client.get_dialogs(limit=limit)
+        try:
+            dialogs = await self.client.get_dialogs(limit=limit)
+        except FloodWaitError as e:
+            # Log event if sink available; sleep and return empty
+            if self.event_sink:
+                await self.event_sink(
+                    "warning",
+                    "sync",
+                    f"Rate limit hit while fetching channels; waiting {e.seconds}s"
+                )
+            await asyncio.sleep(e.seconds)
+            return []
+
         channels = []
 
         for dialog in dialogs:
@@ -206,55 +221,66 @@ class TelegramService:
         if not self.client:
             return
 
-        async for message in self.client.iter_messages(
-            channel.tg_id,
-            min_id=since_msg_id or 0,
-            reverse=False
-        ):
-            # Filter for video/document media
-            if not message.media:
-                continue
+        try:
+            async for message in self.client.iter_messages(
+                channel.tg_id,
+                min_id=since_msg_id or 0,
+                reverse=False
+            ):
+                # Filter for video/document media
+                if not message.media:
+                    continue
 
-            from telethon.tl.types import MessageMediaDocument
-            if not isinstance(message.media, MessageMediaDocument):
-                continue
+                from telethon.tl.types import MessageMediaDocument
+                if not isinstance(message.media, MessageMediaDocument):
+                    continue
 
-            doc = message.media.document
-            if not doc.mime_type or not doc.mime_type.startswith(("video/", "application/octet-stream")):
-                continue
+                doc = message.media.document
+                if not doc.mime_type or not doc.mime_type.startswith(("video/", "application/octet-stream")):
+                    continue
 
-            # Extract file name from attributes
-            file_name = None
-            duration_sec = None
-            if doc.attributes:
-                from telethon.tl.types import DocumentAttributeFilename, DocumentAttributeVideo
-                for attr in doc.attributes:
-                    if isinstance(attr, DocumentAttributeFilename):
-                        file_name = attr.file_name
-                    elif isinstance(attr, DocumentAttributeVideo):
-                        duration_sec = attr.duration
+                # Extract file name from attributes
+                file_name = None
+                duration_sec = None
+                if doc.attributes:
+                    from telethon.tl.types import DocumentAttributeFilename, DocumentAttributeVideo
+                    for attr in doc.attributes:
+                        if isinstance(attr, DocumentAttributeFilename):
+                            file_name = attr.file_name
+                        elif isinstance(attr, DocumentAttributeVideo):
+                            duration_sec = attr.duration
 
-            # Fetch reactions and comment count
-            reactions_dict = await self.fetch_reactions(message)
-            comments_count = await self.fetch_comment_count(message)
+                # Fetch reactions and comment count
+                reactions_dict = await self.fetch_reactions(message)
+                comments_count = await self.fetch_comment_count(message)
 
-            media = MediaDTO(
-                tg_msg_id=message.id,
-                channel_tg_id=channel.tg_id,
-                topic_tg_id=topic.tg_topic_id if topic else None,
-                caption=message.text or message.message,
-                file_name=file_name,
-                mime=doc.mime_type,
-                size_bytes=doc.size,
-                duration_sec=duration_sec,
-                date_posted=message.date,
-                thumb_b64=None,
-                reactions=reactions_dict,
-                comments_count=comments_count,
-                raw={"message": message}
-            )
+                media = MediaDTO(
+                    tg_msg_id=message.id,
+                    channel_tg_id=channel.tg_id,
+                    topic_tg_id=topic.tg_topic_id if topic else None,
+                    caption=message.text or message.message,
+                    file_name=file_name,
+                    mime=doc.mime_type,
+                    size_bytes=doc.size,
+                    duration_sec=duration_sec,
+                    date_posted=message.date,
+                    thumb_b64=None,
+                    reactions=reactions_dict,
+                    comments_count=comments_count,
+                    raw={"message": message}
+                )
 
-            yield media
+                yield media
+        except FloodWaitError as e:
+            # Log event if sink available; sleep and return
+            if self.event_sink:
+                await self.event_sink(
+                    "warning",
+                    "sync",
+                    f"Rate limit hit while fetching media; waiting {e.seconds}s"
+                )
+            await asyncio.sleep(e.seconds)
+            return
 
     async def get_message(self, channel: ChannelDTO, msg_id: int) -> Optional[MediaDTO]:
         """Fetch a single message by ID."""

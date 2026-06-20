@@ -824,3 +824,172 @@ async def test_download_forwards_progress_callback(mock_client, mock_account_rep
         assert len(progress_calls) == 2
         assert progress_calls[0] == (512000, 1024000)
         assert progress_calls[1] == (1024000, 1024000)
+
+
+# ============================================================================
+# Task 7: Rate-limit handling (FloodWaitError catch, sleep, emit Event)
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_list_channels_catches_flood_wait_sleeps_emits(mock_client, mock_account_repo):
+    """list_channels catches FloodWaitError, sleeps, emits event via event_sink."""
+    from telethon.errors import FloodWaitError
+    from unittest.mock import patch
+
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    # Mock event_sink to track calls
+    mock_event_sink = AsyncMock()
+
+    # Mock client.get_dialogs to raise FloodWaitError with 5 seconds
+    flood_error = FloodWaitError(request=None, capture=5)
+    mock_client.get_dialogs = AsyncMock(side_effect=flood_error)
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory,
+        event_sink=mock_event_sink
+    )
+    service.client = mock_client
+
+    # Patch asyncio.sleep to verify it's called with the right duration
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        channels = await service.list_channels()
+
+        # Should return empty list (graceful degradation)
+        assert channels == []
+        # Should have slept for 5 seconds
+        mock_sleep.assert_called_once_with(5)
+        # Should have emitted an event
+        mock_event_sink.assert_called_once()
+        args = mock_event_sink.call_args[0]
+        assert args[0] == "warning"
+        assert args[1] == "sync"
+        assert "Rate limit" in args[2]
+        assert "5" in args[2]
+
+
+@pytest.mark.asyncio
+async def test_iter_media_catches_flood_wait_sleeps_emits(mock_client, mock_account_repo):
+    """iter_media catches FloodWaitError, sleeps, emits event via event_sink."""
+    from telethon.errors import FloodWaitError
+    from unittest.mock import patch
+
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    # Mock event_sink
+    mock_event_sink = AsyncMock()
+
+    # Mock client.iter_messages as async generator that raises on iteration
+    flood_error = FloodWaitError(request=None, capture=3)
+
+    async def mock_iter_messages(*args, **kwargs):
+        if False:
+            yield
+        raise flood_error
+
+    mock_client.iter_messages = mock_iter_messages
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory,
+        event_sink=mock_event_sink
+    )
+    service.client = mock_client
+
+    from app.telegram.dtos import ChannelDTO, TopicDTO
+    channel_dto = ChannelDTO(
+        tg_id=123456,
+        title="Test Channel",
+        username="testchan",
+        is_forum=False,
+        photo_b64=None,
+        raw={}
+    )
+
+    # Patch asyncio.sleep to verify it's called with the right duration
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        media_list = []
+        async for media in service.iter_media(channel_dto):
+            media_list.append(media)
+
+        # Should yield nothing (graceful degradation)
+        assert media_list == []
+        # Should have slept for 3 seconds
+        mock_sleep.assert_called_once_with(3)
+        # Should have emitted an event
+        mock_event_sink.assert_called_once()
+        args = mock_event_sink.call_args[0]
+        assert args[0] == "warning"
+        assert args[1] == "sync"
+        assert "Rate limit" in args[2]
+        assert "3" in args[2]
+
+
+@pytest.mark.asyncio
+async def test_list_channels_flood_wait_no_event_sink(mock_client, mock_account_repo):
+    """list_channels handles FloodWaitError gracefully even without event_sink."""
+    from telethon.errors import FloodWaitError
+    from unittest.mock import patch
+
+    account = Account(
+        id=1,
+        api_id_enc=encrypt("123456"),
+        api_hash_enc=encrypt("abcdef123456"),
+        session_enc=encrypt("some_session"),
+        phone="+1234567890",
+        username="testuser",
+        user_id=987654,
+        display_name="Test",
+        status=AccountStatus.CONNECTED
+    )
+    mock_account_repo.get.return_value = account
+
+    # No event_sink (default None)
+    flood_error = FloodWaitError(request=None, capture=2)
+    mock_client.get_dialogs = AsyncMock(side_effect=flood_error)
+
+    def mock_client_factory(session, api_id, api_hash):
+        return mock_client
+
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=mock_client_factory
+    )
+    service.client = mock_client
+
+    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        channels = await service.list_channels()
+
+        # Should return empty list
+        assert channels == []
+        # Should have slept
+        mock_sleep.assert_called_once_with(2)
