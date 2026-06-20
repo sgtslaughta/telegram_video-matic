@@ -1,7 +1,8 @@
 """App-password authentication with signed HTTP-only cookies."""
+import hmac
 import os
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from datetime import datetime
+from datetime import datetime, timezone
 
 COOKIE_NAME = "tvm_session"
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
@@ -16,7 +17,7 @@ def get_cookie_signer() -> URLSafeTimedSerializer:
 def sign_session(password: str) -> str:
     """Sign a dummy session token."""
     signer = get_cookie_signer()
-    return signer.dumps({"authenticated_at": datetime.utcnow().isoformat()})
+    return signer.dumps({"authenticated_at": datetime.now(timezone.utc).isoformat()})
 
 
 def verify_session(token: str, max_age: int = COOKIE_MAX_AGE) -> bool:
@@ -39,4 +40,5 @@ def check_app_password(password: str) -> bool:
     stored = get_app_password()
     if stored is None:
         return False
-    return password == stored
+    # constant-time comparison to avoid leaking password length/prefix via timing
+    return hmac.compare_digest(password, stored)
