@@ -240,6 +240,40 @@ class TelegramService:
 
         return topics
 
+    async def browse_media(self, channel: ChannelDTO, topic: Optional[TopicDTO] = None, limit: int = 100):
+        """Lightweight live media listing for browsing (no reactions/comments)."""
+        if not self.client:
+            return
+        from telethon.tl.types import (
+            MessageMediaDocument, DocumentAttributeFilename, DocumentAttributeVideo,
+        )
+        entity = await self._channel_input(channel.tg_id)
+        extra = {}
+        if topic and channel.is_forum:
+            extra["reply_to"] = topic.tg_topic_id
+        async for message in self.client.iter_messages(entity, limit=limit, **extra):
+            if not message.media or not isinstance(message.media, MessageMediaDocument):
+                continue
+            doc = message.media.document
+            if not doc.mime_type or not doc.mime_type.startswith(("video/", "application/octet-stream")):
+                continue
+            file_name = None
+            duration_sec = None
+            for attr in (doc.attributes or []):
+                if isinstance(attr, DocumentAttributeFilename):
+                    file_name = attr.file_name
+                elif isinstance(attr, DocumentAttributeVideo):
+                    duration_sec = attr.duration
+            yield {
+                "tg_msg_id": message.id,
+                "caption": message.message or None,
+                "file_name": file_name,
+                "mime": doc.mime_type,
+                "size_bytes": doc.size,
+                "duration_sec": int(duration_sec) if duration_sec else None,
+                "date_posted": message.date,
+            }
+
     async def thumb_b64_for(self, channel_tg_id: int, msg_id: int) -> Optional[str]:
         """Resolve a message by id and return its thumbnail as base64, or None."""
         if not self.client:

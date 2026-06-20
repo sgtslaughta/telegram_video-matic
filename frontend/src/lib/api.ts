@@ -98,6 +98,12 @@ export const channels = {
 
   topics: (channelId: number) =>
     fetchAPI<T.TopicRead[]>(`/channels/${channelId}/topics`),
+
+  browse: (channelId: number, params?: { topic_id?: number; limit?: number }) =>
+    fetchAPI<any[]>(`/channels/${channelId}/browse`, { params }),
+
+  browseThumbUrl: (channelId: number, tgMsgId: number) =>
+    `/api/channels/${channelId}/thumb/${tgMsgId}`,
 }
 
 // Subscriptions

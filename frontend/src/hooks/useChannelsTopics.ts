@@ -25,3 +25,12 @@ export function useTopics(channelId: number | null) {
     enabled: channelId != null,
   })
 }
+
+export function useBrowse(channelId: number | null, topicId: number | null) {
+  return useQuery({
+    queryKey: ['browse', channelId || 0, topicId || 0],
+    queryFn: () => api.channels.browse(channelId!, { topic_id: topicId ?? undefined, limit: 200 }),
+    enabled: channelId != null,
+    staleTime: 30_000,
+  })
+}
