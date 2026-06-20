@@ -71,3 +71,10 @@ async def get_latest_for_media(session: AsyncSession, media_id: int) -> Download
     stmt = select(DownloadJob).where(DownloadJob.media_id == media_id).order_by(desc(DownloadJob.updated_at)).limit(1)
     result = await session.execute(stmt)
     return result.scalars().first()
+
+
+async def list_active(session: AsyncSession) -> list[DownloadJob]:
+    """List active (non-terminal) download jobs."""
+    stmt = select(DownloadJob).where(DownloadJob.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
+    result = await session.execute(stmt)
+    return result.scalars().all()

@@ -689,3 +689,229 @@ async def test_sub_scan():
     assert result["status"] == "scanning"
 
     await engine.dispose()
+
+
+# ============================================================================
+# TASK 10: Downloads Router Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_downloads_list_active():
+    """Test: GET /api/downloads/active returns active jobs."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, DownloadJob, JobStatus, Channel, MediaItem
+    from app.api.schemas import DownloadJobRead
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test data
+    async with SessionLocal() as session:
+        ch = Channel(tg_id=123, title="Test Channel", is_forum=False)
+        session.add(ch)
+        await session.flush()
+        media = MediaItem(
+            channel_id=ch.id,
+            tg_msg_id=1,
+            date_posted=__import__("datetime").datetime.now(),
+        )
+        session.add(media)
+        await session.flush()
+        job = DownloadJob(media_id=media.id, status=JobStatus.RUNNING)
+        session.add(job)
+        await session.commit()
+
+    # Test the function
+    from app.db.repositories.downloads import list_active
+    async with SessionLocal() as session:
+        result = await list_active(session)
+
+    assert len(result) == 1
+    assert result[0].status == JobStatus.RUNNING
+
+    await engine.dispose()
+
+
+# ============================================================================
+# TASK 11: Settings Router Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_settings_list_all():
+    """Test: GET /api/settings returns all settings."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Setting
+    from app.db.repositories.settings import list
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test settings
+    async with SessionLocal() as session:
+        s1 = Setting(key="poll_interval_sec", value="60")
+        s2 = Setting(key="theme", value="dark")
+        session.add_all([s1, s2])
+        await session.commit()
+
+    # Test the function
+    async with SessionLocal() as session:
+        result = await list(session)
+
+    assert len(result) == 2
+    assert any(s.key == "poll_interval_sec" for s in result)
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_settings_patch():
+    """Test: PATCH /api/settings updates settings."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Setting
+    from app.db.repositories.settings import set, list
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test setting
+    async with SessionLocal() as session:
+        s = Setting(key="poll_interval_sec", value="60")
+        session.add(s)
+        await session.commit()
+
+    # Update it
+    async with SessionLocal() as session:
+        await set(session, "poll_interval_sec", "300")
+
+    # Verify
+    async with SessionLocal() as session:
+        result = await list(session)
+        setting = [s for s in result if s.key == "poll_interval_sec"][0]
+
+    assert setting.value == "300"
+
+    await engine.dispose()
+
+
+# ============================================================================
+# TASK 12: Events Router Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_events_list_paginated():
+    """Test: GET /api/events returns paginated events."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Event
+    from app.db.repositories.events import list, add
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test events
+    async with SessionLocal() as session:
+        for i in range(5):
+            await add(session, level="INFO", kind="test", message=f"Event {i}")
+
+    # Test pagination
+    async with SessionLocal() as session:
+        result = await list(session, limit=2, offset=0)
+
+    assert len(result) == 2
+
+    # Test offset
+    async with SessionLocal() as session:
+        result = await list(session, limit=2, offset=2)
+
+    assert len(result) == 2
+
+    await engine.dispose()
+
+
+# ============================================================================
+# TASK 13: Plugins Router Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_plugins_list():
+    """Test: GET /api/plugins returns list of plugins."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Plugin
+    from app.db.repositories.plugins import list
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test plugin
+    async with SessionLocal() as session:
+        p = Plugin(name="test_plugin", version="1.0", enabled=True)
+        session.add(p)
+        await session.commit()
+
+    # Test the function
+    from app.db.repositories.plugins import list as list_plugins
+    async with SessionLocal() as session:
+        result = await list_plugins(session)
+
+    assert len(result) == 1
+    assert result[0].name == "test_plugin"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_plugins_patch():
+    """Test: PATCH /api/plugins/{name} updates plugin."""
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Plugin
+    from app.db.repositories.plugins import list as list_plugins, get_by_name, update
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Insert test plugin
+    async with SessionLocal() as session:
+        p = Plugin(name="test_plugin", version="1.0", enabled=False)
+        session.add(p)
+        await session.commit()
+
+    # Update it
+    async with SessionLocal() as session:
+        plugin = await get_by_name(session, "test_plugin")
+        await update(session, plugin.id, enabled=True)
+
+    # Verify
+    async with SessionLocal() as session:
+        result = await list_plugins(session)
+        plugin = result[0]
+
+    assert plugin.enabled is True
+
+    await engine.dispose()
