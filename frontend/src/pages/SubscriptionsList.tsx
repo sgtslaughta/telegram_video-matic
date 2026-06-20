@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Trash2, Edit, RefreshCw, Power } from 'lucide-react'
 import {
   useSubscriptions,
@@ -36,6 +36,8 @@ const itemVariants = {
 
 export default function SubscriptionsList() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const q = (params.get('q') ?? '').toLowerCase()
   const { data: subscriptions = [], isLoading } = useSubscriptions()
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [scanId, setScanId] = useState<number | null>(null)
@@ -68,6 +70,10 @@ export default function SubscriptionsList() {
 
   if (isLoading) return <div className="p-6">Loading...</div>
 
+  const visible = (subscriptions ?? []).filter(
+    (s) => !q || s.channel_id.toString().toLowerCase().includes(q)
+  )
+
   return (
     <motion.div
       className="space-y-6 p-6"
@@ -79,13 +85,13 @@ export default function SubscriptionsList() {
         <h1 className="text-3xl font-bold">Subscriptions</h1>
         <Button
           onClick={() => navigate('/subscriptions/new')}
-          className="bg-[#229ED9] hover:bg-[#1a7aaf]"
+          className="bg-primary hover:bg-primary/90"
         >
           Add Subscription
         </Button>
       </div>
 
-      {subscriptions.length === 0 ? (
+      {visible.length === 0 ? (
         <EmptyState
           title="No subscriptions yet"
           message="Create your first subscription to start downloading media."
@@ -101,7 +107,7 @@ export default function SubscriptionsList() {
           initial="hidden"
           animate="visible"
         >
-          {subscriptions.map((sub) => (
+          {visible.map((sub) => (
             <motion.div
               key={sub.id}
               variants={itemVariants}
@@ -113,7 +119,7 @@ export default function SubscriptionsList() {
                     <div className="flex-1">
                       <CardTitle className="text-base">Channel {sub.channel_id}</CardTitle>
                       {sub.topic_id && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           Topic {sub.topic_id}
                         </p>
                       )}
@@ -124,12 +130,12 @@ export default function SubscriptionsList() {
 
                 <CardContent className="flex-1 space-y-3">
                   {sub.filter_regex && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       Filter: {truncate(sub.filter_regex)}
                     </p>
                   )}
 
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Last scan:{' '}
                     {sub.updated_at
                       ? new Date(sub.updated_at).toLocaleDateString()
@@ -157,7 +163,7 @@ export default function SubscriptionsList() {
                       <TooltipTrigger asChild>
                         <Button
                           size="sm"
-                          className="flex-1 bg-[#229ED9] hover:bg-[#1a7aaf]"
+                          className="flex-1 bg-primary hover:bg-primary/90"
                           onClick={() => navigate(`/subscriptions/${sub.id}`)}
                         >
                           <Edit className="h-4 w-4" />

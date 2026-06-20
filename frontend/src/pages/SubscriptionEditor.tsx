@@ -146,7 +146,7 @@ export default function SubscriptionEditor() {
     <div className="space-y-6 p-6 max-w-2xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold">{isNew ? 'New Subscription' : 'Edit Subscription'}</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <p className="text-sm text-muted-foreground">
           {isNew ? 'Create a new media subscription' : 'Update subscription settings'}
         </p>
       </div>
@@ -322,7 +322,7 @@ export default function SubscriptionEditor() {
               onChange={(e) => editor.update('renameTemplate', e.target.value)}
               placeholder="{channel}/{title}/{season}/{episode}.{ext}"
             />
-            <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+            <div className="mt-2 text-xs text-muted-foreground">
               Preview: <Badge variant="outline" className="inline-block mt-1">{previewFilename}</Badge>
             </div>
           </div>
@@ -361,7 +361,7 @@ export default function SubscriptionEditor() {
         <Button
           onClick={handleSubmit}
           disabled={isSubmitting}
-          className="flex-1 bg-[#229ED9] hover:bg-[#1a7aaf]"
+          className="flex-1 bg-primary hover:bg-primary/90"
         >
           {isSubmitting ? 'Saving...' : isNew ? 'Create' : 'Update'}
         </Button>
