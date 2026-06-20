@@ -33,3 +33,15 @@ async def list_by_kind(
         select(Event).where(Event.kind == kind)
     )
     return result.scalars().all()
+
+
+async def list(
+    session: AsyncSession,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Event]:
+    """List events with pagination."""
+    from sqlalchemy import desc
+    stmt = select(Event).order_by(desc(Event.created_at)).limit(limit).offset(offset)
+    result = await session.execute(stmt)
+    return result.scalars().all()
