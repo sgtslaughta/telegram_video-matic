@@ -4,5 +4,7 @@
   "rsc": false,
   "tsx": true,
   "aliasPrefix": "@",
-  "baseColor": "slate"
+  "baseColor": "slate",
+  "components": "@/components/ui",
+  "utils": "@/lib/utils"
 }

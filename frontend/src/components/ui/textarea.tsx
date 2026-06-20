@@ -1,15 +1,22 @@
-import { clsx } from 'clsx'
+import * as React from "react"
 
-interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+import { cn } from "@/lib/utils"
 
-export function Textarea({ className, ...props }: TextareaProps) {
-  return (
+export interface TextareaProps
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ className, ...props }, ref) => (
     <textarea
-      className={clsx(
-        'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500',
+      className={cn(
+        "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
         className
       )}
+      ref={ref}
       {...props}
     />
   )
-}
+)
+Textarea.displayName = "Textarea"
+
+export { Textarea }
