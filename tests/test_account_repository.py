@@ -100,3 +100,27 @@ async def test_account_repository_update_session(session_factory):
         # Decrypt to verify round-trip
         decrypted = decrypt(fetched.session_enc)
         assert decrypted == "new_session_string"
+
+
+@pytest.mark.asyncio
+async def test_account_repository_update_phone(session_factory):
+    """AccountRepository.update_phone() persists phone number."""
+    # Setup: create account
+    async with session_factory() as s:
+        acc = await accounts.upsert(
+            session=s,
+            api_id="123456",
+            api_hash="abc123hash",
+            session_string=None,
+        )
+        account_id = acc.id
+        assert acc.phone is None
+
+    # Use repo to update phone
+    repo = AccountRepository(session_factory)
+    await repo.update_phone(account_id, "+15551234567")
+
+    # Verify persisted
+    async with session_factory() as s:
+        fetched = await accounts.get(s, account_id)
+        assert fetched.phone == "+15551234567"

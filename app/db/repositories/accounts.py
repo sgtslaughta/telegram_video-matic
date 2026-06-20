@@ -60,6 +60,14 @@ async def update_session(session: AsyncSession, account_id: int, session_enc: st
         await session.commit()
 
 
+async def update_phone(session: AsyncSession, account_id: int, phone: str) -> None:
+    """Update Account phone and commit."""
+    account = await get(session, account_id)
+    if account:
+        account.phone = phone
+        await session.commit()
+
+
 class AccountRepository:
     """Adapter: wraps async session_factory and delegates to module functions."""
 
@@ -86,3 +94,8 @@ class AccountRepository:
         """Update Account session_enc."""
         async with self._sf() as session:
             await update_session(session, account_id, session_enc)
+
+    async def update_phone(self, account_id: int, phone: str) -> None:
+        """Update Account phone."""
+        async with self._sf() as session:
+            await update_phone(session, account_id, phone)
