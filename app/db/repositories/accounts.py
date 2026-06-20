@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.db.models import Account, AccountStatus
-from app.crypto import encrypt, decrypt
+from app.db.models import Account
+from app.crypto import encrypt
 
 
 async def get(session: AsyncSession, account_id: int) -> Account | None:

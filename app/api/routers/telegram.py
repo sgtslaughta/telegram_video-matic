@@ -1,7 +1,6 @@
 """Telegram login state machine router."""
 from fastapi import APIRouter, HTTPException, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import get_db, require_app_auth
+from app.api.deps import require_app_auth
 from app.api.schemas import (
     TelegramStatusRead,
     TelegramPhoneRequest,

@@ -52,7 +52,7 @@ async def list(
         query = query.where(Subscription.channel_id == channel_id)
 
     if enabled_only:
-        query = query.where(Subscription.enabled == True)
+        query = query.where(Subscription.enabled.is_(True))
 
     result = await session.execute(query)
     return result.scalars().all()

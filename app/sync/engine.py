@@ -6,7 +6,7 @@ import shutil
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Tuple, Callable, Any
-from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from telethon.errors import FloodWaitError
 
 from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatus

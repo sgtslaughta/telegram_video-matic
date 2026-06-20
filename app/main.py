@@ -1,4 +1,3 @@
-import asyncio
 import pathlib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException

@@ -98,7 +98,7 @@ async def claim_pending(
             Subscription,
             MediaItem.subscription_id == Subscription.id,
         ).where(
-            Subscription.enabled == True,
+            Subscription.enabled.is_(True),
         ).limit(limit)
     )
     items = result.scalars().all()

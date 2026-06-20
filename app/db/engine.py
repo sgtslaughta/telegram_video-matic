@@ -1,7 +1,6 @@
 # app/db/engine.py
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.pool import NullPool
 from app.db.models import Base
 
 DATABASE_URL = os.getenv(

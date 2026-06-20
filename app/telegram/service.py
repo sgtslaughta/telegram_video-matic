@@ -102,7 +102,7 @@ class TelegramService:
                 raise RuntimeError("Login not started or client missing")
 
             try:
-                me = await self.client.sign_in(
+                await self.client.sign_in(
                     self.account.phone,
                     code,
                     phone_code_hash=self._phone_code_hash
@@ -121,7 +121,7 @@ class TelegramService:
             if not self.client or not self.account:
                 raise RuntimeError("Client not initialized or account missing")
 
-            me = await self.client.sign_in(password=password)
+            await self.client.sign_in(password=password)
             session_str = self.client.session.get_session_string()
             await self.account_repo.update_session(self.account.id, encrypt(session_str))
             await self.account_repo.update_status(self.account.id, AccountStatus.CONNECTED)

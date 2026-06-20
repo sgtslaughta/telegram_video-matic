@@ -1,5 +1,6 @@
-"""API routers package."""
+"""API routers package. Re-export router modules for registration in main.py."""
 from . import (
+    health,
     auth,
     telegram,
     channels,
@@ -11,5 +12,15 @@ from . import (
     plugins,
 )
 
-# Import health router for registration in main.py
-from . import health  # noqa: F401
+__all__ = [
+    "health",
+    "auth",
+    "telegram",
+    "channels",
+    "subscriptions",
+    "media",
+    "downloads",
+    "events",
+    "settings",
+    "plugins",
+]

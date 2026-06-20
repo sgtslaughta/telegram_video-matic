@@ -1,5 +1,5 @@
 """Pydantic v2 schemas for API request/response models."""
-from pydantic import BaseModel, ConfigDict, field_validator, Field
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 from datetime import datetime
 

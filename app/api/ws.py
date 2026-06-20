@@ -1,5 +1,4 @@
 """WebSocket hub for real-time broadcasts."""
-import asyncio
 import json
 import logging
 from typing import Callable, Any
