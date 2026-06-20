@@ -37,7 +37,10 @@ async function fetchAPI<R>(
     throw error
   }
 
-  return response.json()
+  // 204 / empty body (e.g. DELETE, logout) → don't call .json() (it throws)
+  if (response.status === 204) return undefined as R
+  const text = await response.text()
+  return (text ? JSON.parse(text) : undefined) as R
 }
 
 // Auth
