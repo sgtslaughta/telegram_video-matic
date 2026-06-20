@@ -1,8 +1,6 @@
-import { Moon, Sun, Search, User, LogOut } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { Moon, Sun, User, LogOut } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import AccentPicker from '@/components/AccentPicker'
 import {
@@ -18,14 +16,6 @@ export default function Header({
   onConnectClick: () => void
 }) {
   const { toggleTheme, effectiveTheme } = useTheme()
-  const [params, setParams] = useSearchParams()
-
-  const onSearch = (v: string) => {
-    const next = new URLSearchParams(params)
-    if (v) next.set('q', v)
-    else next.delete('q')
-    setParams(next, { replace: true })
-  }
 
   const logout = async () => {
     await api.auth.logout().catch(() => {})
@@ -34,15 +24,6 @@ export default function Header({
 
   return (
     <header className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
-      <div className="relative w-full max-w-sm">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search…"
-          defaultValue={params.get('q') ?? ''}
-          onChange={(e) => onSearch(e.target.value)}
-          className="pl-8"
-        />
-      </div>
       <div className="ml-auto flex items-center gap-2">
         <Badge
           variant="outline"

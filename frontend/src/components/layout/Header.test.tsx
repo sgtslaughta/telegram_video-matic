@@ -28,7 +28,7 @@ describe('Header', () => {
     })
   })
 
-  it('renders search input', () => {
+  it('renders the connect/status pill', () => {
     render(
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
@@ -38,8 +38,7 @@ describe('Header', () => {
         </QueryClientProvider>
       </BrowserRouter>
     )
-    const searchInput = screen.getByPlaceholderText('Search…')
-    expect(searchInput).toBeTruthy()
+    expect(screen.getByText('Connect')).toBeTruthy()
   })
 
   it('renders theme toggle button', () => {

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Trash2, Edit, RefreshCw, Power } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Trash2, Edit, RefreshCw, Power, Search } from 'lucide-react'
 import {
   useSubscriptions,
   useUpdateSubscription,
@@ -12,6 +12,7 @@ import { useChannels } from '@/hooks/useChannels'
 import { ConfirmDialog, EmptyState, StatusBadge } from '@/components/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import type { SubscriptionRead } from '@/lib/types'
 
@@ -37,8 +38,8 @@ const itemVariants = {
 
 export default function SubscriptionsList() {
   const navigate = useNavigate()
-  const [params] = useSearchParams()
-  const q = (params.get('q') ?? '').toLowerCase()
+  const [search, setSearch] = useState('')
+  const q = search.toLowerCase()
   const { data: subscriptions = [], isLoading } = useSubscriptions()
   const { data: channels } = useChannels()
   const [deleteId, setDeleteId] = useState<number | null>(null)
@@ -93,6 +94,16 @@ export default function SubscriptionsList() {
         >
           Add Subscription
         </Button>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search subscriptions…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-8"
+        />
       </div>
 
       {visible.length === 0 ? (
