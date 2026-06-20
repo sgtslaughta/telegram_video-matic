@@ -179,6 +179,12 @@ class MediaItemRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator("duration_sec", mode="before")
+    @classmethod
+    def _floor_duration(cls, v):
+        # Telethon durations can be float; the column/schema is int.
+        return int(v) if v is not None else v
+
 
 class MediaDownloadRequest(BaseModel):
     pass  # POST body empty; media_id in path

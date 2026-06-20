@@ -302,7 +302,7 @@ class TelegramService:
                     thumb_b64=None,
                     reactions=reactions_dict,
                     comments_count=comments_count,
-                    raw={"message": message}
+                    raw={}
                 )
 
                 yield media
@@ -361,7 +361,7 @@ class TelegramService:
             thumb_b64=None,
             reactions=reactions_dict,
             comments_count=comments_count,
-            raw={"message": message}
+            raw={}
         )
 
     async def fetch_thumb(self, message) -> Optional[str]:

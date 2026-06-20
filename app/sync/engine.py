@@ -128,7 +128,7 @@ class SyncEngine:
                         chan_dto, topic_dto, since_msg_id=last_msg_id
                     ):
                         # Upsert into DB
-                        item = await media.upsert_from_tg_dto(session, media_dto, sub.id)
+                        item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
 
                         # Classify: keep or skip
                         status, reason = classify(sub, item)
@@ -698,7 +698,7 @@ class SyncEngine:
                     chan_dto, topic_dto, since_msg_id=last_msg_id
                 ):
                     # Upsert into DB
-                    item = await media.upsert_from_tg_dto(session, media_dto, sub.id)
+                    item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
 
                     # Classify: keep or skip
                     status, reason = classify(sub, item)

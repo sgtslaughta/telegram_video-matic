@@ -155,12 +155,17 @@ async def upsert_from_tg_dto(
     session: AsyncSession,
     media_dto: "MediaDTO",
     subscription_id: int | None,
+    channel_id: int,
+    topic_id: int | None = None,
 ) -> MediaItem:
-    """Insert or update media item from a MediaDTO (wrapper for upsert_from_tg)."""
+    """Insert or update media item from a MediaDTO.
+
+    channel_id/topic_id are DB foreign keys (not the Telegram ids on the DTO).
+    """
     return await upsert_from_tg(
         session=session,
-        channel_id=media_dto.channel_tg_id,
-        topic_id=media_dto.topic_tg_id,
+        channel_id=channel_id,
+        topic_id=topic_id,
         subscription_id=subscription_id,
         tg_msg_id=media_dto.tg_msg_id,
         caption=media_dto.caption,
