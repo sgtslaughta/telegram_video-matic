@@ -79,6 +79,13 @@ async def lifespan(app: FastAPI):
         account = await account_repo.get()
         if account:
             await tg_service.load_account()
+            # Restore the live connection for a saved session (shutdown marks
+            # the account disconnected; reconnect so it shows connected again).
+            if account.session_enc:
+                try:
+                    await tg_service.connect()
+                except Exception as e:
+                    log(f"Telegram reconnect on startup failed: {e}", "WARN")
         app.state.tg_service = tg_service
         log("Telegram service ready", "SUCCESS")
     except Exception as e:

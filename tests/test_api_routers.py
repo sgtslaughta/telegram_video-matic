@@ -128,6 +128,7 @@ async def test_tg_status_returns_account_data(monkeypatch):
     )
     service = MagicMock()
     service.account = account
+    service.account_repo.get = AsyncMock(return_value=account)
     request.app.state.tg_service = service
 
     result = await telegram.tg_status(request)
@@ -155,6 +156,7 @@ async def test_tg_login_calls_service(monkeypatch):
     )
     service = MagicMock()
     service.account = account
+    service.account_repo.get = AsyncMock(return_value=account)
     service.start_login = AsyncMock()
     request.app.state.tg_service = service
 
@@ -183,6 +185,7 @@ async def test_tg_code_calls_service(monkeypatch):
     )
     service = MagicMock()
     service.account = account
+    service.account_repo.get = AsyncMock(return_value=account)
     service.submit_code = AsyncMock()
     request.app.state.tg_service = service
 
@@ -211,6 +214,7 @@ async def test_tg_password_calls_service(monkeypatch):
     )
     service = MagicMock()
     service.account = account
+    service.account_repo.get = AsyncMock(return_value=account)
     service.submit_password = AsyncMock()
     request.app.state.tg_service = service
 
@@ -239,6 +243,7 @@ async def test_tg_logout_calls_service(monkeypatch):
     )
     service = MagicMock()
     service.account = account
+    service.account_repo.get = AsyncMock(return_value=account)
     service.logout = AsyncMock()
     request.app.state.tg_service = service
 
@@ -266,6 +271,7 @@ async def test_tg_phone_masking(monkeypatch):
     )
     service = MagicMock()
     service.account = account
+    service.account_repo.get = AsyncMock(return_value=account)
     request.app.state.tg_service = service
 
     result = await telegram.tg_status(request)

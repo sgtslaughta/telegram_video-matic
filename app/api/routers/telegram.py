@@ -16,7 +16,11 @@ router = APIRouter(prefix="/api/tg", tags=["telegram"])
 async def _get_tg_status(request: Request) -> TelegramStatusRead:
     """Helper to get current Telegram account status."""
     svc = request.app.state.tg_service
-    account = svc.account
+    # Read fresh from DB: login mutations update the row, not the cached
+    # svc.account, so the in-memory copy can be stale (e.g. still 'awaiting_code'
+    # after a successful sign-in). Keep svc.account in sync for service use.
+    account = await svc.account_repo.get()
+    svc.account = account
     if not account:
         # Fresh install / not yet configured: report disconnected so the UI
         # shows the credentials step rather than erroring.
