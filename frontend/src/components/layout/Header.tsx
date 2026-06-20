@@ -4,6 +4,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import AccentPicker from '@/components/AccentPicker'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -53,6 +54,7 @@ export default function Header({
           />
           {connected ? 'Telegram' : 'Connect'}
         </Badge>
+        <AccentPicker />
         <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
           {effectiveTheme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </Button>

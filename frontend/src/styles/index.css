@@ -17,11 +17,11 @@
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 89.5%;
     --input: 0 0% 89.5%;
-    --primary: 0 0% 9.0%;
-    --primary-foreground: 0 0% 98%;
+    --primary: 201 73% 49%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 96.1%;
     --secondary-foreground: 0 0% 9.0%;
-    --ring: 0 0% 3.6%;
+    --ring: 201 73% 49%;
     --telegram-blue: #229ed9;
     --radius: 0.5rem;
   }
