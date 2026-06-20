@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useLogin } from '@/hooks/useAuth'
 
@@ -21,9 +22,19 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white px-4 dark:bg-slate-950">
+    <motion.div
+      className="flex min-h-screen items-center justify-center bg-white px-4 dark:bg-slate-950"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
       <div className="w-full max-w-sm">
-        <div className="rounded-lg border border-gray-200 bg-white p-8 dark:border-slate-700 dark:bg-slate-900">
+        <motion.div
+          className="rounded-lg border border-gray-200 bg-white p-8 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+          initial={{ scale: 0.95 }}
+          animate={{ scale: 1 }}
+          transition={{ duration: 0.3 }}
+        >
           <h1 className="mb-6 text-center text-2xl font-bold text-gray-900 dark:text-white">
             Login
           </h1>
@@ -42,7 +53,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={login.isPending}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none placeholder-gray-400 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none placeholder-gray-400 focus:border-[#229ED9] focus:ring-2 focus:ring-[#229ED9]/20 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-gray-500 dark:focus:border-[#229ED9]"
                 placeholder="Enter your password"
                 autoFocus
               />
@@ -57,13 +68,13 @@ export default function Login() {
             <button
               type="submit"
               disabled={login.isPending || !password}
-              className="w-full rounded-md bg-[#229ED9] px-4 py-2 font-medium text-white hover:bg-[#1a7aaf] disabled:opacity-50 dark:hover:bg-[#1a7aaf]"
+              className="w-full rounded-md bg-[#229ED9] px-4 py-2 font-medium text-white shadow-md transition-all hover:bg-[#1a7aaf] hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 dark:hover:bg-[#1a7aaf]"
             >
               {login.isPending ? 'Logging in...' : 'Login'}
             </button>
           </form>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   )
 }

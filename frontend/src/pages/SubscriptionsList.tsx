@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
   useSubscriptions,
@@ -8,6 +9,26 @@ import {
 } from '@/hooks/useSubscriptions'
 import { ConfirmDialog, EmptyState, StatusBadge } from '@/components/shared'
 import type { SubscriptionRead } from '@/lib/types'
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+      delayChildren: 0.1,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3 },
+  },
+}
 
 export default function SubscriptionsList() {
   const navigate = useNavigate()
@@ -44,12 +65,17 @@ export default function SubscriptionsList() {
   if (isLoading) return <div className="p-6">Loading...</div>
 
   return (
-    <div className="space-y-6 p-6">
+    <motion.div
+      className="space-y-6 p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Subscriptions</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Subscriptions</h1>
         <button
           onClick={() => navigate('/subscriptions/new')}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-md bg-[#229ED9] px-4 py-2 text-sm font-medium text-white shadow-md transition-all hover:bg-[#1a7aaf] hover:shadow-lg hover:scale-[1.02] dark:hover:bg-[#1a7aaf]"
         >
           Add Subscription
         </button>
@@ -65,11 +91,17 @@ export default function SubscriptionsList() {
           }}
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
           {subscriptions.map((sub) => (
-            <div
+            <motion.div
               key={sub.id}
-              className="flex flex-col rounded-lg border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+              variants={itemVariants}
+              className="flex flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-lg hover:scale-[1.02] dark:border-slate-700 dark:bg-slate-900"
             >
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex-1">
@@ -101,32 +133,32 @@ export default function SubscriptionsList() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => handleToggle(sub)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-gray-600 hover:bg-gray-700"
+                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-gray-600 transition-all hover:bg-gray-700 hover:shadow-md active:scale-95"
                 >
                   {sub.enabled ? 'Disable' : 'Enable'}
                 </button>
                 <button
                   onClick={() => navigate(`/subscriptions/${sub.id}`)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700"
+                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-[#229ED9] transition-all hover:bg-[#1a7aaf] hover:shadow-md active:scale-95"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => handleScan(sub.id)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-green-600 hover:bg-green-700"
+                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-green-600 transition-all hover:bg-green-700 hover:shadow-md active:scale-95"
                 >
                   Scan
                 </button>
                 <button
                   onClick={() => setDeleteId(sub.id)}
-                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700"
+                  className="flex-1 rounded px-2 py-1 text-xs font-medium text-white bg-red-600 transition-all hover:bg-red-700 hover:shadow-md active:scale-95"
                 >
                   Delete
                 </button>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       <ConfirmDialog
@@ -138,6 +170,6 @@ export default function SubscriptionsList() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteId(null)}
       />
-    </div>
+    </motion.div>
   )
 }

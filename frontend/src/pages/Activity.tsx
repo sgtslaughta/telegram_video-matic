@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { useEvents } from '@/hooks/useEvents'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -21,11 +22,30 @@ const EVENT_KINDS = [
 ]
 
 const LEVEL_COLORS: Record<string, string> = {
-  debug: 'bg-gray-100 text-gray-800',
-  info: 'bg-blue-100 text-blue-800',
-  success: 'bg-green-100 text-green-800',
-  warning: 'bg-amber-100 text-amber-800',
-  error: 'bg-red-100 text-red-800',
+  debug: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
+  info: 'bg-blue-100 text-blue-800 dark:bg-[#229ED9]/20 dark:text-blue-300',
+  success: 'bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-200',
+  warning: 'bg-amber-100 text-amber-800 dark:bg-amber-700 dark:text-amber-200',
+  error: 'bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-200',
+}
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+    },
+  },
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.2 },
+  },
 }
 
 export default function Activity() {
@@ -58,7 +78,12 @@ export default function Activity() {
   const canGoNext = events.data && events.data.length === LIMIT
 
   return (
-    <div className="space-y-6 p-6">
+    <motion.div
+      className="space-y-6 p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Activity</h1>
@@ -66,7 +91,12 @@ export default function Activity() {
       </div>
 
       {/* Filters */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+      <motion.div
+        className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+        initial={{ scale: 0.95 }}
+        animate={{ scale: 1 }}
+        transition={{ duration: 0.3 }}
+      >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -78,7 +108,7 @@ export default function Activity() {
                 setLevelFilter(e.target.value)
                 setOffset(0)
               }}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#229ED9] focus:ring-2 focus:ring-[#229ED9]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
             >
               {EVENT_LEVELS.map((level) => (
                 <option key={level.value} value={level.value}>
@@ -98,7 +128,7 @@ export default function Activity() {
                 setKindFilter(e.target.value)
                 setOffset(0)
               }}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-[#229ED9] focus:ring-2 focus:ring-[#229ED9]/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
             >
               {EVENT_KINDS.map((kind) => (
                 <option key={kind.value} value={kind.value}>
@@ -108,10 +138,15 @@ export default function Activity() {
             </select>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Events Table */}
-      <div className="rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <motion.div
+        className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+      >
         <div className="border-b border-gray-200 px-6 py-4 dark:border-slate-700">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Events</h2>
         </div>
@@ -122,11 +157,17 @@ export default function Activity() {
           </div>
         ) : events.data && events.data.length > 0 ? (
           <>
-            <div className="divide-y divide-gray-200 dark:divide-slate-700">
+            <motion.div
+              className="divide-y divide-gray-200 dark:divide-slate-700"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+            >
               {events.data.map((event) => (
-                <div
+                <motion.div
                   key={event.id}
-                  className="flex items-start gap-4 px-6 py-4 hover:bg-gray-50 dark:hover:bg-slate-800"
+                  variants={itemVariants}
+                  className="flex items-start gap-4 px-6 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-slate-800/50"
                 >
                   {/* Level Badge */}
                   <div className="mt-1 flex-shrink-0">
@@ -151,31 +192,35 @@ export default function Activity() {
                       </span>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
 
             {/* Pagination */}
             <div className="border-t border-gray-200 px-6 py-4 flex items-center justify-between dark:border-slate-700">
-              <button
+              <motion.button
                 onClick={handlePrevious}
                 disabled={!canGoPrevious}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-transparent dark:text-gray-300 dark:hover:bg-slate-800 dark:disabled:text-gray-600"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:text-gray-400 disabled:hover:bg-transparent dark:text-gray-300 dark:hover:bg-slate-800 dark:disabled:text-gray-600"
               >
                 Previous
-              </button>
+              </motion.button>
 
               <span className="text-sm text-gray-600 dark:text-gray-400">
                 Offset: {offset}
               </span>
 
-              <button
+              <motion.button
                 onClick={handleNext}
                 disabled={!canGoNext}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-transparent dark:text-gray-300 dark:hover:bg-slate-800 dark:disabled:text-gray-600"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:text-gray-400 disabled:hover:bg-transparent dark:text-gray-300 dark:hover:bg-slate-800 dark:disabled:text-gray-600"
               >
                 Next
-              </button>
+              </motion.button>
             </div>
           </>
         ) : (
@@ -186,7 +231,7 @@ export default function Activity() {
             />
           </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
