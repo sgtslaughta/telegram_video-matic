@@ -44,7 +44,7 @@ export function MediaThumb({
         )}
       >
         <svg
-          className="h-6 w-6 text-gray-400"
+          className="h-6 w-6 text-muted-foreground"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

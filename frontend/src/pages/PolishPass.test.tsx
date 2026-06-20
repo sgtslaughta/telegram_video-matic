@@ -72,7 +72,7 @@ describe('Polish Pass - Telegram Accents & Animations', () => {
       const { container } = render(<Dashboard />, { wrapper: createWrapper() })
 
       // Dashboard should render
-      expect(screen.getByText('Welcome back')).toBeTruthy()
+      expect(screen.getByText('Dashboard')).toBeTruthy()
       // Check for motion.div container with space-y
       const mainDiv = container.querySelector('.space-y-6')
       expect(mainDiv).toBeTruthy()

@@ -62,7 +62,7 @@ describe('Router', () => {
     expect(screen.getByRole('navigation')).toBeTruthy()
     // Check for main dashboard content (hero banner or stat cards)
     const mainContent = screen.getByRole('main')
-    expect(mainContent.textContent).toContain('Welcome back')
+    expect(mainContent.textContent).toContain('Dashboard')
   })
 
   it('navigates to /subscriptions and renders SubscriptionsList', () => {

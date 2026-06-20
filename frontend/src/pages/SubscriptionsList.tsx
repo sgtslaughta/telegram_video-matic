@@ -8,6 +8,7 @@ import {
   useDeleteSubscription,
   useScanSubscription,
 } from '@/hooks/useSubscriptions'
+import { useChannels } from '@/hooks/useChannels'
 import { ConfirmDialog, EmptyState, StatusBadge } from '@/components/shared'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,7 @@ export default function SubscriptionsList() {
   const [params] = useSearchParams()
   const q = (params.get('q') ?? '').toLowerCase()
   const { data: subscriptions = [], isLoading } = useSubscriptions()
+  const { data: channels } = useChannels()
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [scanId, setScanId] = useState<number | null>(null)
   const [toggleId, setToggleId] = useState<number | null>(null)
@@ -47,6 +49,8 @@ export default function SubscriptionsList() {
   const deleteMut = useDeleteSubscription(deleteId || 0)
   const scanMut = useScanSubscription(scanId || 0)
   const updateMut = useUpdateSubscription(toggleId || 0)
+
+  const channelTitle = (id: number) => channels?.find(c => c.id === id)?.title ?? `Channel ${id}`
 
   const handleToggle = (sub: SubscriptionRead) => {
     setToggleId(sub.id)
@@ -71,7 +75,7 @@ export default function SubscriptionsList() {
   if (isLoading) return <div className="p-6">Loading...</div>
 
   const visible = (subscriptions ?? []).filter(
-    (s) => !q || s.channel_id.toString().toLowerCase().includes(q)
+    (s) => !q || channelTitle(s.channel_id).toLowerCase().includes(q)
   )
 
   return (
@@ -117,7 +121,7 @@ export default function SubscriptionsList() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-base">Channel {sub.channel_id}</CardTitle>
+                      <CardTitle className="text-base">{channelTitle(sub.channel_id)}</CardTitle>
                       {sub.topic_id && (
                         <p className="text-sm text-muted-foreground mt-1">
                           Topic {sub.topic_id}

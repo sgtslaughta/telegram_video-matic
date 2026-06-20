@@ -26,7 +26,7 @@ export default function Login() {
 
   return (
     <motion.div
-      className="flex min-h-screen items-center justify-center bg-white px-4 dark:bg-slate-950"
+      className="flex min-h-screen items-center justify-center bg-background px-4"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
@@ -59,7 +59,7 @@ export default function Login() {
                 <Button
                   type="submit"
                   disabled={login.isPending || !password}
-                  className="w-full bg-[#229ED9] hover:bg-[#1a7aaf]"
+                  className="w-full"
                 >
                   {login.isPending ? 'Logging in...' : 'Login'}
                 </Button>
