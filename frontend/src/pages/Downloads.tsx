@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Trash2, Pause, Play, X } from 'lucide-react'
+import { Trash2, Pause, Play, X, ChevronRight } from 'lucide-react'
 import { useActiveDownloads, useQueuedDownloads } from '@/hooks/useDownloads'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { ProgressBar } from '@/components/shared/ProgressBar'
@@ -127,11 +127,15 @@ export default function Downloads() {
         )}
 
         {queued.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">
-              Queued — waiting for a slot ({queued.length})
-            </p>
-            <div className="divide-y divide-border rounded-lg border">
+          <details className="group rounded-lg border">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-sm font-medium hover:bg-muted/50">
+              <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
+              <span>Queued — waiting for a slot</span>
+              <span className="ml-auto text-xs font-normal text-muted-foreground tabular-nums">
+                {queued.length} item{queued.length === 1 ? '' : 's'} · {fmtBytes(queued.reduce((t, q) => t + (q.size_bytes ?? 0), 0))}
+              </span>
+            </summary>
+            <div className="divide-y divide-border border-t">
               {queued.map((q) => (
                 <div key={q.media_id} className="flex items-center gap-4 px-4 py-2">
                   <div className="w-28 shrink-0"><StatusBadge status="pending" /></div>
@@ -142,7 +146,7 @@ export default function Downloads() {
                 </div>
               ))}
             </div>
-          </div>
+          </details>
         )}
        </>
       )}
