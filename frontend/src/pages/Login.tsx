@@ -17,7 +17,8 @@ export default function Login() {
     e.preventDefault()
 
     try {
-      await login.mutateAsync(password)
+      // Trim so a pasted trailing newline/space doesn't cause a false reject.
+      await login.mutateAsync(password.trim())
       navigate('/')
     } catch (err: any) {
       toast.error(err.message || 'Login failed. Please try again.')
