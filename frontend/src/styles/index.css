@@ -3,49 +3,52 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.6%;
+    /* Faint cool-gray page so white cards + sidebar read as elevated panels. */
+    --background: 210 20% 98%;
+    --foreground: 222 30% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.6%;
+    --card-foreground: 222 30% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.6%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 9.0%;
-    --accent-foreground: 0 0% 98%;
+    --popover-foreground: 222 30% 12%;
+    --muted: 210 16% 95%;
+    --muted-foreground: 215 16% 42%;
+    --accent: 210 16% 93%;
+    --accent-foreground: 222 30% 12%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.5%;
-    --input: 0 0% 89.5%;
+    --border: 214 18% 89%;
+    --input: 214 18% 89%;
     --primary: 201 73% 49%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9.0%;
+    --secondary: 210 16% 95%;
+    --secondary-foreground: 222 30% 12%;
     --ring: 201 73% 49%;
     --telegram-blue: #229ed9;
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 0 0% 3.6%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.6%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.6%;
-    --popover-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 98%;
-    --accent-foreground: 0 0% 9.0%;
+    /* Slate-tinted dark: near-black page, lighter slate for cards + sidebar
+       (both use bg-card) so elevated surfaces read as panels. */
+    --background: 222 18% 6%;
+    --foreground: 210 20% 98%;
+    --card: 222 14% 11%;
+    --card-foreground: 210 20% 98%;
+    --popover: 222 14% 11%;
+    --popover-foreground: 210 20% 98%;
+    --muted: 222 12% 16%;
+    --muted-foreground: 215 16% 65%;
+    --accent: 222 12% 18%;
+    --accent-foreground: 210 20% 98%;
     --destructive: 0 86% 97.3%;
     --destructive-foreground: 0 84.2% 60.2%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
+    --border: 222 12% 18%;
+    --input: 222 12% 18%;
     --primary: 0 0% 98%;
     --primary-foreground: 0 0% 9.0%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --ring: 0 0% 83.1%;
+    --secondary: 222 12% 16%;
+    --secondary-foreground: 210 20% 98%;
+    --ring: 215 20% 65%;
   }
 }
 
