@@ -1,4 +1,26 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+
+const DEFAULTS: SubscriptionEditorState = {
+  channelId: null,
+  topicId: null,
+  name: '',
+  filterMode: 'include',
+  filterRegex: '',
+  regexError: null,
+  checkFrequency: '5m',
+  scheduleDays: [],
+  minSizeMb: null,
+  maxSizeMb: null,
+  maxTotalGb: null,
+  dateFrom: '',
+  dateTo: '',
+  ongoing: true,
+  storagePath: '',
+  renameTemplate: '{channel}/{title}.{ext}',
+  retentionDays: null,
+  seasonDetection: false,
+  jellyfinMetadata: false,
+}
 
 export interface SubscriptionEditorState {
   channelId: number | null
@@ -22,29 +44,18 @@ export interface SubscriptionEditorState {
   jellyfinMetadata: boolean
 }
 
-export function useSubscriptionEditor(initialState?: Partial<SubscriptionEditorState>) {
-  const [state, setState] = useState<SubscriptionEditorState>({
-    channelId: null,
-    topicId: null,
-    name: '',
-    filterMode: 'include',
-    filterRegex: '',
-    regexError: null,
-    checkFrequency: '5m',
-    scheduleDays: [],
-    minSizeMb: null,
-    maxSizeMb: null,
-    maxTotalGb: null,
-    dateFrom: '',
-    dateTo: '',
-    ongoing: true,
-    storagePath: '',
-    renameTemplate: '{channel}/{title}.{ext}',
-    retentionDays: null,
-    seasonDetection: false,
-    jellyfinMetadata: false,
-    ...initialState,
-  })
+export function useSubscriptionEditor(
+  initialState?: Partial<SubscriptionEditorState>,
+  resetKey?: string | number,
+) {
+  const [state, setState] = useState<SubscriptionEditorState>({ ...DEFAULTS, ...initialState })
+
+  // The edit form mounts before the query resolves, so the first init uses
+  // defaults. Re-seed from initialState once the loaded sub (resetKey) changes.
+  useEffect(() => {
+    if (initialState) setState({ ...DEFAULTS, ...initialState })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey])
 
   // Live regex validation
   const regexStatus = useMemo(() => {

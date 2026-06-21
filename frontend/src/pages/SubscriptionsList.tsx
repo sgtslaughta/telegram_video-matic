@@ -132,15 +132,12 @@ export default function SubscriptionsList() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-base">{sub.name || channelTitle(sub.channel_id)}</CardTitle>
-                      {sub.name && (
-                        <p className="text-xs text-muted-foreground">{channelTitle(sub.channel_id)}</p>
-                      )}
-                      {sub.topic_id && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Topic {sub.topic_id}
-                        </p>
-                      )}
+                      <CardTitle className="text-base">{sub.name || sub.channel_title || channelTitle(sub.channel_id)}</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {sub.name ? `${sub.channel_title || channelTitle(sub.channel_id)}` : null}
+                        {sub.name && (sub.topic_title || sub.topic_id) ? ' · ' : ''}
+                        {sub.topic_title || (sub.topic_id ? `Topic ${sub.topic_id}` : '')}
+                      </p>
                     </div>
                     <StatusBadge status={sub.enabled ? 'enabled' : 'disabled'} />
                   </div>

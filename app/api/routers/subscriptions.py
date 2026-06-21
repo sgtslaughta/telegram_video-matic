@@ -15,11 +15,23 @@ router = APIRouter(
 )
 
 
+async def _enrich(db: AsyncSession, sub) -> SubscriptionRead:
+    """Attach channel + topic titles so the UI shows names, not ids."""
+    from app.db.models import Channel, Topic
+    read = SubscriptionRead.model_validate(sub)
+    chan = await db.get(Channel, sub.channel_id)
+    read.channel_title = chan.title if chan else None
+    if sub.topic_id:
+        topic = await db.get(Topic, sub.topic_id)
+        read.topic_title = topic.title if topic else None
+    return read
+
+
 @router.get("")
 async def list_subscriptions(db: AsyncSession = Depends(get_db)):
     """GET /api/subscriptions — list all subscriptions."""
     subs = await repo_module.subscriptions.list(db)
-    return [SubscriptionRead.model_validate(s) for s in subs]
+    return [await _enrich(db, s) for s in subs]
 
 
 def _validate_regex(pattern):
@@ -70,7 +82,7 @@ async def create_subscription(
             retention_days=req.retention_days,
             retention_disk_pct=req.retention_disk_pct,
         )
-        return SubscriptionRead.model_validate(sub)
+        return await _enrich(db, sub)
     except IntegrityError:
         raise HTTPException(
             status_code=409,
@@ -84,7 +96,7 @@ async def get_subscription(sub_id: int, db: AsyncSession = Depends(get_db)):
     sub = await repo_module.subscriptions.get(db, sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
-    return SubscriptionRead.model_validate(sub)
+    return await _enrich(db, sub)
 
 
 @router.patch("/{sub_id}")
@@ -102,7 +114,7 @@ async def update_subscription(
     if "filter_regex" in update_data:
         _validate_regex(update_data["filter_regex"])
     updated = await repo_module.subscriptions.update(db, sub_id, **update_data)
-    return SubscriptionRead.model_validate(updated)
+    return await _enrich(db, updated)
 
 
 @router.delete("/{sub_id}", status_code=status.HTTP_204_NO_CONTENT)

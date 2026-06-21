@@ -82,11 +82,13 @@ export default function Downloads() {
         <div className="divide-y divide-border rounded-lg border">
           {jobs.map((job) => (
             <div key={job.id} className="flex items-center gap-4 px-4 py-2.5">
-              <div className="flex w-40 shrink-0 items-center gap-2">
+              <div className="w-28 shrink-0">
                 <StatusBadge status={job.status} />
-                <span className="truncate text-xs text-muted-foreground">#{job.id}</span>
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
+                <p className="mb-1 truncate text-sm" title={job.file_name ?? undefined}>
+                  {job.file_name || `Download #${job.id}`}
+                </p>
                 <ProgressBar progress={(job.progress ?? 0) * 100} animated />
                 {job.error && <p className="mt-1 text-xs text-destructive">{job.error}</p>}
               </div>

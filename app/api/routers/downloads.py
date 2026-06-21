@@ -15,9 +15,17 @@ router = APIRouter(
 
 @router.get("/active")
 async def active_downloads(db: AsyncSession = Depends(get_db)):
-    """GET /api/downloads/active — list active download jobs."""
+    """GET /api/downloads/active — list active download jobs (with filename)."""
+    from app.db.models import MediaItem
     jobs = await downloads.list_active(db)
-    return [DownloadJobRead.from_orm(job) for job in jobs]
+    out = []
+    for job in jobs:
+        read = DownloadJobRead.from_orm(job)
+        item = await db.get(MediaItem, job.media_id)
+        if item:
+            read.file_name = item.file_name or item.caption
+        out.append(read)
+    return out
 
 
 async def _job_or_404(db: AsyncSession, job_id: int):

@@ -81,7 +81,8 @@ export default function SubscriptionEditor() {
           seasonDetection: existingSubscription.data.season_detection || false,
           jellyfinMetadata: existingSubscription.data.jellyfin_metadata || false,
         }
-      : undefined
+      : undefined,
+    existingSubscription.data?.id ?? (isNew ? 'new' : 'loading')
   )
   const s = editor.state
 

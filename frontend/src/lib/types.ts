@@ -156,7 +156,9 @@ export interface SubscriptionRead {
   id: number;
   name?: string | null;
   channel_id: number;
+  channel_title?: string | null;
   topic_id?: number | null;
+  topic_title?: string | null;
   enabled: boolean;
   mode: string;
   check_frequency?: string | null;
@@ -219,6 +221,7 @@ export interface MediaRequeueRequest {
 export interface DownloadJobRead {
   id: number;
   media_id: number;
+  file_name?: string | null;
   status: string;
   progress: number;
   speed_bps?: number | null;

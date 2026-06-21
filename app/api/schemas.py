@@ -149,7 +149,9 @@ class SubscriptionRead(BaseModel):
     id: int
     name: Optional[str] = None
     channel_id: int
+    channel_title: Optional[str] = None
     topic_id: Optional[int] = None
+    topic_title: Optional[str] = None
     enabled: bool
     mode: str
     check_frequency: Optional[str] = None
@@ -225,6 +227,7 @@ class DownloadJobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     media_id: int
+    file_name: Optional[str] = None  # enriched from the media item for display
     status: str
     progress: float
     speed_bps: Optional[int] = None
