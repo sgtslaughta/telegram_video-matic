@@ -386,6 +386,7 @@ class SyncEngine:
                                 # Throttle broadcast to ~1 Hz; track last sample for speed/ETA.
                                 last_broadcast_time = [None]
                                 last_bytes = [0]
+                                ema_speed = [None]  # smoothed bytes/sec
 
                                 async def on_progress(current_bytes, total_bytes):
                                     """Progress callback: cancel/pause check + ~1 Hz throttle + speed/ETA."""
@@ -401,8 +402,15 @@ class SyncEngine:
                                         eta_sec = None
                                         if prev is not None:
                                             dt = (now - prev).total_seconds()
-                                            if dt > 0:
-                                                speed_bps = int((current_bytes - last_bytes[0]) / dt)
+                                            delta = current_bytes - last_bytes[0]
+                                            if dt > 0 and delta >= 0:
+                                                inst = delta / dt
+                                                # EMA smooths the bursty parallel transfer so the
+                                                # displayed rate doesn't spike/drop each second.
+                                                ema_speed[0] = inst if ema_speed[0] is None else (
+                                                    0.4 * inst + 0.6 * ema_speed[0]
+                                                )
+                                                speed_bps = int(ema_speed[0])
                                                 if speed_bps > 0 and total_bytes:
                                                     eta_sec = int((total_bytes - current_bytes) / speed_bps)
                                         last_broadcast_time[0] = now
