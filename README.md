@@ -1,212 +1,155 @@
 # Telegram Video-Matic
 
 Self-hosted Telegram media downloader with automatic channel/topic monitoring,
-smart naming for Jellyfin/Plex, retry logic, and disk pruning. One container,
-one image, one port.
+smart naming for Jellyfin/Plex, retry logic, and disk pruning. **One container,
+one image, one port.**
 
 ## Features
 
-- **Telegram integration:** MTProto user session (channel/topic browse, history, comments, reactions).
-- **Subscriptions:** Define channels/topics to monitor with filter rules (keyword, media type, date range).
-- **Automatic downloads:** Background sync engine polls subscriptions, downloads matching media, retries on failure.
-- **Smart naming:** Jellyfin/Plex-friendly folder structure and file naming (rename templates, season/episode detection).
-- **Drift reconciliation:** Detect and recover from missed messages due to Telegram timeline limits.
-- **Pruning:** Automatic cleanup by age or disk percentage; user-tunable.
-- **Web UI:** Real-time dashboard with subscription management, manual download, file browser, and settings.
-- **Plugin framework:** Hook-based extensibility for metadata providers and post-download actions.
+- **Telegram integration:** MTProto user session — browse channels/topics, history, comments, reactions.
+- **Subscriptions:** Monitor channels/topics with filter rules (regex, media type, date range, capture frequency).
+- **Automatic downloads:** Background sync engine polls subscriptions, downloads matches, retries on failure, resumes from byte offset.
+- **Smart naming:** Jellyfin/Plex folder + file naming (rename templates, season/episode detection, optional `.nfo` metadata).
+- **Dedup:** Content-hash detection skips re-downloading renamed files.
+- **Pruning:** Cleanup by age or disk quota; per-subscription and server-wide.
+- **Web UI:** Real-time dashboard — subscription management, manual download, file browser, settings.
 
 ## Quick Start
 
-### Prerequisites
+**Prerequisites:** Docker + Docker Compose v2. A Telegram account with API
+credentials from <https://my.telegram.org>.
 
-- Docker and Docker Compose
-- ~2 GB disk for app + database
-- Additional disk for `/media` (depends on download volume)
+```bash
+git clone https://github.com/sgtslaughta/telegram_video-matic.git
+cd telegram_video-matic
 
-### Installation
+cp .env.example .env
+# Generate a secret key and paste it into .env as TVM_SECRET_KEY:
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 
-1. **Clone and navigate:**
-   ```bash
-   git clone https://github.com/your-username/telegram-video-matic.git
-   cd telegram-video-matic
-   ```
+docker compose up -d
+```
 
-2. **Create environment file:**
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env`:
-   - Set `TVM_SECRET_KEY` to a strong random value:
-     ```bash
-     python -c "import secrets; print(secrets.token_urlsafe(32))"
-     ```
-   - (Optional) Set `TVM_APP_PASSWORD` for web UI login.
-   - (Optional) Adjust `POLL_INTERVAL_SEC`, `MAX_CONCURRENT_DOWNLOADS`, `TZ`.
+Open <http://localhost:8000>, then:
 
-3. **Start the app:**
-   ```bash
-   docker-compose up -d
-   ```
+1. **Connect Telegram** — the wizard asks for your phone, the login code
+   Telegram sends, and your 2FA password if enabled. The session is encrypted
+   with `TVM_SECRET_KEY` and stored in `/data/tvm.sqlite`.
+2. **Add a subscription** — pick a channel/topic, set filter rules and
+   capture frequency, enable auto-download. The sync engine starts polling.
 
-4. **First run — Telegram login:**
-   - Open http://localhost:8000 in your browser.
-   - Follow the "Connect Telegram" wizard:
-     - Provide your phone number.
-     - Enter the code Telegram sends.
-     - Enter password if 2FA is enabled.
-   - Session is encrypted with `TVM_SECRET_KEY` and stored in `/data/tvm.sqlite`.
+That's it. Files land in `./media`, named for your Jellyfin/Plex library.
 
-5. **Add subscriptions:**
-   - Dashboard → Subscriptions tab.
-   - Click "Add Subscription," select channel/topic.
-   - Define rules: filter keywords, media types, date range.
-   - Toggle auto-download on; sync engine starts polling.
+### Run the pre-built image
+
+Tagged releases publish a multi-arch image (amd64 + arm64) to GHCR — skip the
+build:
+
+```bash
+docker run -d --name tvm -p 8000:8000 \
+  -e TVM_SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')" \
+  -v "$PWD/data:/data" -v "$PWD/media:/media" \
+  ghcr.io/sgtslaughta/telegram_video-matic:latest
+```
+
+### Managing the stack
+
+```bash
+docker compose logs -f tvm   # tail logs
+docker compose restart       # restart
+docker compose down          # stop (data/ and media/ are preserved)
+```
+
+## Configuration
 
 ### Volumes
 
-| Mount | Purpose | Example |
-|---|---|---|
-| `/data` | SQLite database + Telethon session artifacts | `./data:/data` |
-| `/media` | Downloaded files (user maps to Jellyfin/Plex library) | `./media:/media` |
+| Mount | Purpose |
+|---|---|
+| `/data` | SQLite database + encrypted Telethon session |
+| `/media` | Downloaded files (map to your Jellyfin/Plex library) |
 
 ### Environment Variables
 
 | Variable | Default | Notes |
 |---|---|---|
-| `TVM_SECRET_KEY` | *(required)* | Encryption key for Telegram credentials. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
-| `TVM_APP_PASSWORD` | *(unset)* | Web UI password. If unset, app is open on LAN (not recommended for untrusted networks). |
-| `DATABASE_URL` | `sqlite+aiosqlite:////data/tvm.sqlite` | SQLite connection string. Change only if you know what you're doing. |
-| `MEDIA_ROOT` | `/media` | Media download root. Usually matches the `/media` volume mount. |
-| `POLL_INTERVAL_SEC` | `300` | Default poll cadence (seconds). Runtime-tunable via Settings. |
-| `MAX_CONCURRENT_DOWNLOADS` | `3` | Max parallel downloads. Runtime-tunable via Settings. |
-| `TZ` | `UTC` | Timezone for schedule-day evaluation. Examples: `America/New_York`, `Europe/London`. |
-| `LOG_LEVEL` | `INFO` | Logging level. Options: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+| `TVM_SECRET_KEY` | *(required)* | Encrypts Telegram credentials. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
+| `TVM_APP_PASSWORD` | *(unset)* | Web UI password. Unset = open on LAN (trusted networks only). |
+| `POLL_INTERVAL_SEC` | `300` | Default poll cadence. Runtime-tunable in Settings. |
+| `MAX_CONCURRENT_DOWNLOADS` | `3` | Max parallel downloads. Runtime-tunable. |
+| `RETENTION_DAYS` | `90` | Age-based prune threshold. Runtime-tunable. |
+| `TZ` | `UTC` | Timezone for schedule evaluation, e.g. `America/New_York`. |
 
-### Stopping and Logs
+`DATABASE_URL` and `MEDIA_ROOT` default to the `/data` and `/media` volumes —
+change only if you know what you're doing.
 
-```bash
-# View logs
-docker-compose logs -f tvm
+## Unraid
 
-# Stop the app
-docker-compose stop
-
-# Restart
-docker-compose restart
-
-# Full teardown (keep /data and /media volumes)
-docker-compose down
-```
-
-## Unraid Installation
-
-1. **Add Community-Apps source:**
-   - Apps → App Store → Community-Apps.
-   - Click the search icon, paste repo URL (if configured).
-   - Search "telegram-video-matic".
-
-2. **Install:**
-   - Click "Install."
-   - Fill in:
-     - **Host path for `/data`:** (e.g., `/mnt/user/appdata/telegram-video-matic`)
-     - **Host path for `/media`:** (e.g., `/mnt/user/media`)
-     - **TVM_SECRET_KEY:** (required; generate as above)
-     - **TVM_APP_PASSWORD:** (optional)
-     - **Other env vars:** (poll interval, concurrency, timezone)
-   - Click "Apply."
-
-3. **WebUI:**
-   - Docker tab → telegram-video-matic → "WebUI" button (or http://your-unraid-ip:8000).
-   - Follow first-run Telegram login (see Quick Start above).
+1. Apps → search **telegram-video-matic** (or add the template `unraid/tvm.xml`).
+2. Set host paths for `/data` (e.g. `/mnt/user/appdata/telegram-video-matic`)
+   and `/media` (e.g. `/mnt/user/media`), and a `TVM_SECRET_KEY`.
+3. Apply, then open the WebUI and run the Telegram login (see Quick Start).
 
 ## Architecture
 
 ```
-React SPA (built to static/)
+React SPA (static build)
        ↓ REST + WebSocket
   FastAPI app (uvicorn)
   ├─ Telegram service (Telethon user session)
-  ├─ Sync engine (background asyncio task)
-  │  ├─ Poller (fetch new messages)
-  │  ├─ Downloader (concurrent media DL)
-  │  ├─ Retryer (exponential backoff)
-  │  └─ Pruner (cleanup by age/disk)
-  ├─ Plugin host (hook dispatch)
-  └─ SQLite database (async, /data volume)
+  ├─ Sync engine (background asyncio tasks)
+  │  ├─ Poller       — fetch new messages
+  │  ├─ Downloader   — concurrent, resumable media DL
+  │  ├─ Retryer      — exponential backoff
+  │  └─ Pruner       — cleanup by age / disk quota
+  └─ SQLite (async, /data volume)
 ```
 
-**One process, one port (8000).** No nginx, no supervisor, no separate services.
+One process, one port (8000). No nginx, no supervisor, no extra services.
 
 ## Development
 
-### Backend Tests
-
 ```bash
-pip install -r requirements.txt
-pytest -q tests/
-```
+# Backend (Python 3.14)
+pip install -r requirements-dev.txt
+ruff check app/          # lint
+bandit -r app/ -ll       # security
+pytest -q tests/         # tests
 
-### Frontend Build
+# Frontend
+cd frontend && npm ci && npm run build
 
-```bash
-cd frontend
-npm ci
-npm run build
-```
-
-### Local Docker Build
-
-```bash
-docker build -t tvm:local .
-docker run -e TVM_SECRET_KEY=test-key -p 8000:8000 tvm:local
-# Open http://localhost:8000
+# Local container build
+docker build -f docker/Dockerfile -t tvm:local .
+docker run -e TVM_SECRET_KEY=test -p 8000:8000 tvm:local
 ```
 
 ### CI/CD
 
-GitHub Actions pipeline runs on each push:
-- Backend: `ruff` lint + `pytest` tests.
-- Frontend: `tsc --noEmit` type check + `vitest` tests + `npm run build`.
-- Docker: Multi-stage build.
-- Smoke test: Container start + health check.
+`.github/workflows/ci.yml` runs on every push/PR:
 
-See `.github/workflows/ci.yml` for details.
+- **Backend** — `ruff` lint, `bandit` SAST, `pytest`.
+- **Frontend** — `tsc` type check, `vitest`, `vite build`.
+- **Security** — `trivy` filesystem scan (dependencies, Dockerfile misconfig, secrets).
+- **Docker** — multi-stage build, `trivy` image scan, container smoke test.
+- **Release** — on `v*` tags: build multi-arch and push to GHCR.
+
+Cut a release:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
 
 ## Troubleshooting
 
-### Container won't start
-
-- **Check logs:** `docker-compose logs tvm`
-- **TVM_SECRET_KEY missing:** Set in `.env` or via `-e` flag.
-- **Port 8000 in use:** Change `ports:` in `docker-compose.yml` (e.g., `8001:8000`).
-
-### No Telegram session
-
-- **Delete `/data/tvm.sqlite`** and restart; re-login on the wizard.
-- **Check logs** for encryption errors (bad TVM_SECRET_KEY).
-
-### Downloads not starting
-
-- **Verify subscription rules:** Ensure rules match messages in the channel.
-- **Check sync engine logs:** Look for poller errors or download queue status via the API.
-
-## Contributing
-
-Contributions welcome! Please:
-1. Fork the repo.
-2. Create a branch for your feature/bugfix.
-3. Ensure tests pass and linting is clean.
-4. Submit a PR with a clear description.
-
-## License
-
-[Your license here, e.g., MIT]
+- **Container won't start:** `docker compose logs tvm`. Usually a missing
+  `TVM_SECRET_KEY`.
+- **Port 8000 in use:** change the `ports:` mapping in `compose.yml` (e.g. `8001:8000`).
+- **Telegram login fails / bad session:** delete `data/tvm.sqlite` and re-run
+  the wizard (re-encrypts with current `TVM_SECRET_KEY`).
+- **Downloads not starting:** check subscription filter rules actually match
+  recent messages; watch the dashboard activity feed for poller errors.
 
 ## Support
 
-- Issues: https://github.com/your-username/telegram-video-matic/issues
-- Discussions: https://github.com/your-username/telegram-video-matic/discussions
-
----
-
-**Last updated:** 2026-06-20
+- Issues: <https://github.com/sgtslaughta/telegram_video-matic/issues>

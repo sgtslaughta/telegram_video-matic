@@ -1,9 +1,9 @@
 services:
   tvm:
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile
-    image: telegram-video-matic
+    image: ghcr.io/sgtslaughta/telegram_video-matic:latest
     container_name: telegram-video-matic
     restart: unless-stopped
     ports:

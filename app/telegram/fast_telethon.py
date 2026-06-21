@@ -247,7 +247,7 @@ async def _internal_transfer_to_telegram(client: TelegramClient,
     file_id = helpers.generate_random_long()
     file_size = os.path.getsize(response.name)
 
-    hash_md5 = hashlib.md5()
+    hash_md5 = hashlib.md5(usedforsecurity=False)  # Telegram upload protocol checksum, not security
     uploader = ParallelTransferrer(client)
     part_size, part_count, is_large = await uploader.init_upload(file_id, file_size)
     buffer = bytearray()

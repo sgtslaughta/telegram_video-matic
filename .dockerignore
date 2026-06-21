@@ -26,8 +26,10 @@ frontend/.dist
 tests/
 docs/
 .dockerignore
-Dockerfile
+docker/
+compose.yml
 docker-compose.yml
+requirements-dev.txt
 README.md
 *.md
 .remember
