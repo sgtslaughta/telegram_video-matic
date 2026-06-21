@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/shared/EmptyState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { Layers, Download, HardDrive, AlertTriangle, type LucideIcon } from 'lucide-react'
 
@@ -117,13 +117,24 @@ export default function Dashboard() {
                       color: 'hsl(var(--popover-foreground))',
                     }}
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="count"
-                    stroke="hsl(var(--primary))"
-                    fill="hsl(var(--primary))"
-                    fillOpacity={0.15}
-                  />
+                  {series.series.length > 0 && <Legend wrapperStyle={{ fontSize: 12 }} />}
+                  {series.series.length === 0 ? (
+                    <Area type="monotone" dataKey="count" stroke="hsl(var(--primary))"
+                      fill="hsl(var(--primary))" fillOpacity={0.15} />
+                  ) : (
+                    series.series.map((s) => (
+                      <Area
+                        key={s.key}
+                        type="monotone"
+                        dataKey={s.key}
+                        name={s.name}
+                        stackId="dls"
+                        stroke={s.color}
+                        fill={s.color}
+                        fillOpacity={0.5}
+                      />
+                    ))
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
             </CardContent>

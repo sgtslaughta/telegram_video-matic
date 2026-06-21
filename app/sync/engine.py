@@ -517,6 +517,11 @@ class SyncEngine:
                                 # Finish job
                                 self._control.pop(item.id, None)
                                 await downloads.finish(session, job.id, error=None)
+                                await events.add(
+                                    session, level=EventLevel.SUCCESS, kind="download",
+                                    subscription_id=item.subscription_id, media_id=item.id,
+                                    message=f"Downloaded {item.file_name or target_full.name}",
+                                )
 
                                 # Dispatch plugin hook
                                 try:
