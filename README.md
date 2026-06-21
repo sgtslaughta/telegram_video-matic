@@ -79,6 +79,7 @@ docker compose down          # stop (data/ and media/ are preserved)
 | `MAX_CONCURRENT_DOWNLOADS` | `3` | Max parallel downloads. Runtime-tunable. |
 | `RETENTION_DAYS` | `90` | Age-based prune threshold. Runtime-tunable. |
 | `TZ` | `UTC` | Timezone for schedule evaluation, e.g. `America/New_York`. |
+| `PUID` / `PGID` | `1000` | Host uid/gid that owns `./data` + `./media`; the container runs as this so SQLite can write. Find with `id -u`/`id -g` (Unraid often `99`/`100`). |
 
 `DATABASE_URL` and `MEDIA_ROOT` default to the `/data` and `/media` volumes —
 change only if you know what you're doing.
@@ -145,6 +146,9 @@ git tag v1.0.0 && git push origin v1.0.0
 - **Container won't start:** `docker compose logs tvm`. Usually a missing
   `TVM_SECRET_KEY`.
 - **Port 8000 in use:** change the `ports:` mapping in `compose.yml` (e.g. `8001:8000`).
+- **"attempt to write to a readonly database":** the container's user can't
+  write the bind-mounted `./data`. Set `PUID`/`PGID` in `.env` to the owner of
+  `./data` (`ls -n data`), then `docker compose up -d`.
 - **Telegram login fails / bad session:** delete `data/tvm.sqlite` and re-run
   the wizard (re-encrypts with current `TVM_SECRET_KEY`).
 - **Downloads not starting:** check subscription filter rules actually match

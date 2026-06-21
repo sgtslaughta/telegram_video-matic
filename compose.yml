@@ -6,6 +6,10 @@ services:
     image: ghcr.io/sgtslaughta/telegram_video-matic:latest
     container_name: telegram-video-matic
     restart: unless-stopped
+    # Run as the host user that owns ./data and ./media so SQLite can write.
+    # Bind mounts carry host ownership and shadow the image's build-time chown.
+    # Override via PUID/PGID in .env (Unraid: your share's uid/gid).
+    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "8000:8000"
     volumes:
