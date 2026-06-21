@@ -52,6 +52,19 @@ async def lifespan(app: FastAPI):
         log(f"Session factory init failed: {e}", "ERROR")
         raise
 
+    # Seed default settings rows so the Settings page has editable values.
+    try:
+        from app.db.repositories import settings as settings_repo
+        async with session_factory() as session:
+            await settings_repo.ensure_defaults(session, {
+                "poll_interval_sec": settings.poll_interval_sec,
+                "max_concurrent_downloads": settings.max_concurrent_downloads,
+                "retention_days": settings.retention_days,
+                "retention_disk_pct": settings.retention_disk_pct,
+            })
+    except Exception as e:
+        log(f"Settings seed failed: {e}", "WARN")
+
     # Build WebSocket hub
     hub = WSHub()
     app.state.ws_hub = hub

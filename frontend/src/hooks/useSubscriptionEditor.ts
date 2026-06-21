@@ -10,9 +10,8 @@ export interface SubscriptionEditorState {
   scheduleDays: string[]
   minSizeMb: number | null
   maxSizeMb: number | null
-  timeframeMode: 'all' | 'future' | 'window'
-  dateFrom: string  // yyyy-mm-dd
-  dateTo: string    // yyyy-mm-dd
+  dateFrom: string  // yyyy-mm-dd; empty = no lower bound
+  dateTo: string    // yyyy-mm-dd; empty = ongoing (no upper bound)
   storagePath: string
   renameTemplate: string
   retentionDays: number | null
@@ -30,7 +29,6 @@ export function useSubscriptionEditor(initialState?: Partial<SubscriptionEditorS
     scheduleDays: [],
     minSizeMb: null,
     maxSizeMb: null,
-    timeframeMode: 'all',
     dateFrom: '',
     dateTo: '',
     storagePath: '',

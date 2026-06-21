@@ -41,3 +41,15 @@ async def list(session: AsyncSession) -> list[Setting]:
     """List all settings."""
     result = await session.execute(select(Setting))
     return result.scalars().all()
+
+
+async def ensure_defaults(session: AsyncSession, defaults: dict) -> None:
+    """Insert any missing settings with default values (won't overwrite existing)."""
+    existing = {s.key for s in await list(session)}
+    added = False
+    for key, value in defaults.items():
+        if key not in existing:
+            session.add(Setting(key=key, value=str(value)))
+            added = True
+    if added:
+        await session.commit()
