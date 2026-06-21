@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Trash2, Pause, Play, X } from 'lucide-react'
-import { useActiveDownloads } from '@/hooks/useDownloads'
+import { useActiveDownloads, useQueuedDownloads } from '@/hooks/useDownloads'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
@@ -30,6 +30,8 @@ export default function Downloads() {
   const qc = useQueryClient()
   const { data, isLoading } = useActiveDownloads()
   const jobs = data ?? []
+  const { data: queuedData } = useQueuedDownloads()
+  const queued = queuedData ?? []
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const clearAll = async () => {
@@ -76,9 +78,11 @@ export default function Downloads() {
 
       {isLoading ? (
         <div className="py-12 text-center text-muted-foreground">Loading…</div>
-      ) : jobs.length === 0 ? (
+      ) : jobs.length === 0 && queued.length === 0 ? (
         <EmptyState title="No active downloads" message="Queued and in-progress downloads will appear here in real time." />
       ) : (
+       <>
+        {jobs.length > 0 && (
         <div className="divide-y divide-border rounded-lg border">
           {jobs.map((job) => (
             <div key={job.id} className="flex items-center gap-4 px-4 py-2.5">
@@ -120,6 +124,27 @@ export default function Downloads() {
             </div>
           ))}
         </div>
+        )}
+
+        {queued.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">
+              Queued — waiting for a slot ({queued.length})
+            </p>
+            <div className="divide-y divide-border rounded-lg border">
+              {queued.map((q) => (
+                <div key={q.media_id} className="flex items-center gap-4 px-4 py-2">
+                  <div className="w-28 shrink-0"><StatusBadge status="pending" /></div>
+                  <p className="min-w-0 flex-1 truncate text-sm" title={q.file_name ?? undefined}>
+                    {q.file_name || `Media #${q.media_id}`}
+                  </p>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{fmtBytes(q.size_bytes)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+       </>
       )}
     </div>
   )

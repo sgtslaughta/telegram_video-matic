@@ -285,49 +285,75 @@ class SyncEngine:
             pass  # never let a bad event kill the update loop
 
     async def _downloader(self) -> None:
-        """Download manager: claims pending media, downloads, renames, moves into place.
+        """Concurrent download manager: keeps up to N downloads running at once
+        (N = max_concurrent_downloads setting). Each claimed item runs in its own
+        task with its own DB session, so 3 files genuinely download in parallel."""
+        from app.db.repositories import settings as settings_repo
+        active: dict[int, asyncio.Task] = {}
+        self._dl_active = active
+        try:
+            while not self._stop_event.is_set():
+                try:
+                    try:
+                        async with self.session_factory() as s:
+                            raw = await settings_repo.get(s, "max_concurrent_downloads", default="3")
+                        max_concurrent = int(raw) if raw else 3
+                    except Exception:
+                        max_concurrent = 3
 
-        Flow:
-        1. Claim pending media items (pending→queued atomic flip)
-        2. For each item:
-           a. Start download job
-           b. Get message from Telegram
-           c. Download file with progress callback
-           d. Render target path using subscription template + season/episode detection
-           e. Move file into place
-           f. Update media status→downloaded, set local_path
-           g. Finish job (success)
-           h. Dispatch on_post_download hook
-        3. On download/move error:
-           a. Increment attempt counter
-           b. If attempt <= max_attempts (5): sleep(min(2^attempt*5, 3600)) and retry
-           c. If FloodWaitError: pause without incrementing attempt, retry
-           d. If attempt > max_attempts: status→failed, log event, finish job with error
-        """
-        max_concurrent = 3  # TODO: read from config
+                    # Reap finished tasks
+                    for iid in [i for i, t in active.items() if t.done()]:
+                        active.pop(iid, None)
+
+                    slots = max_concurrent - len(active)
+                    if slots > 0:
+                        async with self.session_factory() as session:
+                            claimed = await media.claim_pending(session, limit=slots)
+                        for item in claimed:
+                            active[item.id] = asyncio.create_task(self._download_item(item.id))
+                except Exception as e:
+                    try:
+                        async with self.session_factory() as session:
+                            await events.add(session, level=EventLevel.ERROR, kind="sync",
+                                             message=f"Downloader error: {e}")
+                            await session.commit()
+                    except Exception:
+                        pass
+
+                # Re-check often so freed slots refill quickly.
+                try:
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=1)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+        finally:
+            # Shutdown/cancel: stop in-flight downloads (partials kept, resumed next start)
+            for t in active.values():
+                t.cancel()
+
+    async def _download_item(self, item_id: int) -> None:
+        """Download one media item (own session). Spawned concurrently by the
+        downloader pool; bounded by max_concurrent_downloads."""
         max_attempts = 5
         base_backoff = 5
         max_backoff = 3600
+        async with self.session_factory() as session:
+            item = await media.get(session, item_id)
+            if not item:
+                return
 
-        while not self._stop_event.is_set():
-            try:
-                async with self.session_factory() as session:
-                    # Claim pending media
-                    claimed = await media.claim_pending(session, limit=max_concurrent)
+            # Backoff elapsed-time gate for retried items
+            latest_job = await downloads.get_latest_for_media(session, item.id)
+            if latest_job and latest_job.attempt > 1 and latest_job.status == JobStatus.QUEUED:
+                backoff_sec = min(2 ** latest_job.attempt * base_backoff, max_backoff)
+                elapsed = (datetime.now(timezone.utc) - _as_utc(latest_job.updated_at)).total_seconds()
+                if elapsed < backoff_sec:
+                    await media.set_status(session, item.id, MediaStatus.PENDING)
+                    await session.commit()
+                    return
 
-                    for item in claimed:
-                        # FIX 2: Check backoff elapsed-time gate for retried items
-                        latest_job = await downloads.get_latest_for_media(session, item.id)
-                        if latest_job and latest_job.attempt > 1 and latest_job.status == JobStatus.QUEUED:
-                            # This item has been retried; check if backoff window has elapsed
-                            backoff_sec = min(2 ** latest_job.attempt * base_backoff, max_backoff)
-                            elapsed = (datetime.now(timezone.utc) - _as_utc(latest_job.updated_at)).total_seconds()
-                            if elapsed < backoff_sec:
-                                # Backoff window not yet elapsed; release this item and try next
-                                await media.set_status(session, item.id, MediaStatus.PENDING)
-                                await session.commit()
-                                continue
-
+            if True:
+                if True:
                         try:
                             # Subscription is optional (ad-hoc downloads have none).
                             sub = await subscriptions.get(session, item.subscription_id) if item.subscription_id else None
@@ -342,7 +368,7 @@ class SyncEngine:
                                     message="Channel not found",
                                 )
                                 await session.commit()
-                                continue
+                                return
 
                             # Reuse a paused/queued job (resume) or start fresh.
                             job = await downloads.get_or_start(session, item.id)
@@ -546,24 +572,6 @@ class SyncEngine:
                                 message=f"Download error: {e}",
                             )
                             await session.commit()
-
-            except Exception as e:
-                # Outer error: log and continue
-                async with self.session_factory() as session:
-                    await events.add(
-                        session,
-                        level=EventLevel.ERROR,
-                        kind="sync",
-                        message=f"Downloader error: {e}",
-                    )
-                    await session.commit()
-
-            # Wait ~1s before next cycle, but exit promptly on stop.
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=1)
-                break
-            except asyncio.TimeoutError:
-                pass
 
     async def _maintenance_pass(self, session) -> None:
         """Single pass of maintenance: drift detection and pruning.

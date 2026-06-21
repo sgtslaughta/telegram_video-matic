@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, BookOpen, Compass, DownloadCloud, ActivitySquare, Settings, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useActiveDownloads, useQueuedDownloads } from '@/hooks/useDownloads'
 
 export default function Sidebar({
   connected,
@@ -11,6 +12,10 @@ export default function Sidebar({
   onConnectClick: () => void
 }) {
   const location = useLocation()
+  const { data: activeDownloads } = useActiveDownloads()
+  const { data: queuedDownloads } = useQueuedDownloads()
+  const dlRunning = activeDownloads?.filter((j) => j.status === 'running').length ?? 0
+  const dlCount = (activeDownloads?.length ?? 0) + (queuedDownloads?.length ?? 0)
   const links = [
     { label: 'Dashboard', href: '/', icon: LayoutDashboard },
     { label: 'Subscriptions', href: '/subscriptions', icon: BookOpen },
@@ -41,7 +46,20 @@ export default function Sidebar({
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {link.label}
+                <span className="flex-1 text-left">{link.label}</span>
+                {link.href === '/downloads' && dlCount > 0 && (
+                  <span
+                    className={cn(
+                      'flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium',
+                      dlRunning > 0
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground'
+                    )}
+                    title={`${dlRunning} downloading, ${dlCount} total active`}
+                  >
+                    {dlCount}
+                  </span>
+                )}
               </Button>
             </Link>
           )

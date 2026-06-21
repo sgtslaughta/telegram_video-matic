@@ -3,6 +3,15 @@ import * as api from '@/lib/api'
 
 export const downloadKeys = {
   active: () => ['downloads', 'active'] as const,
+  queued: () => ['downloads', 'queued'] as const,
+}
+
+export function useQueuedDownloads() {
+  return useQuery({
+    queryKey: downloadKeys.queued(),
+    queryFn: () => api.downloads.queued(),
+    refetchInterval: 2000,
+  })
 }
 
 export function useActiveDownloads() {

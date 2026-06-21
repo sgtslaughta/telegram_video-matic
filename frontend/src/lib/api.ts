@@ -174,6 +174,9 @@ export const downloads = {
   active: () =>
     fetchAPI<T.DownloadJobRead[]>('/downloads/active'),
 
+  queued: () =>
+    fetchAPI<{ media_id: number; file_name: string | null; size_bytes: number | null }[]>('/downloads/queued'),
+
   cancel: (jobId: number) =>
     fetchAPI<{ status: string }>(`/downloads/${jobId}/cancel`, { method: 'POST' }),
 

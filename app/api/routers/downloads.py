@@ -28,6 +28,18 @@ async def active_downloads(db: AsyncSession = Depends(get_db)):
     return out
 
 
+@router.get("/queued")
+async def queued_downloads(db: AsyncSession = Depends(get_db)):
+    """GET /api/downloads/queued — media captured + waiting for a download slot
+    (PENDING, no job yet). Lets the UI show the backlog behind active downloads."""
+    from app.db.models import MediaStatus
+    items = await media.list_by_status(db, MediaStatus.PENDING)
+    return [
+        {"media_id": m.id, "file_name": m.file_name or m.caption, "size_bytes": m.size_bytes}
+        for m in items
+    ]
+
+
 async def _job_or_404(db: AsyncSession, job_id: int):
     job = await downloads.get(db, job_id)
     if not job:
