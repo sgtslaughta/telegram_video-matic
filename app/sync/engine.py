@@ -205,23 +205,34 @@ class SyncEngine:
         self._control[media_id] = "pause"
 
     async def _poll_one_sub(self, session: AsyncSession, sub) -> None:
-        """Fetch + classify new media for a single subscription."""
+        """Fetch + classify new media for a single subscription.
+
+        Per-item filter skips are NOT logged as events (routine + floods the
+        feed); the SKIPPED status is visible in Browse. One summary is logged
+        per poll when anything was queued or skipped."""
         last_msg_id = await media.get_max_tg_msg_id(session, sub.channel_id, sub.topic_id)
         chan_dto, topic_dto = await self._sub_dtos(session, sub)
+        queued = skipped = 0
         async for media_dto in self.tg_service.iter_media(chan_dto, topic_dto, since_msg_id=last_msg_id):
             item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
-            status, reason = classify(sub, item)
+            status, _reason = classify(sub, item)
             if status == "skip":
                 await media.set_status(session, item.id, MediaStatus.SKIPPED)
-                await events.add(session, level=EventLevel.INFO, kind="filter",
-                                 subscription_id=sub.id, media_id=item.id, message=reason)
+                skipped += 1
             else:
                 await media.set_status(session, item.id, MediaStatus.PENDING)
+                queued += 1
             try:
                 await self.plugin_host.dispatch("on_media_discovered", item)
             except Exception as e:
                 await events.add(session, level=EventLevel.WARNING, kind="plugin",
                                  message=f"Plugin error on_media_discovered: {e}")
+        if queued:
+            label = sub.name or (chan_dto.title if chan_dto else f"sub {sub.id}")
+            await events.add(session, level=EventLevel.INFO, kind="sync",
+                             subscription_id=sub.id,
+                             message=f"{label}: queued {queued} new"
+                                     + (f", skipped {skipped} (filtered)" if skipped else ""))
         await session.commit()
 
     async def _poller_once(self, session: AsyncSession) -> None:
@@ -608,22 +619,14 @@ class SyncEngine:
                             thumb_b64=media_dto.thumb_b64,
                             raw=media_dto.raw,
                         )
-                        status, reason = classify(sub, item)
+                        status, _reason = classify(sub, item)
 
                         if status == "skip":
+                            # Routine filter skip — no per-item event (floods feed).
                             await media.set_status(session, item.id, MediaStatus.SKIPPED)
-                            await events.add(
-                                session,
-                                level=EventLevel.INFO,
-                                kind="filter",
-                                subscription_id=sub.id,
-                                media_id=item.id,
-                                message=reason,
-                            )
                         else:
                             await media.set_status(session, item.id, MediaStatus.PENDING)
-
-                        gap_count += 1
+                            gap_count += 1  # count only items actually queued
 
                 await session.commit()
 
@@ -638,13 +641,13 @@ class SyncEngine:
                 )
                 await session.commit()
 
-        # Emit summary event if gap items found
+        # Emit summary event only if NEW items were actually queued
         if gap_count > 0:
             await events.add(
                 session,
                 level=EventLevel.INFO,
                 kind="drift",
-                message=f"Gap reconcile: recovered {gap_count} missing media items",
+                message=f"Gap reconcile: queued {gap_count} new media item(s)",
             )
 
         # 3. Age pruning: delete DOWNLOADED items older than retention_days
@@ -923,19 +926,11 @@ class SyncEngine:
                     # Upsert into DB
                     item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
 
-                    # Classify: keep or skip
-                    status, reason = classify(sub, item)
+                    # Classify: keep or skip (skips are silent — see _poll_one_sub)
+                    status, _reason = classify(sub, item)
 
                     if status == "skip":
                         await media.set_status(session, item.id, MediaStatus.SKIPPED)
-                        await events.add(
-                            session,
-                            level=EventLevel.INFO,
-                            kind="filter",
-                            subscription_id=sub.id,
-                            media_id=item.id,
-                            message=reason,
-                        )
                     else:
                         await media.set_status(session, item.id, MediaStatus.PENDING)
 

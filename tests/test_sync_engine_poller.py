@@ -304,12 +304,13 @@ async def test_poller_skips_with_events(session_factory, session, mock_tg_servic
         assert len(items) == 1
         assert items[0].status == MediaStatus.SKIPPED
 
-        # Check event was logged
+        # Filter skips are silent now (no per-item event) to avoid flooding the
+        # feed; the SKIPPED status is the record. No "filter" event expected.
         result = await test_session.execute(
             __import__('sqlalchemy').select(__import__('app.db.models', fromlist=['Event']).Event)
         )
         events_list = result.scalars().all()
-        assert any(e.kind == "filter" for e in events_list)
+        assert not any(e.kind == "filter" for e in events_list)
 
 
 @pytest.mark.asyncio

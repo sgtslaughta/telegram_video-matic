@@ -655,7 +655,8 @@ async def test_maintenance_gap_reconcile_skip_filtered(session_factory, session,
         assert item is not None, "Gap item should be inserted even if filtered"
         assert item.status == MediaStatus.SKIPPED, f"Expected SKIPPED, got {item.status}"
 
-    # Verify: filter event logged
+    # Filter skips are silent now (SKIPPED status is the record) — no per-item
+    # "filter" event, to keep the activity feed clean.
     async with session_factory() as check_session:
         filter_events = await events.list_by_kind(check_session, "filter")
-        assert len(filter_events) > 0, "Expected filter event"
+        assert len(filter_events) == 0, "Filter skips should not log events"
