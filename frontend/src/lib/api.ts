@@ -103,6 +103,9 @@ export const channels = {
     fetchAPI<{ items: any[]; next_offset_id: number | null; has_more: boolean }>(
       `/channels/${channelId}/browse`, { params }),
 
+  messageDetail: (channelId: number, tgMsgId: number) =>
+    fetchAPI<T.MessageDetail>(`/channels/${channelId}/message/${tgMsgId}`),
+
   browseThumbUrl: (channelId: number, tgMsgId: number) =>
     `/api/channels/${channelId}/thumb/${tgMsgId}`,
 

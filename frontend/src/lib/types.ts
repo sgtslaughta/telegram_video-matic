@@ -290,3 +290,28 @@ export interface ApiError {
   detail: string;
   status: number;
 }
+
+// Live message detail (Browse drawer)
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+}
+
+export interface MessageComment {
+  id: number;
+  author: string;
+  text: string;
+  date: string | null;
+}
+
+export interface MessageDetail {
+  tg_msg_id: number;
+  caption: string | null;
+  file_name: string | null;
+  mime: string | null;
+  size_bytes: number | null;
+  duration_sec: number | null;
+  date_posted: string | null;
+  reactions: MessageReaction[];
+  comments: MessageComment[];
+}

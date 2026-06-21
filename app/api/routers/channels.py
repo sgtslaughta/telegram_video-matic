@@ -128,6 +128,19 @@ async def browse_download(channel_id: int, tg_msg_id: int, request: Request, db:
     return {"status": "queued", "media_id": item.id}
 
 
+@router.get("/{channel_id}/message/{tg_msg_id}")
+async def message_detail(channel_id: int, tg_msg_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """GET — full live detail for one message: meta, reactions, comment thread."""
+    channel = await db.get(Channel, channel_id)
+    svc = getattr(request.app.state, "tg_service", None)
+    if not channel or not (svc and svc.client):
+        raise HTTPException(status_code=400, detail="Telegram not connected")
+    detail = await svc.message_detail(channel.tg_id, tg_msg_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return detail
+
+
 @router.get("/{channel_id}/thumb/{tg_msg_id}")
 async def browse_thumb(channel_id: int, tg_msg_id: int, request: Request, db: AsyncSession = Depends(get_db)):
     """GET /api/channels/{id}/thumb/{msg} — thumbnail for a live (un-captured) message."""

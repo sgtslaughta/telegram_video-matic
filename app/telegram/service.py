@@ -464,6 +464,68 @@ class TelegramService:
 
         return getattr(message.replies, "replies", None)
 
+    async def message_detail(self, channel_tg_id: int, msg_id: int, comment_limit: int = 30) -> Optional[dict]:
+        """Full detail for one live message: meta, reactions, and comment thread.
+
+        Comments are the message's reply thread (channel posts with a linked
+        discussion group). Returns None if the message can't be resolved."""
+        if not self.client:
+            return None
+        from telethon.tl.types import (
+            MessageMediaDocument, DocumentAttributeFilename, DocumentAttributeVideo,
+        )
+        entity = await self._channel_input(channel_tg_id)
+        msg = await self.client.get_messages(entity, ids=msg_id)
+        if not msg:
+            return None
+
+        file_name = None
+        duration_sec = None
+        size_bytes = None
+        mime = None
+        if msg.media and isinstance(msg.media, MessageMediaDocument):
+            doc = msg.media.document
+            mime = doc.mime_type
+            size_bytes = doc.size
+            for attr in (doc.attributes or []):
+                if isinstance(attr, DocumentAttributeFilename):
+                    file_name = attr.file_name
+                elif isinstance(attr, DocumentAttributeVideo):
+                    duration_sec = attr.duration
+
+        reactions = await self.fetch_reactions(msg)
+        comments = []
+        try:
+            async for c in self.client.iter_messages(entity, reply_to=msg_id, limit=comment_limit):
+                if not (c.message or "").strip():
+                    continue
+                sender = await c.get_sender()
+                author = None
+                if sender is not None:
+                    author = getattr(sender, "first_name", None) or getattr(sender, "title", None) \
+                        or getattr(sender, "username", None)
+                comments.append({
+                    "id": c.id,
+                    "author": author or "Unknown",
+                    "text": c.message,
+                    "date": c.date.isoformat() if c.date else None,
+                })
+        except Exception as e:
+            # Channels without a linked discussion group raise; treat as no comments.
+            print(f"[detail] comments unavailable for {channel_tg_id}/{msg_id}: {e!r}")
+
+        return {
+            "tg_msg_id": msg.id,
+            "caption": msg.message or None,
+            "file_name": file_name,
+            "mime": mime,
+            "size_bytes": size_bytes,
+            "duration_sec": int(duration_sec) if duration_sec else None,
+            "date_posted": msg.date.isoformat() if msg.date else None,
+            "reactions": [{"emoji": k, "count": v} for k, v in (reactions or {}).items()],
+            "comments": comments,
+        }
+
     # ========================================================================
     # Task 6: Download with semaphore and progress callback
     # ========================================================================

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Download, LayoutGrid, List, Search } from 'lucide-react'
 import { useChannels, useTopics, useBrowse } from '@/hooks/useChannelsTopics'
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import MediaDrawer from '@/components/MediaDrawer'
 import * as api from '@/lib/api'
 
 function formatBytes(n?: number | null): string {
@@ -38,10 +39,15 @@ export default function Browse() {
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<any | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const channels = useChannels()
   const topics = useTopics(channelId)
   const browse = useBrowse(channelId, topicId)
+  const drawerDl = useItemDownload(selected ?? { tg_msg_id: 0 }, channelId ?? 0)
+
+  const openItem = (item: any) => { setSelected(item); setDrawerOpen(true) }
 
   const allItems = useMemo(
     () => browse.data?.pages.flatMap((p: any) => p.items) ?? [],
@@ -140,11 +146,11 @@ export default function Browse() {
         <EmptyState title="No media found" message="Try a different channel, topic, status, or search" />
       ) : view === 'cards' ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((item: any) => <MediaCard key={item.tg_msg_id} item={item} channelId={channelId} />)}
+          {items.map((item: any) => <MediaCard key={item.tg_msg_id} item={item} channelId={channelId} onOpen={openItem} />)}
         </div>
       ) : (
         <Card><div className="divide-y divide-border">
-          {items.map((item: any) => <MediaRow key={item.tg_msg_id} item={item} channelId={channelId} />)}
+          {items.map((item: any) => <MediaRow key={item.tg_msg_id} item={item} channelId={channelId} onOpen={openItem} />)}
         </div></Card>
       )}
 
@@ -155,6 +161,15 @@ export default function Browse() {
           </Button>
         </div>
       )}
+
+      <MediaDrawer
+        item={selected}
+        channelId={channelId}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onDownload={drawerDl.onDownload}
+        downloadPending={drawerDl.pending}
+      />
     </div>
   )
 }
@@ -179,19 +194,18 @@ function useItemDownload(item: any, channelId: number) {
   return { onDownload, pending: dl.isPending || adhocPending }
 }
 
-function MediaCard({ item, channelId }: { item: any; channelId: number }) {
-  const navigate = useNavigate()
+function MediaCard({ item, channelId, onOpen }: { item: any; channelId: number; onOpen: (i: any) => void }) {
   const { onDownload, pending } = useItemDownload(item, channelId)
   return (
     <Card className="flex h-full flex-col transition-shadow hover:shadow-md">
       <button
-        onClick={() => item.media_id && navigate(`/media/${item.media_id}`)}
+        onClick={() => onOpen(item)}
         className="w-full overflow-hidden rounded-t-lg transition-opacity hover:opacity-80"
       >
         <MediaThumb src={api.channels.browseThumbUrl(channelId, item.tg_msg_id)} alt={item.caption || 'Media'} size="md" />
       </button>
       <CardContent className="flex flex-1 flex-col gap-2 p-3">
-        <p className="line-clamp-2 text-xs text-foreground">{item.caption || item.file_name || 'Untitled'}</p>
+        <button onClick={() => onOpen(item)} className="line-clamp-2 text-left text-xs text-foreground hover:underline">{item.caption || item.file_name || 'Untitled'}</button>
         {item.subscription_label && (
           <p className="truncate text-[10px] text-muted-foreground">↳ {item.subscription_label}</p>
         )}
@@ -210,21 +224,20 @@ function MediaCard({ item, channelId }: { item: any; channelId: number }) {
   )
 }
 
-function MediaRow({ item, channelId }: { item: any; channelId: number }) {
-  const navigate = useNavigate()
+function MediaRow({ item, channelId, onOpen }: { item: any; channelId: number; onOpen: (i: any) => void }) {
   const { onDownload, pending } = useItemDownload(item, channelId)
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50">
-      <button onClick={() => item.media_id && navigate(`/media/${item.media_id}`)} className="h-10 w-16 shrink-0 overflow-hidden rounded">
+      <button onClick={() => onOpen(item)} className="h-10 w-16 shrink-0 overflow-hidden rounded">
         <MediaThumb src={api.channels.browseThumbUrl(channelId, item.tg_msg_id)} alt={item.caption || 'Media'} size="sm" />
       </button>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm">{item.caption || item.file_name || 'Untitled'}</p>
+      <button onClick={() => onOpen(item)} className="min-w-0 flex-1 text-left">
+        <p className="truncate text-sm hover:underline">{item.caption || item.file_name || 'Untitled'}</p>
         <p className="text-xs text-muted-foreground">
           {new Date(item.date_posted).toLocaleDateString()}
           {item.subscription_label ? ` · ↳ ${item.subscription_label}` : ''}
         </p>
-      </div>
+      </button>
       <span className="hidden w-20 text-right text-xs text-muted-foreground sm:inline">{formatBytes(item.size_bytes)}</span>
       <StatusBadge status={item.status} />
       <Button size="sm" variant="ghost" onClick={onDownload} disabled={pending} aria-label="Download"><Download className="h-4 w-4" /></Button>
