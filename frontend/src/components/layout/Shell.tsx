@@ -7,7 +7,10 @@ import { useTgStatus } from '@/hooks/useTgStatus'
 import { AccountStatus } from '@/lib/types'
 
 export default function Shell() {
-  const { data: tg, isError: backendDown } = useTgStatus()
+  const { data: tg, error } = useTgStatus()
+  // Only a genuine network failure (no HTTP status) means "can't reach server".
+  // HTTP errors like 401 are handled elsewhere (api client redirects to /login).
+  const backendDown = !!error && (error as { status?: number }).status === undefined
   const [loginOpen, setLoginOpen] = useState(false)
   const connected = tg?.status === AccountStatus.CONNECTED
 

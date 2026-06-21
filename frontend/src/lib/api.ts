@@ -34,6 +34,17 @@ async function fetchAPI<R>(
     const msg = 'detail' in errorData ? errorData.detail : `HTTP ${response.status}`
     const error = new Error(Array.isArray(msg) ? msg[0] : msg)
     ;(error as any).status = response.status
+    // App-auth gate: an unauthenticated response means the app password is set
+    // and we have no session — send the user to the login page (not the login
+    // request itself, and not if we're already there, to avoid a redirect loop).
+    if (
+      response.status === 401 &&
+      endpoint !== '/auth/login' &&
+      typeof window !== 'undefined' &&
+      window.location.pathname !== '/login'
+    ) {
+      window.location.assign('/login')
+    }
     throw error
   }
 

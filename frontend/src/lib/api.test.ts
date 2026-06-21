@@ -272,4 +272,36 @@ describe('api', () => {
       expect(url).toBe('/api/media/5/thumb')
     })
   })
+
+  describe('app-auth 401 redirect', () => {
+    const mock401 = () =>
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ detail: 'Unauthorized' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        )
+      )
+
+    it('redirects to /login on 401 for a normal endpoint', async () => {
+      const assign = vi.fn()
+      vi.stubGlobal('location', { pathname: '/', assign })
+      global.fetch = mock401()
+
+      await expect(api.tg.status()).rejects.toThrow('Unauthorized')
+      expect(assign).toHaveBeenCalledWith('/login')
+      vi.unstubAllGlobals()
+    })
+
+    it('does NOT redirect when the login request itself returns 401', async () => {
+      const assign = vi.fn()
+      vi.stubGlobal('location', { pathname: '/login', assign })
+      global.fetch = mock401()
+
+      await expect(api.auth.login('badpass')).rejects.toThrow('Unauthorized')
+      expect(assign).not.toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    })
+  })
 })
