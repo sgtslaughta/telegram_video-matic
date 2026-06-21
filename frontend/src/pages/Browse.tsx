@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -33,11 +34,11 @@ export default function Browse() {
   const [params] = useSearchParams()
   const topbarQ = (params.get('q') ?? '').toLowerCase()
 
-  const [channelId, setChannelId] = useState<number | null>(null)
-  const [topicId, setTopicId] = useState<number | null>(null)
-  const [view, setView] = useState<ViewMode>('cards')
-  const [sortKey, setSortKey] = useState<SortKey>('date')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [channelId, setChannelId] = usePersistedState<number | null>('browse.channelId', null)
+  const [topicId, setTopicId] = usePersistedState<number | null>('browse.topicId', null)
+  const [view, setView] = usePersistedState<ViewMode>('browse.view', 'cards')
+  const [sortKey, setSortKey] = usePersistedState<SortKey>('browse.sort', 'date')
+  const [statusFilter, setStatusFilter] = usePersistedState('browse.status', 'all')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<any | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)

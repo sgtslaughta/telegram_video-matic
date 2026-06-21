@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import { motion } from 'framer-motion'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEvents } from '@/hooks/useEvents'
@@ -55,8 +56,8 @@ const itemVariants = {
 }
 
 export default function Activity() {
-  const [levelFilter, setLevelFilter] = useState('')
-  const [kindFilter, setKindFilter] = useState('')
+  const [levelFilter, setLevelFilter] = usePersistedState('activity.level', '')
+  const [kindFilter, setKindFilter] = usePersistedState('activity.kind', '')
   const [offset, setOffset] = useState(0)
 
   const filters: Parameters<typeof useEvents>[0] = {
