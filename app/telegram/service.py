@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError, FloodWaitError
-from telethon.tl.functions.channels import GetForumTopicsRequest
+from telethon.tl.functions.messages import GetForumTopicsRequest
 
 from app.db.models import Account, AccountStatus
 from app.crypto import decrypt, encrypt
@@ -223,7 +223,7 @@ class TelegramService:
 
         # Forum channel: fetch topics
         result = await self.client(GetForumTopicsRequest(
-            channel=await self._channel_input(channel.tg_id),
+            peer=await self._channel_input(channel.tg_id),
             offset_date=None,
             offset_id=0,
             offset_topic=0,

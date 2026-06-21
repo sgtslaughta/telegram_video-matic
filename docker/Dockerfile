@@ -1,64 +1,69 @@
-# Stage 1: Build frontend SPA
-FROM node:20-alpine AS frontend-builder
+# syntax=docker/dockerfile:1
 
-WORKDIR /workspace
+# ---------------------------------------------------------------------------
+# Stage 1 — build the frontend SPA
+# ---------------------------------------------------------------------------
+FROM node:24-alpine AS frontend
+WORKDIR /build
 
-# Copy frontend source
-COPY frontend/ ./frontend/
-
-# Install and build
-WORKDIR /workspace/frontend
-RUN npm ci --prefer-offline --no-audit
+# Install deps first (cached unless lockfile changes), then build.
+COPY frontend/package*.json ./
+RUN npm ci --prefer-offline --no-audit --fund=false
+COPY frontend/ ./
 RUN npm run build
+# Output: /build/dist
 
-# Output: /workspace/frontend/dist with built SPA
-
-
-# Stage 2: Python runtime with backend + built SPA
-FROM python:3.12-slim
-
-# Set labels
-LABEL maintainer="Telegram Video-Matic"
-LABEL description="Self-hosted Telegram media downloader with Jellyfin/Plex naming"
-
-# Non-root user
-RUN groupadd -r tvm && useradd -r -g tvm tvm
-
-# Install system dependencies (minimal for SQLite + aiosqlite)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsqlite3-0 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy requirements and install Python dependencies
+# ---------------------------------------------------------------------------
+# Stage 2 — build Python dependencies into an isolated venv
+# Build toolchain lives only here; the runtime image stays slim.
+# (cargo/openssl/libffi cover any sdist fallback for cryptography/pydantic-core
+#  if a musllinux wheel is unavailable for the target Python.)
+# ---------------------------------------------------------------------------
+FROM python:3.14-alpine AS pydeps
+RUN apk add --no-cache build-base libffi-dev openssl-dev cargo
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
-# Copy backend source
+# ---------------------------------------------------------------------------
+# Stage 3 — runtime
+# ---------------------------------------------------------------------------
+FROM python:3.14-alpine AS runtime
+LABEL org.opencontainers.image.title="Telegram Video-Matic" \
+      org.opencontainers.image.description="Self-hosted Telegram media downloader with Jellyfin/Plex naming" \
+      org.opencontainers.image.source="https://github.com/sgtslaughta/telegram_video-matic"
+
+# Runtime shared libs (cffi loads libffi.so; cryptography's wheel bundles OpenSSL).
+RUN apk add --no-cache libffi
+
+# Non-root user.
+RUN addgroup -S tvm && adduser -S -G tvm -h /app tvm
+
+# Bring in the prebuilt virtualenv.
+COPY --from=pydeps /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DATABASE_URL="sqlite+aiosqlite:////data/tvm.sqlite" \
+    MEDIA_ROOT="/media"
+
+WORKDIR /app
 COPY app/ ./app/
 COPY migrations/ ./migrations/
 COPY plugins/ ./plugins/
 COPY alembic.ini .
+COPY --from=frontend /build/dist ./frontend/dist
 
-# Copy built frontend from stage 1 to /app/frontend/dist
-# (app/main.py expects STATIC_DIR at ../frontend/dist relative to app/main.py)
-COPY --from=frontend-builder /workspace/frontend/dist ./frontend/dist
-
-# Create data and media directories with proper ownership
+# Data + media volumes, owned by the runtime user.
 RUN mkdir -p /data /media && chown -R tvm:tvm /app /data /media
-
-# Switch to non-root user
 USER tvm
 
-# Expose FastAPI port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+# Healthcheck via stdlib (no curl in the image).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').getcode()==200 else 1)"
 
-# Entrypoint: start FastAPI with uvicorn
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

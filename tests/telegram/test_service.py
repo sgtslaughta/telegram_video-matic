@@ -415,7 +415,7 @@ async def test_list_channels(mock_client, mock_account_repo):
 @pytest.mark.asyncio
 async def test_list_topics_forum_channel(mock_account_repo):
     """list_topics(channel) → [TopicDTO] for forum channel."""
-    from telethon.tl.functions.channels import GetForumTopicsRequest
+    from telethon.tl.functions.messages import GetForumTopicsRequest
 
     account = Account(
         id=1,

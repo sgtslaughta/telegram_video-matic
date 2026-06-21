@@ -952,8 +952,9 @@ def test_app_factory_can_create():
     assert app is not None
     assert app.title == "Telegram Video-Matic"
 
-    # Verify routers are registered (check for prefixes in OpenAPI routes)
-    routes_info = [r.path for r in app.routes]
+    # Verify routers are registered via the OpenAPI schema (stable across
+    # FastAPI versions; app.routes uses lazy _IncludedRouter wrappers in 0.138+).
+    routes_info = list(app.openapi()["paths"].keys())
 
     # Should have health endpoint
     assert any("/api/health" in path for path in routes_info)
