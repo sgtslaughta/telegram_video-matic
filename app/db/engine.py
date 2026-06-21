@@ -77,6 +77,26 @@ async def create_tables() -> None:
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if "sqlite" in DATABASE_URL.lower():
+            await conn.run_sync(_add_missing_columns)
+
+
+def _add_missing_columns(conn) -> None:
+    """Additive auto-migrate for SQLite: ADD COLUMN for any model column the
+    table lacks. create_all never alters existing tables, and there's no
+    Alembic here. ponytail: additive only — no drops, renames, or type changes."""
+    from sqlalchemy import text
+
+    type_map = {"INTEGER": "INTEGER", "BIGINT": "INTEGER", "BOOLEAN": "BOOLEAN"}
+    for table in Base.metadata.sorted_tables:
+        existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table.name})"))}
+        if not existing:
+            continue  # table didn't exist; create_all already made it complete
+        for col in table.columns:
+            if col.name in existing:
+                continue
+            ddl = type_map.get(str(col.type).upper(), "TEXT")
+            conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {ddl}'))
 
 
 async def drop_tables() -> None:

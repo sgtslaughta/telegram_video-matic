@@ -107,6 +107,8 @@ class SubscriptionCreateRequest(BaseModel):
     filter_mode: str = "include"
     min_size_mb: Optional[int] = None
     max_size_mb: Optional[int] = None
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
     storage_path: str
     rename_template: str
     season_detection: bool = True
@@ -124,6 +126,8 @@ class SubscriptionUpdateRequest(BaseModel):
     filter_mode: Optional[str] = None
     min_size_mb: Optional[int] = None
     max_size_mb: Optional[int] = None
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
     storage_path: Optional[str] = None
     rename_template: Optional[str] = None
     season_detection: Optional[bool] = None
@@ -144,6 +148,8 @@ class SubscriptionRead(BaseModel):
     filter_mode: str
     min_size_mb: Optional[int] = None
     max_size_mb: Optional[int] = None
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
     storage_path: str
     rename_template: str
     season_detection: bool

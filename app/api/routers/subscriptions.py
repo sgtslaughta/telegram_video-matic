@@ -58,6 +58,8 @@ async def create_subscription(
             filter_mode=req.filter_mode,
             min_size_mb=req.min_size_mb,
             max_size_mb=req.max_size_mb,
+            date_from=req.date_from,
+            date_to=req.date_to,
             storage_path=req.storage_path,
             rename_template=req.rename_template,
             season_detection=req.season_detection,

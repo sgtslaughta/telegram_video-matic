@@ -19,6 +19,8 @@ class MockSubscription:
     filter_mode: str = FilterMode.INCLUDE
     min_size_mb: Optional[int] = None
     max_size_mb: Optional[int] = None
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
 
 
 @dataclass
@@ -27,6 +29,7 @@ class MockMedia:
     file_name: Optional[str] = None
     caption: Optional[str] = None
     size_bytes: Optional[int] = None
+    date_posted: Optional[datetime] = None
 
 
 class TestClassifyEnabledGate:
@@ -338,3 +341,34 @@ class TestClassifyEdgeCases:
         decision, reason = classify(sub, media)
         assert decision == "keep"
         assert reason is None
+
+
+class TestClassifyTimeframeGate:
+    """Gate 5: Timeframe window (date_from/date_to)."""
+
+    def _dt(self, y, m, d):
+        return datetime(y, m, d, tzinfo=timezone.utc)
+
+    def test_before_date_from_skipped(self):
+        sub = MockSubscription(date_from=self._dt(2026, 6, 1))
+        media = MockMedia(size_bytes=10, date_posted=self._dt(2026, 5, 15))
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "before" in reason
+
+    def test_after_date_to_skipped(self):
+        sub = MockSubscription(date_to=self._dt(2026, 6, 1))
+        media = MockMedia(size_bytes=10, date_posted=self._dt(2026, 6, 15))
+        decision, reason = classify(sub, media)
+        assert decision == "skip"
+        assert "after" in reason
+
+    def test_within_window_kept(self):
+        sub = MockSubscription(date_from=self._dt(2026, 6, 1), date_to=self._dt(2026, 6, 30))
+        media = MockMedia(size_bytes=10, date_posted=self._dt(2026, 6, 15))
+        assert classify(sub, media) == ("keep", None)
+
+    def test_no_window_keeps_everything(self):
+        sub = MockSubscription()
+        media = MockMedia(size_bytes=10, date_posted=self._dt(2020, 1, 1))
+        assert classify(sub, media) == ("keep", None)

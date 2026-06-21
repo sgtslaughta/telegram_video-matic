@@ -79,6 +79,16 @@ def classify(subscription, media, today: Optional[str] = None) -> Tuple[str, Opt
         if media.size_bytes > subscription.max_size_mb * 1024 * 1024:
             return ("skip", f"Exceeds maximum size {subscription.max_size_mb} MB")
 
+    # Gate 5: Timeframe window (skip media outside [date_from, date_to])
+    posted = getattr(media, "date_posted", None)
+    if posted is not None:
+        date_from = getattr(subscription, "date_from", None)
+        date_to = getattr(subscription, "date_to", None)
+        if date_from is not None and posted < date_from:
+            return ("skip", f"Posted before {date_from.date()}")
+        if date_to is not None and posted > date_to:
+            return ("skip", f"Posted after {date_to.date()}")
+
     # All gates passed
     return ("keep", None)
 

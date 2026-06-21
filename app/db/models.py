@@ -150,6 +150,10 @@ class Subscription(Base, TimestampMixin):
     filter_mode: Mapped[str] = mapped_column(String(32), default=FilterMode.INCLUDE, nullable=False)
     min_size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     max_size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Timeframe window: only capture media posted within [date_from, date_to].
+    # date_from set + date_to null = "future only"; both null = all history.
+    date_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    date_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     rename_template: Mapped[str] = mapped_column(String(1024), nullable=False)
     season_detection: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

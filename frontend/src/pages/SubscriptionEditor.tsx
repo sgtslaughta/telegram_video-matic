@@ -58,6 +58,13 @@ export default function SubscriptionEditor() {
           scheduleDays: existingSubscription.data.schedule_days || [],
           minSizeMb: existingSubscription.data.min_size_mb ?? null,
           maxSizeMb: existingSubscription.data.max_size_mb ?? null,
+          timeframeMode: existingSubscription.data.date_to
+            ? 'window'
+            : existingSubscription.data.date_from
+              ? 'future'
+              : 'all',
+          dateFrom: existingSubscription.data.date_from?.slice(0, 10) || '',
+          dateTo: existingSubscription.data.date_to?.slice(0, 10) || '',
           storagePath: existingSubscription.data.storage_path,
           renameTemplate: existingSubscription.data.rename_template,
           retentionDays: existingSubscription.data.retention_days ?? null,
@@ -96,6 +103,21 @@ export default function SubscriptionEditor() {
       return
     }
 
+    // Timeframe -> date_from/date_to. future = from now; window = [from, to].
+    const { timeframeMode, dateFrom, dateTo } = editor.state
+    const tf = {
+      date_from:
+        timeframeMode === 'future'
+          ? new Date().toISOString()
+          : timeframeMode === 'window' && dateFrom
+            ? new Date(dateFrom + 'T00:00:00').toISOString()
+            : null,
+      date_to:
+        timeframeMode === 'window' && dateTo
+          ? new Date(dateTo + 'T23:59:59').toISOString()
+          : null,
+    }
+
     const payload: T.SubscriptionCreateRequest = {
       channel_id: editor.state.channelId,
       topic_id: editor.state.topicId,
@@ -108,6 +130,7 @@ export default function SubscriptionEditor() {
       schedule_days: editor.state.scheduleDays.length > 0 ? editor.state.scheduleDays : undefined,
       min_size_mb: editor.state.minSizeMb,
       max_size_mb: editor.state.maxSizeMb,
+      ...tf,
       retention_days: editor.state.retentionDays,
       season_detection: editor.state.seasonDetection,
     }
@@ -125,6 +148,7 @@ export default function SubscriptionEditor() {
           schedule_days: editor.state.scheduleDays.length > 0 ? editor.state.scheduleDays : undefined,
           min_size_mb: editor.state.minSizeMb,
           max_size_mb: editor.state.maxSizeMb,
+          ...tf,
           retention_days: editor.state.retentionDays,
           season_detection: editor.state.seasonDetection,
         }
@@ -297,6 +321,44 @@ export default function SubscriptionEditor() {
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Timeframe */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Timeframe</CardTitle>
+          <p className="text-sm text-muted-foreground">Limit which posts are captured by date — skip old media.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Capture</Label>
+            <Select
+              value={editor.state.timeframeMode}
+              onValueChange={(v) => editor.update('timeframeMode', v)}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All history</SelectItem>
+                <SelectItem value="future">From now on (future only)</SelectItem>
+                <SelectItem value="window">Custom date window</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {editor.state.timeframeMode === 'window' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="dateFrom">From</Label>
+                <Input id="dateFrom" type="date" value={editor.state.dateFrom}
+                  onChange={(e) => editor.update('dateFrom', e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dateTo">To</Label>
+                <Input id="dateTo" type="date" value={editor.state.dateTo}
+                  onChange={(e) => editor.update('dateTo', e.target.value)} />
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

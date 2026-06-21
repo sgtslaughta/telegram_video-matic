@@ -118,6 +118,8 @@ export interface SubscriptionCreateRequest {
   filter_mode?: string;
   min_size_mb?: number | null;
   max_size_mb?: number | null;
+  date_from?: string | null;
+  date_to?: string | null;
   storage_path: string;
   rename_template: string;
   season_detection?: boolean;
@@ -133,6 +135,8 @@ export interface SubscriptionUpdateRequest {
   filter_mode?: string | null;
   min_size_mb?: number | null;
   max_size_mb?: number | null;
+  date_from?: string | null;
+  date_to?: string | null;
   storage_path?: string | null;
   rename_template?: string | null;
   season_detection?: boolean | null;
@@ -151,6 +155,8 @@ export interface SubscriptionRead {
   filter_mode: string;
   min_size_mb?: number | null;
   max_size_mb?: number | null;
+  date_from?: string | null;
+  date_to?: string | null;
   storage_path: string;
   rename_template: string;
   season_detection: boolean;

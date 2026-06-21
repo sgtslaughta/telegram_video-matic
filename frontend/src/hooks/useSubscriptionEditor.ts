@@ -10,6 +10,9 @@ export interface SubscriptionEditorState {
   scheduleDays: string[]
   minSizeMb: number | null
   maxSizeMb: number | null
+  timeframeMode: 'all' | 'future' | 'window'
+  dateFrom: string  // yyyy-mm-dd
+  dateTo: string    // yyyy-mm-dd
   storagePath: string
   renameTemplate: string
   retentionDays: number | null
@@ -27,6 +30,9 @@ export function useSubscriptionEditor(initialState?: Partial<SubscriptionEditorS
     scheduleDays: [],
     minSizeMb: null,
     maxSizeMb: null,
+    timeframeMode: 'all',
+    dateFrom: '',
+    dateTo: '',
     storagePath: '',
     renameTemplate: '',
     retentionDays: null,
