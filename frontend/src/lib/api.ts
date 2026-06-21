@@ -99,8 +99,9 @@ export const channels = {
   topics: (channelId: number) =>
     fetchAPI<T.TopicRead[]>(`/channels/${channelId}/topics`),
 
-  browse: (channelId: number, params?: { topic_id?: number; limit?: number }) =>
-    fetchAPI<any[]>(`/channels/${channelId}/browse`, { params }),
+  browse: (channelId: number, params?: { topic_id?: number; limit?: number; offset_id?: number }) =>
+    fetchAPI<{ items: any[]; next_offset_id: number | null; has_more: boolean }>(
+      `/channels/${channelId}/browse`, { params }),
 
   browseThumbUrl: (channelId: number, tgMsgId: number) =>
     `/api/channels/${channelId}/thumb/${tgMsgId}`,

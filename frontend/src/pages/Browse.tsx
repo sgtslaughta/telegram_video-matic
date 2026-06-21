@@ -45,9 +45,14 @@ export default function Browse() {
   const topics = useTopics(channelId)
   const browse = useBrowse(channelId, topicId)
 
+  const allItems = useMemo(
+    () => browse.data?.pages.flatMap((p: any) => p.items) ?? [],
+    [browse.data]
+  )
+
   const items = useMemo(() => {
     const q = (search || topbarQ).toLowerCase()
-    let list = (browse.data ?? []).filter((m: any) => {
+    let list = allItems.filter((m: any) => {
       if (statusFilter !== 'all' && m.status !== statusFilter) return false
       if (q && !(`${m.caption ?? ''} ${m.file_name ?? ''}`.toLowerCase().includes(q))) return false
       return true
@@ -58,7 +63,7 @@ export default function Browse() {
       return new Date(b.date_posted).getTime() - new Date(a.date_posted).getTime()
     })
     return list
-  }, [browse.data, statusFilter, search, topbarQ, sortKey])
+  }, [allItems, statusFilter, search, topbarQ, sortKey])
 
   return (
     <div className="space-y-6 p-6">
@@ -154,6 +159,14 @@ export default function Browse() {
         <Card><div className="divide-y divide-border">
           {items.map((item: any) => <MediaRow key={item.tg_msg_id} item={item} channelId={channelId} />)}
         </div></Card>
+      )}
+
+      {channelId && browse.hasNextPage && (
+        <div className="flex justify-center pt-2">
+          <Button variant="outline" onClick={() => browse.fetchNextPage()} disabled={browse.isFetchingNextPage}>
+            {browse.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
       )}
     </div>
   )

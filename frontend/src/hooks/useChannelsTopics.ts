@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import * as api from '@/lib/api'
 
 export const channelsKeys = {
@@ -27,9 +27,17 @@ export function useTopics(channelId: number | null) {
 }
 
 export function useBrowse(channelId: number | null, topicId: number | null) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['browse', channelId || 0, topicId || 0],
-    queryFn: () => api.channels.browse(channelId!, { topic_id: topicId ?? undefined, limit: 200 }),
+    queryFn: ({ pageParam }) =>
+      api.channels.browse(channelId!, {
+        topic_id: topicId ?? undefined,
+        limit: 100,
+        offset_id: pageParam as number,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (last) =>
+      last.has_more && last.next_offset_id ? last.next_offset_id : undefined,
     enabled: channelId != null,
     staleTime: 30_000,
   })

@@ -42,19 +42,23 @@ async def browse_channel(
     request: Request,
     topic_id: int | None = Query(None),
     limit: int = Query(100, ge=1, le=300),
+    offset_id: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
     """GET /api/channels/{id}/browse — live media list merged with download status.
 
+    Paginated by message id: pass offset_id (from a prior response's
+    next_offset_id) to load older items. Returns {items, next_offset_id, has_more}.
     Each item shows its real status (or 'available' if no subscription has captured
     it) and which subscription targets it.
     """
+    empty = {"items": [], "next_offset_id": None, "has_more": False}
     channel = await db.get(Channel, channel_id)
     if not channel:
-        return []
+        return empty
     svc = getattr(request.app.state, "tg_service", None)
     if not (svc and svc.client):
-        return []
+        return empty
 
     # Which subscription (if any) targets this channel + topic?
     subs = (await db.execute(
@@ -84,8 +88,13 @@ async def browse_channel(
             )
 
     out = []
+    next_offset_id = None
+    has_more = False
     try:
-        async for it in svc.browse_media(chan_dto, topic_dto, limit=limit):
+        items, next_offset_id, has_more = await svc.browse_media(
+            chan_dto, topic_dto, limit=limit, offset_id=offset_id,
+        )
+        for it in items:
             m = existing.get(it["tg_msg_id"])
             out.append({
                 **it,
@@ -96,7 +105,7 @@ async def browse_channel(
             })
     except Exception as e:
         print(f"[browse] failed for channel {channel_id}: {e!r}")
-    return out
+    return {"items": out, "next_offset_id": next_offset_id, "has_more": has_more}
 
 
 @router.post("/{channel_id}/browse/{tg_msg_id}/download")

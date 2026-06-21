@@ -241,10 +241,18 @@ class TelegramService:
 
         return topics
 
-    async def browse_media(self, channel: ChannelDTO, topic: Optional[TopicDTO] = None, limit: int = 100):
-        """Lightweight live media listing for browsing (no reactions/comments)."""
+    async def browse_media(
+        self, channel: ChannelDTO, topic: Optional[TopicDTO] = None,
+        limit: int = 100, offset_id: int = 0,
+    ):
+        """Lightweight live media listing for browsing, paginated by message id.
+
+        `limit` is the raw-message scan window; `offset_id` is the cursor (return
+        messages older than this id). Returns (items, next_offset_id, has_more).
+        next_offset_id is the smallest scanned id (pass it back to load older);
+        has_more is True when the scan filled the window (more may remain)."""
         if not self.client:
-            return
+            return [], None, False
         from telethon.tl.types import (
             MessageMediaDocument, DocumentAttributeFilename, DocumentAttributeVideo,
         )
@@ -252,7 +260,12 @@ class TelegramService:
         extra = {}
         if topic and channel.is_forum:
             extra["reply_to"] = topic.tg_topic_id
-        async for message in self.client.iter_messages(entity, limit=limit, **extra):
+        items = []
+        scanned = 0
+        last_id = None
+        async for message in self.client.iter_messages(entity, limit=limit, offset_id=offset_id, **extra):
+            scanned += 1
+            last_id = message.id  # newest-first, so this ends at the smallest id
             if not message.media or not isinstance(message.media, MessageMediaDocument):
                 continue
             doc = message.media.document
@@ -265,7 +278,7 @@ class TelegramService:
                     file_name = attr.file_name
                 elif isinstance(attr, DocumentAttributeVideo):
                     duration_sec = attr.duration
-            yield {
+            items.append({
                 "tg_msg_id": message.id,
                 "caption": message.message or None,
                 "file_name": file_name,
@@ -273,7 +286,8 @@ class TelegramService:
                 "size_bytes": doc.size,
                 "duration_sec": int(duration_sec) if duration_sec else None,
                 "date_posted": message.date,
-            }
+            })
+        return items, last_id, scanned >= limit
 
     async def thumb_b64_for(self, channel_tg_id: int, msg_id: int) -> Optional[str]:
         """Resolve a message by id and return its thumbnail as base64, or None."""
