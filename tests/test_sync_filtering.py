@@ -400,3 +400,12 @@ class TestSubDue:
     def test_interval_elapsed(self):
         from app.sync.engine import _sub_due
         assert _sub_due(self._sub("5m", last_min_ago=10), datetime.now(timezone.utc)) is True
+
+
+def test_classify_timeframe_mixed_tz():
+    """date_posted aware + sub date naive (SQLite) must not crash."""
+    from app.sync.engine import classify
+    from datetime import datetime as _dt, timezone as _tz
+    sub = MockSubscription(date_from=_dt(2026, 6, 1))  # naive
+    media = MockMedia(size_bytes=10, date_posted=_dt(2026, 5, 1, tzinfo=_tz.utc))  # aware
+    assert classify(sub, media) == ("skip", "Posted before 2026-06-01")
