@@ -87,11 +87,11 @@ export default function SubscriptionEditor() {
 
   const topics = useTopics(s.channelId)
 
-  // Regex tester
+  // Regex tester — mirrors backend re.search (substring, case-insensitive).
   const [testStr, setTestStr] = useState('')
-  let testMatch: boolean | null = null
+  let testMatch: RegExpMatchArray | null = null
   if (s.filterRegex && editor.regexValid && testStr) {
-    try { testMatch = new RegExp(s.filterRegex, 'i').test(testStr) } catch { testMatch = null }
+    try { testMatch = testStr.match(new RegExp(s.filterRegex, 'i')) } catch { testMatch = null }
   }
 
   const previewFilename = (s.renameTemplate || DEFAULT_TEMPLATE)
@@ -238,11 +238,17 @@ export default function SubscriptionEditor() {
             <Input id="regexTest" value={testStr} onChange={(e) => setTestStr(e.target.value)}
               placeholder="Paste a filename or caption…" className="font-mono text-sm" />
             {testStr && editor.regexValid && s.filterRegex && (
-              <p className="text-sm">
+              <div className="space-y-1 text-sm">
                 {testMatch
-                  ? <span className="text-green-600">✓ Matches{s.filterMode === 'exclude' ? ' → would be EXCLUDED' : ' → captured'}</span>
-                  : <span className="text-amber-600">✗ No match{s.filterMode === 'exclude' ? ' → captured' : ' → skipped'}</span>}
-              </p>
+                  ? <p className="text-green-600">✓ Matches{s.filterMode === 'exclude' ? ' → would be EXCLUDED' : ' → captured'}</p>
+                  : <p className="text-amber-600">✗ No match{s.filterMode === 'exclude' ? ' → captured' : ' → skipped'}</p>}
+                {testMatch && (
+                  <p className="text-xs text-muted-foreground">
+                    Matched <code className="rounded bg-muted px-1 font-mono text-foreground">{JSON.stringify(testMatch[0])}</code>
+                    {' '}at position {testMatch.index}. (Substring match — use <code className="font-mono">^…$</code> to require the whole string, <code className="font-mono">\.</code> for a literal dot.)
+                  </p>
+                )}
+              </div>
             )}
             {testStr && !s.filterRegex && <p className="text-sm text-muted-foreground">Enter a regex above to test.</p>}
           </div>
