@@ -15,6 +15,28 @@ from app.telegram.dtos import ChannelDTO, TopicDTO
 from app.sync.naming import detect_season_episode, render_path
 
 
+_FREQUENCY_SECONDS = {
+    "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
+    "hourly": 3600, "daily": 86400,
+}
+
+
+def _sub_due(sub, now) -> bool:
+    """Whether a subscription should be polled this tick, per check_frequency.
+    realtime is event-driven (never polled here)."""
+    freq = sub.check_frequency or "5m"
+    if freq == "realtime":
+        return False
+    last = sub.last_checked_at
+    if last is None:
+        return True
+    elapsed = (now - last).total_seconds()
+    if freq == "scheduled":
+        # Captured by classify's weekday gate; just poll roughly hourly.
+        return elapsed >= 3600
+    return elapsed >= _FREQUENCY_SECONDS.get(freq, 300)
+
+
 class _DownloadCanceled(Exception):
     """Raised mid-download when a cancel was requested (discard partial)."""
 
@@ -173,80 +195,74 @@ class SyncEngine:
         """Signal an in-flight download to stop but keep its partial for resume."""
         self._control[media_id] = "pause"
 
-    async def _poller_once(self, session: AsyncSession) -> None:
-        """Single pass of the poller: fetch media for enabled subscriptions.
+    async def _poll_one_sub(self, session: AsyncSession, sub) -> None:
+        """Fetch + classify new media for a single subscription."""
+        last_msg_id = await media.get_max_tg_msg_id(session, sub.channel_id, sub.topic_id)
+        chan_dto, topic_dto = await self._sub_dtos(session, sub)
+        async for media_dto in self.tg_service.iter_media(chan_dto, topic_dto, since_msg_id=last_msg_id):
+            item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
+            status, reason = classify(sub, item)
+            if status == "skip":
+                await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                await events.add(session, level=EventLevel.INFO, kind="filter",
+                                 subscription_id=sub.id, media_id=item.id, message=reason)
+            else:
+                await media.set_status(session, item.id, MediaStatus.PENDING)
+            try:
+                await self.plugin_host.dispatch("on_media_discovered", item)
+            except Exception as e:
+                await events.add(session, level=EventLevel.WARNING, kind="plugin",
+                                 message=f"Plugin error on_media_discovered: {e}")
+        await session.commit()
 
-        Args:
-            session: Active database session
+    async def _poller_once(self, session: AsyncSession) -> None:
+        """One poller tick: poll each due subscription per its check_frequency.
+
+        realtime subs are skipped here (handled by live events). Each sub is
+        polled only when its interval has elapsed since last_checked_at.
         """
         try:
-            # Get all enabled subscriptions
             subs = await subscriptions.list(session, enabled_only=True)
-
+            now = datetime.now(timezone.utc)
             for sub in subs:
+                if not _sub_due(sub, now):
+                    continue
                 try:
-                    # Get max stored tg_msg_id for incremental fetch
-                    last_msg_id = await media.get_max_tg_msg_id(
-                        session, sub.channel_id, sub.topic_id
-                    )
-
-                    # Fetch new media from TelegramService
-                    chan_dto, topic_dto = await self._sub_dtos(session, sub)
-                    async for media_dto in self.tg_service.iter_media(
-                        chan_dto, topic_dto, since_msg_id=last_msg_id
-                    ):
-                        # Upsert into DB
-                        item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
-
-                        # Classify: keep or skip
-                        status, reason = classify(sub, item)
-
-                        if status == "skip":
-                            await media.set_status(session, item.id, MediaStatus.SKIPPED)
-                            await events.add(
-                                session,
-                                level=EventLevel.INFO,
-                                kind="filter",
-                                subscription_id=sub.id,
-                                media_id=item.id,
-                                message=reason,
-                            )
-                        else:
-                            await media.set_status(session, item.id, MediaStatus.PENDING)
-
-                        # Dispatch to plugins (wrapped to prevent bad plugins crashing loop)
-                        try:
-                            await self.plugin_host.dispatch("on_media_discovered", item)
-                        except Exception as e:
-                            await events.add(
-                                session,
-                                level=EventLevel.WARNING,
-                                kind="plugin",
-                                message=f"Plugin error on_media_discovered: {e}",
-                            )
-
+                    await self._poll_one_sub(session, sub)
+                    sub.last_checked_at = now
                     await session.commit()
-
                 except Exception as e:
-                    # Log subscription error but continue to next subscription
-                    await events.add(
-                        session,
-                        level=EventLevel.ERROR,
-                        kind="sync",
-                        subscription_id=sub.id,
-                        message=f"Sync error: {e}",
-                    )
+                    await events.add(session, level=EventLevel.ERROR, kind="sync",
+                                     subscription_id=sub.id, message=f"Sync error: {e}")
                     await session.commit()
-
         except Exception as e:
-            # Global error (e.g., can't fetch subscriptions)
-            await events.add(
-                session,
-                level=EventLevel.ERROR,
-                kind="sync",
-                message=f"Poller error: {e}",
-            )
+            await events.add(session, level=EventLevel.ERROR, kind="sync",
+                             message=f"Poller error: {e}")
             await session.commit()
+
+    async def _on_new_message(self, event) -> None:
+        """Live-event handler: a new message arrived. Poll any realtime subs on
+        that channel immediately so the media is queued within ~a second."""
+        try:
+            chat_id = getattr(event, "chat_id", None)
+            if chat_id is None:
+                return
+            async with self.session_factory() as session:
+                subs = await subscriptions.list(session, enabled_only=True)
+                for sub in subs:
+                    if (sub.check_frequency or "5m") != "realtime":
+                        continue
+                    chan = await session.get(Channel, sub.channel_id)
+                    if not chan or chan.tg_id != chat_id:
+                        continue
+                    try:
+                        await self._poll_one_sub(session, sub)
+                    except Exception as e:
+                        await events.add(session, level=EventLevel.ERROR, kind="realtime",
+                                         subscription_id=sub.id, message=f"Realtime error: {e}")
+                        await session.commit()
+        except Exception:
+            pass  # never let a bad event kill the update loop
 
     async def _downloader(self) -> None:
         """Download manager: claims pending media, downloads, renames, moves into place.
@@ -740,11 +756,11 @@ class SyncEngine:
                 except Exception:
                     pass
 
-            # Wait for the interval OR an early stop signal, whichever first.
+            # Tick at a fast base cadence; per-sub check_frequency gates actual
+            # polling. min(poll_interval_sec, 30) keeps 1-minute subs responsive.
             try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(), timeout=self.poll_interval_sec
-                )
+                tick = min(self.poll_interval_sec, 30)
+                await asyncio.wait_for(self._stop_event.wait(), timeout=tick)
                 break  # stop event set -> exit loop promptly
             except asyncio.TimeoutError:
                 pass  # interval elapsed normally -> next iteration
@@ -822,6 +838,13 @@ class SyncEngine:
             asyncio.create_task(self._downloader()),
             asyncio.create_task(self._maintenance()),
         ]
+
+        # Register the live-events handler for realtime subscriptions.
+        try:
+            if hasattr(self.tg_service, "register_new_message_handler"):
+                self.tg_service.register_new_message_handler(self._on_new_message)
+        except Exception as e:
+            print(f"[engine] realtime handler registration failed: {e!r}")
 
         # Log startup
         try:

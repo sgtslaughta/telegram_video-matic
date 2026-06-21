@@ -67,6 +67,7 @@ export default function SubscriptionEditor() {
           name: existingSubscription.data.name || '',
           filterMode: (existingSubscription.data.filter_mode as 'include' | 'exclude') || 'include',
           filterRegex: existingSubscription.data.filter_regex || '',
+          checkFrequency: existingSubscription.data.check_frequency || '5m',
           scheduleDays: existingSubscription.data.schedule_days || [],
           minSizeMb: existingSubscription.data.min_size_mb ?? null,
           maxSizeMb: existingSubscription.data.max_size_mb ?? null,
@@ -119,7 +120,8 @@ export default function SubscriptionEditor() {
       rename_template: s.renameTemplate,
       filter_regex: s.filterRegex || undefined,
       filter_mode: s.filterMode,
-      schedule_days: s.scheduleDays.length > 0 ? s.scheduleDays : undefined,
+      check_frequency: s.checkFrequency,
+      schedule_days: s.checkFrequency === 'scheduled' && s.scheduleDays.length > 0 ? s.scheduleDays : undefined,
       min_size_mb: s.minSizeMb,
       max_size_mb: s.maxSizeMb,
       max_total_gb: s.maxTotalGb,
@@ -247,25 +249,47 @@ export default function SubscriptionEditor() {
         </CardContent>
       </Card>
 
-      {/* Schedule */}
+      {/* Capture frequency */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-1.5">
-            <CardTitle className="text-lg">Check Schedule</CardTitle>
-            <InfoTip text="Which weekdays this subscription looks for new media. Leave all unchecked to check every day." />
+            <CardTitle className="text-lg">Capture Frequency</CardTitle>
+            <InfoTip text="How quickly new posts are captured. Real-time queues media the instant it's posted (live Telegram events). Intervals poll on a timer. Scheduled only checks on chosen weekdays." />
           </div>
-          <p className="text-sm text-muted-foreground">Days the poller scans this subscription. None = every day.</p>
+          <p className="text-sm text-muted-foreground">How often this subscription looks for new media.</p>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            {DAYS.map((day) => (
-              <label key={day.value} className="flex cursor-pointer items-center gap-2">
-                <Checkbox checked={s.scheduleDays.includes(day.value)}
-                  onCheckedChange={() => editor.toggleScheduleDay(day.value)} />
-                <span className="text-sm">{day.label}</span>
-              </label>
-            ))}
-          </div>
+        <CardContent className="space-y-4">
+          <Combobox
+            value={s.checkFrequency}
+            onChange={(v) => editor.update('checkFrequency', v)}
+            options={[
+              { value: 'realtime', label: 'Real-time (instant)' },
+              { value: '1m', label: 'Every 1 minute' },
+              { value: '5m', label: 'Every 5 minutes' },
+              { value: '15m', label: 'Every 15 minutes' },
+              { value: '30m', label: 'Every 30 minutes' },
+              { value: 'hourly', label: 'Hourly' },
+              { value: 'daily', label: 'Daily' },
+              { value: 'scheduled', label: 'Scheduled (specific weekdays)' },
+            ]}
+          />
+          {s.checkFrequency === 'realtime' && (
+            <p className="text-sm text-muted-foreground">⚡ Media is queued the moment it's posted, via live Telegram events.</p>
+          )}
+          {s.checkFrequency === 'scheduled' && (
+            <div className="space-y-2">
+              <FieldLabel tip="Only these weekdays are scanned. Pick at least one.">Weekdays</FieldLabel>
+              <div className="flex flex-wrap gap-3">
+                {DAYS.map((day) => (
+                  <label key={day.value} className="flex cursor-pointer items-center gap-2">
+                    <Checkbox checked={s.scheduleDays.includes(day.value)}
+                      onCheckedChange={() => editor.toggleScheduleDay(day.value)} />
+                    <span className="text-sm">{day.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

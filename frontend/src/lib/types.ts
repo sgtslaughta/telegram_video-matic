@@ -114,6 +114,7 @@ export interface SubscriptionCreateRequest {
   topic_id?: number | null;
   enabled?: boolean;
   mode?: string;
+  check_frequency?: string | null;
   schedule_days?: string[] | null;
   filter_regex?: string | null;
   filter_mode?: string;
@@ -134,6 +135,7 @@ export interface SubscriptionUpdateRequest {
   name?: string | null;
   enabled?: boolean | null;
   mode?: string | null;
+  check_frequency?: string | null;
   schedule_days?: string[] | null;
   filter_regex?: string | null;
   filter_mode?: string | null;
@@ -157,6 +159,7 @@ export interface SubscriptionRead {
   topic_id?: number | null;
   enabled: boolean;
   mode: string;
+  check_frequency?: string | null;
   schedule_days?: string[] | null;
   filter_regex?: string | null;
   filter_mode: string;

@@ -51,6 +51,7 @@ async def create_subscription(
         sub = await repo_module.subscriptions.create(
             db,
             name=req.name,
+            check_frequency=req.check_frequency,
             channel_id=req.channel_id,
             topic_id=req.topic_id,
             enabled=req.enabled,

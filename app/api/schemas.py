@@ -103,6 +103,7 @@ class SubscriptionCreateRequest(BaseModel):
     topic_id: Optional[int] = None
     enabled: bool = True
     mode: str = "immediate"
+    check_frequency: Optional[str] = "5m"
     schedule_days: Optional[list[str]] = None
     filter_regex: Optional[str] = None
     filter_mode: str = "include"
@@ -125,6 +126,7 @@ class SubscriptionUpdateRequest(BaseModel):
     name: Optional[str] = None
     enabled: Optional[bool] = None
     mode: Optional[str] = None
+    check_frequency: Optional[str] = None
     schedule_days: Optional[list[str]] = None
     filter_regex: Optional[str] = None
     filter_mode: Optional[str] = None
@@ -150,6 +152,7 @@ class SubscriptionRead(BaseModel):
     topic_id: Optional[int] = None
     enabled: bool
     mode: str
+    check_frequency: Optional[str] = None
     schedule_days: Optional[list[str]] = None
     filter_regex: Optional[str] = None
     filter_mode: str

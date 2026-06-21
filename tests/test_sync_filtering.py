@@ -1,5 +1,6 @@
 """Test suite for subscription filter classifier (Task 3: Filtering)."""
 import pytest
+from datetime import timedelta
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Optional
@@ -372,3 +373,30 @@ class TestClassifyTimeframeGate:
         sub = MockSubscription()
         media = MockMedia(size_bytes=10, date_posted=self._dt(2020, 1, 1))
         assert classify(sub, media) == ("keep", None)
+
+
+class TestSubDue:
+    """Per-subscription capture frequency gating (_sub_due)."""
+
+    def _sub(self, freq, last_min_ago=None):
+        from types import SimpleNamespace
+        last = None
+        if last_min_ago is not None:
+            last = datetime.now(timezone.utc) - timedelta(minutes=last_min_ago)
+        return SimpleNamespace(check_frequency=freq, last_checked_at=last, schedule_days=[])
+
+    def test_realtime_never_polled(self):
+        from app.sync.engine import _sub_due
+        assert _sub_due(self._sub("realtime"), datetime.now(timezone.utc)) is False
+
+    def test_never_checked_is_due(self):
+        from app.sync.engine import _sub_due
+        assert _sub_due(self._sub("5m"), datetime.now(timezone.utc)) is True
+
+    def test_interval_not_elapsed(self):
+        from app.sync.engine import _sub_due
+        assert _sub_due(self._sub("hourly", last_min_ago=10), datetime.now(timezone.utc)) is False
+
+    def test_interval_elapsed(self):
+        from app.sync.engine import _sub_due
+        assert _sub_due(self._sub("5m", last_min_ago=10), datetime.now(timezone.utc)) is True

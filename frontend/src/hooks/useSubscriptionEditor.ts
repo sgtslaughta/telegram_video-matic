@@ -7,6 +7,7 @@ export interface SubscriptionEditorState {
   filterMode: 'include' | 'exclude'
   filterRegex: string
   regexError: string | null
+  checkFrequency: string  // realtime | 1m | 5m | 15m | 30m | hourly | daily | scheduled
   scheduleDays: string[]
   minSizeMb: number | null
   maxSizeMb: number | null
@@ -29,6 +30,7 @@ export function useSubscriptionEditor(initialState?: Partial<SubscriptionEditorS
     filterMode: 'include',
     filterRegex: '',
     regexError: null,
+    checkFrequency: '5m',
     scheduleDays: [],
     minSizeMb: null,
     maxSizeMb: null,

@@ -146,6 +146,10 @@ class Subscription(Base, TimestampMixin):
     topic_id: Mapped[Optional[int]] = mapped_column(ForeignKey("topics.id"), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     mode: Mapped[str] = mapped_column(String(32), default=SubMode.IMMEDIATE, nullable=False)
+    # Capture cadence: realtime | 1m | 5m | 15m | 30m | hourly | daily | scheduled.
+    # realtime = event-driven (no polling); scheduled uses schedule_days.
+    check_frequency: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, default="5m")
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     schedule_days: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     filter_regex: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     filter_mode: Mapped[str] = mapped_column(String(32), default=FilterMode.INCLUDE, nullable=False)

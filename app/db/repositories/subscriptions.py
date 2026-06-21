@@ -23,10 +23,12 @@ async def create(
     retention_days: int | None = None,
     retention_disk_pct: int | None = None,
     name: str | None = None,
+    check_frequency: str | None = "5m",
 ) -> Subscription:
     """Create a new subscription."""
     sub = Subscription(
         name=name,
+        check_frequency=check_frequency,
         channel_id=channel_id,
         topic_id=topic_id,
         storage_path=storage_path,

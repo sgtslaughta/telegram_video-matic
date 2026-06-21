@@ -3,7 +3,7 @@ import base64
 import inspect
 import pathlib
 from typing import Callable, Optional
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.errors import SessionPasswordNeededError, FloodWaitError
 from telethon.tl.functions.channels import GetForumTopicsRequest
@@ -463,6 +463,21 @@ class TelegramService:
             return None
 
         return getattr(message.replies, "replies", None)
+
+    def register_new_message_handler(self, callback) -> None:
+        """Register a Telethon NewMessage handler (for realtime subscriptions).
+        The callback is async and receives the event. Idempotent-ish: replaces
+        any previously registered handler."""
+        if not self.client:
+            return
+        old = getattr(self, "_nm_handler", None)
+        if old is not None:
+            try:
+                self.client.remove_event_handler(old)
+            except Exception:
+                pass
+        self._nm_handler = callback
+        self.client.add_event_handler(callback, events.NewMessage())
 
     async def message_detail(self, channel_tg_id: int, msg_id: int, comment_limit: int = 30) -> Optional[dict]:
         """Full detail for one live message: meta, reactions, and comment thread.
