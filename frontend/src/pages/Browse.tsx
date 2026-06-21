@@ -12,9 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import * as api from '@/lib/api'
 
@@ -76,59 +74,48 @@ export default function Browse() {
         <CardContent className="grid gap-4 pt-6 md:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-2">
             <Label>Channel</Label>
-            <Select
+            <Combobox
               value={channelId?.toString() || ''}
-              onValueChange={(v) => { setChannelId(v ? parseInt(v) : null); setTopicId(null) }}
+              onChange={(v) => { setChannelId(v ? parseInt(v) : null); setTopicId(null) }}
               disabled={channels.isLoading}
-            >
-              <SelectTrigger><SelectValue placeholder="Select a channel…" /></SelectTrigger>
-              <SelectContent>
-                {channels.data?.map((ch) => (
-                  <SelectItem key={ch.id} value={ch.id.toString()}>{ch.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Select a channel…"
+              searchPlaceholder="Search channels…"
+              options={(channels.data ?? []).map((ch) => ({ value: ch.id.toString(), label: ch.title }))}
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Topic</Label>
-            <Select
+            <Combobox
               value={topicId?.toString() || 'all'}
-              onValueChange={(v) => setTopicId(v === 'all' ? null : parseInt(v))}
+              onChange={(v) => setTopicId(v === 'all' ? null : parseInt(v))}
               disabled={!channelId || topics.isLoading}
-            >
-              <SelectTrigger><SelectValue placeholder="All topics" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All topics</SelectItem>
-                {topics.data?.map((t) => (
-                  <SelectItem key={t.id} value={t.id.toString()}>{t.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="All topics"
+              searchPlaceholder="Search topics…"
+              options={[{ value: 'all', label: 'All topics' }, ...(topics.data ?? []).map((t) => ({ value: t.id.toString(), label: t.title }))]}
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>{s === 'all' ? 'All statuses' : s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={STATUSES.map((s) => ({ value: s, label: s === 'all' ? 'All statuses' : s }))}
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Sort by</Label>
-            <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="date">Newest first</SelectItem>
-                <SelectItem value="size">Largest first</SelectItem>
-                <SelectItem value="name">Name (A–Z)</SelectItem>
-              </SelectContent>
-            </Select>
+            <Combobox
+              value={sortKey}
+              onChange={(v) => setSortKey(v as SortKey)}
+              options={[
+                { value: 'date', label: 'Newest first' },
+                { value: 'size', label: 'Largest first' },
+                { value: 'name', label: 'Name (A–Z)' },
+              ]}
+            />
           </div>
         </CardContent>
       </Card>

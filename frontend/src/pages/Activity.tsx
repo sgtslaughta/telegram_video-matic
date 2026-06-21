@@ -8,13 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import type * as T from '@/lib/types'
 
 const LIMIT = 10
@@ -113,40 +107,22 @@ export default function Activity() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Level</Label>
-                <Select value={levelFilter} onValueChange={(v) => {
-                  setLevelFilter(v)
-                  setOffset(0)
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Levels" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EVENT_LEVELS.map((level) => (
-                      <SelectItem key={level.value} value={level.value}>
-                        {level.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  value={levelFilter}
+                  onChange={(v) => { setLevelFilter(v); setOffset(0) }}
+                  placeholder="All Levels"
+                  options={EVENT_LEVELS.map((level) => ({ value: level.value, label: level.label }))}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label>Kind</Label>
-                <Select value={kindFilter} onValueChange={(v) => {
-                  setKindFilter(v)
-                  setOffset(0)
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Kinds" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EVENT_KINDS.map((kind) => (
-                      <SelectItem key={kind.value} value={kind.value}>
-                        {kind.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Combobox
+                  value={kindFilter}
+                  onChange={(v) => { setKindFilter(v); setOffset(0) }}
+                  placeholder="All Kinds"
+                  options={EVENT_KINDS.map((kind) => ({ value: kind.value, label: kind.label }))}
+                />
               </div>
             </div>
           </CardContent>

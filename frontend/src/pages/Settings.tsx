@@ -8,13 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import type * as T from '@/lib/types'
 
 const containerVariants = {
@@ -180,16 +174,15 @@ export default function Settings() {
             <CardTitle>Theme</CardTitle>
           </CardHeader>
           <CardContent>
-            <Select value={theme} onValueChange={(v) => setTheme(v as any)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="light">Light</SelectItem>
-                <SelectItem value="dark">Dark</SelectItem>
-                <SelectItem value="system">System</SelectItem>
-              </SelectContent>
-            </Select>
+            <Combobox
+              value={theme}
+              onChange={(v) => setTheme(v as any)}
+              options={[
+                { value: 'light', label: 'Light' },
+                { value: 'dark', label: 'Dark' },
+                { value: 'system', label: 'System' },
+              ]}
+            />
           </CardContent>
         </Card>
       </motion.div>

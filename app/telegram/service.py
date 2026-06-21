@@ -243,14 +243,15 @@ class TelegramService:
 
     async def browse_media(
         self, channel: ChannelDTO, topic: Optional[TopicDTO] = None,
-        limit: int = 100, offset_id: int = 0,
+        limit: int = 50, offset_id: int = 0,
     ):
-        """Lightweight live media listing for browsing, paginated by message id.
+        """Lightweight live media listing for browsing, paginated by VIDEO count.
 
-        `limit` is the raw-message scan window; `offset_id` is the cursor (return
-        messages older than this id). Returns (items, next_offset_id, has_more).
-        next_offset_id is the smallest scanned id (pass it back to load older);
-        has_more is True when the scan filled the window (more may remain)."""
+        Scans messages older than `offset_id` until `limit` videos are collected
+        (or a raw-scan safety cap is hit), so every page returns a consistent
+        number of videos regardless of how much chat is interleaved.
+        Returns (items, next_offset_id, has_more); next_offset_id is the smallest
+        scanned id — pass it back to load older."""
         if not self.client:
             return [], None, False
         from telethon.tl.types import (
@@ -263,31 +264,35 @@ class TelegramService:
         items = []
         scanned = 0
         last_id = None
-        async for message in self.client.iter_messages(entity, limit=limit, offset_id=offset_id, **extra):
+        # Cap raw scanning so a video-sparse channel can't iterate forever.
+        max_scan = max(limit * 20, 200)
+        async for message in self.client.iter_messages(entity, offset_id=offset_id, **extra):
             scanned += 1
             last_id = message.id  # newest-first, so this ends at the smallest id
-            if not message.media or not isinstance(message.media, MessageMediaDocument):
-                continue
-            doc = message.media.document
-            if not doc.mime_type or not doc.mime_type.startswith(("video/", "application/octet-stream")):
-                continue
-            file_name = None
-            duration_sec = None
-            for attr in (doc.attributes or []):
-                if isinstance(attr, DocumentAttributeFilename):
-                    file_name = attr.file_name
-                elif isinstance(attr, DocumentAttributeVideo):
-                    duration_sec = attr.duration
-            items.append({
-                "tg_msg_id": message.id,
-                "caption": message.message or None,
-                "file_name": file_name,
-                "mime": doc.mime_type,
-                "size_bytes": doc.size,
-                "duration_sec": int(duration_sec) if duration_sec else None,
-                "date_posted": message.date,
-            })
-        return items, last_id, scanned >= limit
+            if message.media and isinstance(message.media, MessageMediaDocument):
+                doc = message.media.document
+                if doc.mime_type and doc.mime_type.startswith(("video/", "application/octet-stream")):
+                    file_name = None
+                    duration_sec = None
+                    for attr in (doc.attributes or []):
+                        if isinstance(attr, DocumentAttributeFilename):
+                            file_name = attr.file_name
+                        elif isinstance(attr, DocumentAttributeVideo):
+                            duration_sec = attr.duration
+                    items.append({
+                        "tg_msg_id": message.id,
+                        "caption": message.message or None,
+                        "file_name": file_name,
+                        "mime": doc.mime_type,
+                        "size_bytes": doc.size,
+                        "duration_sec": int(duration_sec) if duration_sec else None,
+                        "date_posted": message.date,
+                    })
+            if len(items) >= limit or scanned >= max_scan:
+                # Stopped early -> more may remain beyond last_id.
+                return items, last_id, True
+        # Iterator exhausted -> reached the end of the channel/topic.
+        return items, last_id, False
 
     async def thumb_b64_for(self, channel_tg_id: int, msg_id: int) -> Optional[str]:
         """Resolve a message by id and return its thumbnail as base64, or None."""

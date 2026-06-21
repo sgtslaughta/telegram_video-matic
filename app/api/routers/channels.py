@@ -41,7 +41,7 @@ async def browse_channel(
     channel_id: int,
     request: Request,
     topic_id: int | None = Query(None),
-    limit: int = Query(100, ge=1, le=300),
+    limit: int = Query(50, ge=1, le=200),
     offset_id: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):

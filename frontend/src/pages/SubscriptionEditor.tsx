@@ -10,13 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import type * as T from '@/lib/types'
 
 const DAYS = [
@@ -186,37 +180,28 @@ export default function SubscriptionEditor() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="channel">Channel</Label>
-              <Select value={editor.state.channelId?.toString() || ''} onValueChange={(v) => {
-                editor.update('channelId', v ? parseInt(v) : null)
-                editor.update('topicId', null)
-              }}>
-                <SelectTrigger id="channel">
-                  <SelectValue placeholder="Select channel" />
-                </SelectTrigger>
-                <SelectContent>
-                  {channels.data?.map((ch) => (
-                    <SelectItem key={ch.id} value={ch.id.toString()}>
-                      {ch.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                value={editor.state.channelId?.toString() || ''}
+                onChange={(v) => {
+                  editor.update('channelId', v ? parseInt(v) : null)
+                  editor.update('topicId', null)
+                }}
+                placeholder="Select channel"
+                searchPlaceholder="Search channels…"
+                options={(channels.data ?? []).map((ch) => ({ value: ch.id.toString(), label: ch.title }))}
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="topic">Topic</Label>
-              <Select value={editor.state.topicId?.toString() || ''} onValueChange={(v) => editor.update('topicId', v ? parseInt(v) : null)} disabled={!editor.state.channelId}>
-                <SelectTrigger id="topic">
-                  <SelectValue placeholder="Select topic" />
-                </SelectTrigger>
-                <SelectContent>
-                  {topics.data?.map((t) => (
-                    <SelectItem key={t.id} value={t.id.toString()}>
-                      {t.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                value={editor.state.topicId?.toString() || ''}
+                onChange={(v) => editor.update('topicId', v ? parseInt(v) : null)}
+                disabled={!editor.state.channelId}
+                placeholder="Select topic"
+                searchPlaceholder="Search topics…"
+                options={(topics.data ?? []).map((t) => ({ value: t.id.toString(), label: t.title }))}
+              />
             </div>
           </div>
         </CardContent>
@@ -333,17 +318,15 @@ export default function SubscriptionEditor() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Capture</Label>
-            <Select
+            <Combobox
               value={editor.state.timeframeMode}
-              onValueChange={(v) => editor.update('timeframeMode', v)}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All history</SelectItem>
-                <SelectItem value="future">From now on (future only)</SelectItem>
-                <SelectItem value="window">Custom date window</SelectItem>
-              </SelectContent>
-            </Select>
+              onChange={(v) => editor.update('timeframeMode', v)}
+              options={[
+                { value: 'all', label: 'All history' },
+                { value: 'future', label: 'From now on (future only)' },
+                { value: 'window', label: 'Custom date window' },
+              ]}
+            />
           </div>
           {editor.state.timeframeMode === 'window' && (
             <div className="grid grid-cols-2 gap-4">

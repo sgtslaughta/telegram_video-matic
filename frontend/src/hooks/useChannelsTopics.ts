@@ -32,7 +32,7 @@ export function useBrowse(channelId: number | null, topicId: number | null) {
     queryFn: ({ pageParam }) =>
       api.channels.browse(channelId!, {
         topic_id: topicId ?? undefined,
-        limit: 100,
+        limit: 50,
         offset_id: pageParam as number,
       }),
     initialPageParam: 0,
