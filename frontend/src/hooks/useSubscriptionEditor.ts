@@ -10,12 +10,15 @@ export interface SubscriptionEditorState {
   scheduleDays: string[]
   minSizeMb: number | null
   maxSizeMb: number | null
+  maxTotalGb: number | null   // disk quota; null = unlimited
   dateFrom: string  // yyyy-mm-dd; empty = no lower bound
   dateTo: string    // yyyy-mm-dd; empty = ongoing (no upper bound)
+  ongoing: boolean  // UI: capture future indefinitely (no end date)
   storagePath: string
   renameTemplate: string
   retentionDays: number | null
   seasonDetection: boolean
+  jellyfinMetadata: boolean
 }
 
 export function useSubscriptionEditor(initialState?: Partial<SubscriptionEditorState>) {
@@ -29,12 +32,15 @@ export function useSubscriptionEditor(initialState?: Partial<SubscriptionEditorS
     scheduleDays: [],
     minSizeMb: null,
     maxSizeMb: null,
+    maxTotalGb: null,
     dateFrom: '',
     dateTo: '',
+    ongoing: true,
     storagePath: '',
-    renameTemplate: '',
+    renameTemplate: '{channel}/{title}.{ext}',
     retentionDays: null,
     seasonDetection: false,
+    jellyfinMetadata: false,
     ...initialState,
   })
 

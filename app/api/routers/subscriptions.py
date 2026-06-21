@@ -50,6 +50,7 @@ async def create_subscription(
     try:
         sub = await repo_module.subscriptions.create(
             db,
+            name=req.name,
             channel_id=req.channel_id,
             topic_id=req.topic_id,
             enabled=req.enabled,
@@ -58,11 +59,13 @@ async def create_subscription(
             filter_mode=req.filter_mode,
             min_size_mb=req.min_size_mb,
             max_size_mb=req.max_size_mb,
+            max_total_gb=req.max_total_gb,
             date_from=req.date_from,
             date_to=req.date_to,
             storage_path=req.storage_path,
             rename_template=req.rename_template,
             season_detection=req.season_detection,
+            jellyfin_metadata=req.jellyfin_metadata,
             retention_days=req.retention_days,
             retention_disk_pct=req.retention_disk_pct,
         )

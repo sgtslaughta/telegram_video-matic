@@ -141,6 +141,7 @@ class Subscription(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     channel_id: Mapped[int] = mapped_column(ForeignKey("channels.id"), nullable=False)
     topic_id: Mapped[Optional[int]] = mapped_column(ForeignKey("topics.id"), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -150,13 +151,17 @@ class Subscription(Base, TimestampMixin):
     filter_mode: Mapped[str] = mapped_column(String(32), default=FilterMode.INCLUDE, nullable=False)
     min_size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     max_size_mb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Per-subscription disk quota in GB; null = unlimited. When exceeded,
+    # maintenance deletes oldest downloaded files for this sub (rolling window).
+    max_total_gb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Timeframe window: only capture media posted within [date_from, date_to].
-    # date_from set + date_to null = "future only"; both null = all history.
+    # date_from set + date_to null = ongoing (catch up + keep going); both null = all.
     date_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     date_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     rename_template: Mapped[str] = mapped_column(String(1024), nullable=False)
     season_detection: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    jellyfin_metadata: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     retention_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     retention_disk_pct: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 

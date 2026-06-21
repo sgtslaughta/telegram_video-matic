@@ -110,6 +110,7 @@ export interface ChannelRead {
 
 export interface SubscriptionCreateRequest {
   channel_id: number;
+  name?: string | null;
   topic_id?: number | null;
   enabled?: boolean;
   mode?: string;
@@ -118,16 +119,19 @@ export interface SubscriptionCreateRequest {
   filter_mode?: string;
   min_size_mb?: number | null;
   max_size_mb?: number | null;
+  max_total_gb?: number | null;
   date_from?: string | null;
   date_to?: string | null;
   storage_path: string;
   rename_template: string;
   season_detection?: boolean;
+  jellyfin_metadata?: boolean;
   retention_days?: number | null;
   retention_disk_pct?: number | null;
 }
 
 export interface SubscriptionUpdateRequest {
+  name?: string | null;
   enabled?: boolean | null;
   mode?: string | null;
   schedule_days?: string[] | null;
@@ -135,17 +139,20 @@ export interface SubscriptionUpdateRequest {
   filter_mode?: string | null;
   min_size_mb?: number | null;
   max_size_mb?: number | null;
+  max_total_gb?: number | null;
   date_from?: string | null;
   date_to?: string | null;
   storage_path?: string | null;
   rename_template?: string | null;
   season_detection?: boolean | null;
+  jellyfin_metadata?: boolean | null;
   retention_days?: number | null;
   retention_disk_pct?: number | null;
 }
 
 export interface SubscriptionRead {
   id: number;
+  name?: string | null;
   channel_id: number;
   topic_id?: number | null;
   enabled: boolean;
@@ -155,11 +162,13 @@ export interface SubscriptionRead {
   filter_mode: string;
   min_size_mb?: number | null;
   max_size_mb?: number | null;
+  max_total_gb?: number | null;
   date_from?: string | null;
   date_to?: string | null;
   storage_path: string;
   rename_template: string;
   season_detection: boolean;
+  jellyfin_metadata?: boolean;
   retention_days?: number | null;
   retention_disk_pct?: number | null;
   created_at: string; // ISO datetime

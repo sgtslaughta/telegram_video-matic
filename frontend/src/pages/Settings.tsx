@@ -9,7 +9,22 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Combobox } from '@/components/ui/combobox'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Info } from 'lucide-react'
 import type * as T from '@/lib/types'
+
+function InfoTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" tabIndex={-1} className="text-muted-foreground hover:text-foreground" aria-label="Help">
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-sm">{text}</TooltipContent>
+    </Tooltip>
+  )
+}
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -109,11 +124,15 @@ export default function Settings() {
         {/* System Settings */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>System</CardTitle>
+            <CardTitle>System & Purge</CardTitle>
+            <p className="text-sm text-muted-foreground">Global download cadence and disk-space safety limits.</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="poll">Poll Interval (seconds)</Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="poll">Poll Interval (seconds)</Label>
+                <InfoTip text="How often the app scans your subscriptions for new media." />
+              </div>
               <Input
                 id="poll"
                 type="number"
@@ -125,7 +144,10 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="max-dl">Max Concurrent Downloads</Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="max-dl">Max Concurrent Downloads</Label>
+                <InfoTip text="How many files download at once. Higher = faster but more bandwidth/CPU." />
+              </div>
               <Input
                 id="max-dl"
                 type="number"
@@ -140,7 +162,10 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="retention">Retention Days</Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="retention">Global Purge: Max Age (days)</Label>
+                <InfoTip text="Safety net across ALL subscriptions: downloaded files older than this are deleted. Per-subscription retention can be stricter." />
+              </div>
               <Input
                 id="retention"
                 type="number"
@@ -152,7 +177,10 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="retention-pct">Retention Disk Percentage</Label>
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="retention-pct">Global Purge: Disk Usage Limit (%)</Label>
+                <InfoTip text="When the disk reaches this % full, the oldest downloads are deleted until back under. Prevents filling the disk." />
+              </div>
               <Input
                 id="retention-pct"
                 type="number"

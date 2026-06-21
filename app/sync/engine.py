@@ -22,6 +22,44 @@ class _DownloadCanceled(Exception):
 class _DownloadPaused(Exception):
     """Raised mid-download when a pause was requested (keep partial)."""
 
+
+def _write_jellyfin_nfo(target_full, item, show_title, season, episode) -> None:
+    """Write a Kodi/Jellyfin .nfo next to the video. episodedetails when a
+    season/episode was detected (+ tvshow.nfo at the series root), else movie."""
+    from xml.sax.saxutils import escape
+    title = escape(str(item.caption or item.file_name or target_full.stem or ""))
+    plot = escape(str(item.caption or ""))
+    aired = item.date_posted.date().isoformat() if item.date_posted else ""
+    runtime = int((item.duration_sec or 0) / 60)
+    nfo = target_full.with_suffix(".nfo")
+
+    if season is not None and episode is not None:
+        nfo.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f"<episodedetails>\n  <title>{title}</title>\n"
+            f"  <season>{escape(str(season))}</season>\n"
+            f"  <episode>{escape(str(episode))}</episode>\n"
+            f"  <plot>{plot}</plot>\n  <aired>{aired}</aired>\n"
+            f"  <runtime>{runtime}</runtime>\n</episodedetails>\n",
+            encoding="utf-8",
+        )
+        # tvshow.nfo at the series root (grandparent = show folder above Season X)
+        series_root = target_full.parent.parent
+        tv = series_root / "tvshow.nfo"
+        if series_root.exists() and not tv.exists():
+            tv.write_text(
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                f"<tvshow>\n  <title>{escape(str(show_title))}</title>\n</tvshow>\n",
+                encoding="utf-8",
+            )
+    else:
+        nfo.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f"<movie>\n  <title>{title}</title>\n  <plot>{plot}</plot>\n"
+            f"  <premiered>{aired}</premiered>\n  <runtime>{runtime}</runtime>\n</movie>\n",
+            encoding="utf-8",
+        )
+
 # ponytail: regex compiled once, explicit season/episode pattern detection
 _SE_PATTERN = re.compile(r'(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)', re.IGNORECASE)
 
@@ -365,6 +403,20 @@ class SyncEngine:
                                 target_full.parent.mkdir(parents=True, exist_ok=True)
                                 shutil.move(temp_file, str(target_full))
 
+                                # Jellyfin/Kodi .nfo sidecar (opt-in per sub)
+                                if sub and sub.jellyfin_metadata:
+                                    try:
+                                        show_title = sub.name or (channel.title if channel else "")
+                                        _write_jellyfin_nfo(
+                                            target_full, item, show_title,
+                                            season if use_template else None,
+                                            episode if use_template else None,
+                                        )
+                                    except Exception as e:
+                                        await events.add(session, level=EventLevel.WARNING,
+                                                         kind="jellyfin", media_id=item.id,
+                                                         message=f"NFO write failed: {e}")
+
                                 # Update DB: mark as downloaded
                                 item.local_path = str(target_full)
                                 item.downloaded_at = datetime.now(timezone.utc)
@@ -622,6 +674,44 @@ class SyncEngine:
                 used_pct = 100 * usage.used / usage.total
                 if used_pct < retention_pct:
                     break
+
+        # 5. Per-subscription pruning: optional retention_days + disk quota.
+        for sub in await subscriptions.list(session):
+            items = await media.list_downloaded_for_sub(session, sub.id)  # oldest first
+            if not items:
+                continue
+
+            def _prune(item, reason):
+                if item.local_path and Path(item.local_path).exists():
+                    Path(item.local_path).unlink()
+
+            # 5a. Per-sub age retention (if enabled for this sub)
+            if sub.retention_days:
+                sub_cutoff = datetime.now(timezone.utc) - timedelta(days=sub.retention_days)
+                for item in list(items):
+                    if item.downloaded_at and item.downloaded_at < sub_cutoff:
+                        _prune(item, "age")
+                        await media.set_local_path(session, item.id, None)
+                        await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                        await events.add(session, level=EventLevel.INFO, kind="prune",
+                                         media_id=item.id, subscription_id=sub.id,
+                                         message=f"Pruned (sub age > {sub.retention_days}d)")
+                        items.remove(item)
+
+            # 5b. Per-sub disk quota: delete oldest until under max_total_gb
+            if sub.max_total_gb:
+                quota = sub.max_total_gb * 1024 ** 3
+                total = sum((i.size_bytes or 0) for i in items)
+                for item in list(items):
+                    if total <= quota:
+                        break
+                    _prune(item, "quota")
+                    await media.set_local_path(session, item.id, None)
+                    await media.set_status(session, item.id, MediaStatus.SKIPPED)
+                    await events.add(session, level=EventLevel.INFO, kind="prune",
+                                     media_id=item.id, subscription_id=sub.id,
+                                     message=f"Pruned (quota > {sub.max_total_gb}GB)")
+                    total -= (item.size_bytes or 0)
 
         await session.commit()
 

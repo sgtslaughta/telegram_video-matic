@@ -99,6 +99,7 @@ class ChannelRead(BaseModel):
 
 class SubscriptionCreateRequest(BaseModel):
     channel_id: int
+    name: Optional[str] = None
     topic_id: Optional[int] = None
     enabled: bool = True
     mode: str = "immediate"
@@ -107,11 +108,13 @@ class SubscriptionCreateRequest(BaseModel):
     filter_mode: str = "include"
     min_size_mb: Optional[int] = None
     max_size_mb: Optional[int] = None
+    max_total_gb: Optional[int] = None
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     storage_path: str
     rename_template: str
     season_detection: bool = True
+    jellyfin_metadata: bool = False
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
     # filter_regex is validated in the subscriptions router (-> HTTP 400),
@@ -119,6 +122,7 @@ class SubscriptionCreateRequest(BaseModel):
 
 
 class SubscriptionUpdateRequest(BaseModel):
+    name: Optional[str] = None
     enabled: Optional[bool] = None
     mode: Optional[str] = None
     schedule_days: Optional[list[str]] = None
@@ -126,11 +130,13 @@ class SubscriptionUpdateRequest(BaseModel):
     filter_mode: Optional[str] = None
     min_size_mb: Optional[int] = None
     max_size_mb: Optional[int] = None
+    max_total_gb: Optional[int] = None
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     storage_path: Optional[str] = None
     rename_template: Optional[str] = None
     season_detection: Optional[bool] = None
+    jellyfin_metadata: Optional[bool] = None
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
     # filter_regex validated in the router (-> HTTP 400), see SubscriptionCreateRequest.
@@ -139,6 +145,7 @@ class SubscriptionUpdateRequest(BaseModel):
 class SubscriptionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    name: Optional[str] = None
     channel_id: int
     topic_id: Optional[int] = None
     enabled: bool
@@ -148,15 +155,22 @@ class SubscriptionRead(BaseModel):
     filter_mode: str
     min_size_mb: Optional[int] = None
     max_size_mb: Optional[int] = None
+    max_total_gb: Optional[int] = None
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     storage_path: str
     rename_template: str
     season_detection: bool
+    jellyfin_metadata: bool = False
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("jellyfin_metadata", mode="before")
+    @classmethod
+    def _default_bool(cls, v):
+        return bool(v) if v is not None else False
 
 
 # ============================================================================

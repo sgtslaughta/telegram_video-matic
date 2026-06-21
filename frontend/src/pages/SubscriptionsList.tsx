@@ -132,7 +132,10 @@ export default function SubscriptionsList() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-base">{channelTitle(sub.channel_id)}</CardTitle>
+                      <CardTitle className="text-base">{sub.name || channelTitle(sub.channel_id)}</CardTitle>
+                      {sub.name && (
+                        <p className="text-xs text-muted-foreground">{channelTitle(sub.channel_id)}</p>
+                      )}
                       {sub.topic_id && (
                         <p className="text-sm text-muted-foreground mt-1">
                           Topic {sub.topic_id}

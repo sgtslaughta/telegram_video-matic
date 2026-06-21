@@ -96,7 +96,11 @@ def _add_missing_columns(conn) -> None:
             if col.name in existing:
                 continue
             ddl = type_map.get(str(col.type).upper(), "TEXT")
-            conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {ddl}'))
+            # NOT NULL columns need a default for ALTER ADD on populated tables.
+            default = ""
+            if not col.nullable:
+                default = " NOT NULL DEFAULT 0" if ddl in ("INTEGER", "BOOLEAN") else " NOT NULL DEFAULT ''"
+            conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {ddl}{default}'))
 
 
 async def drop_tables() -> None:

@@ -15,14 +15,18 @@ async def create(
     filter_mode: str = FilterMode.INCLUDE,
     min_size_mb: int | None = None,
     max_size_mb: int | None = None,
+    max_total_gb: int | None = None,
     date_from=None,
     date_to=None,
     season_detection: bool = True,
+    jellyfin_metadata: bool = False,
     retention_days: int | None = None,
     retention_disk_pct: int | None = None,
+    name: str | None = None,
 ) -> Subscription:
     """Create a new subscription."""
     sub = Subscription(
+        name=name,
         channel_id=channel_id,
         topic_id=topic_id,
         storage_path=storage_path,
@@ -33,9 +37,11 @@ async def create(
         filter_mode=filter_mode,
         min_size_mb=min_size_mb,
         max_size_mb=max_size_mb,
+        max_total_gb=max_total_gb,
         date_from=date_from,
         date_to=date_to,
         season_detection=season_detection,
+        jellyfin_metadata=jellyfin_metadata,
         retention_days=retention_days,
         retention_disk_pct=retention_disk_pct,
     )

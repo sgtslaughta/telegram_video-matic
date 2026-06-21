@@ -232,6 +232,24 @@ async def list_downloaded_oldest_first(
     return result.scalars().all()
 
 
+async def list_downloaded_for_sub(
+    session: AsyncSession,
+    subscription_id: int,
+) -> list[MediaItem]:
+    """DOWNLOADED items for one subscription, oldest first (for quota/retention)."""
+    result = await session.execute(
+        select(MediaItem)
+        .where(
+            and_(
+                MediaItem.subscription_id == subscription_id,
+                MediaItem.status == "downloaded",
+            )
+        )
+        .order_by(MediaItem.downloaded_at.asc())
+    )
+    return result.scalars().all()
+
+
 async def list_filtered(
     session: AsyncSession,
     status: str | None = None,
