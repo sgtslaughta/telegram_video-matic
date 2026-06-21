@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { Download, MessageSquare } from 'lucide-react'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { Download, MessageSquare, X } from 'lucide-react'
+import { Drawer, DrawerContent, DrawerTitle, DrawerClose } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import * as api from '@/lib/api'
@@ -40,8 +40,12 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
   const title = item?.caption || item?.file_name || 'Untitled'
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto p-0">
+    <Drawer direction="right" open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="overflow-y-auto p-0">
+        <DrawerClose className="absolute right-3 top-3 z-10 rounded-full bg-background/80 p-1.5 opacity-80 backdrop-blur transition-opacity hover:opacity-100">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DrawerClose>
         {item && channelId && (
           <>
             <img
@@ -52,7 +56,7 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
             />
             <div className="space-y-5 px-6 pb-6">
               <div className="space-y-2">
-                <SheetTitle className="pr-8 leading-snug">{title}</SheetTitle>
+                <DrawerTitle className="pr-8 leading-snug">{title}</DrawerTitle>
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={item.status} />
                   {item.subscription_label && (
@@ -128,8 +132,8 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
             </div>
           </>
         )}
-      </SheetContent>
-    </Sheet>
+      </DrawerContent>
+    </Drawer>
   )
 }
 
