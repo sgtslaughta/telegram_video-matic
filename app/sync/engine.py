@@ -15,6 +15,13 @@ from app.telegram.dtos import ChannelDTO, TopicDTO
 from app.sync.naming import detect_season_episode, render_path
 
 
+def _as_utc(dt):
+    """SQLite returns naive datetimes; treat them as UTC for arithmetic."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 _FREQUENCY_SECONDS = {
     "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
     "hourly": 3600, "daily": 86400,
@@ -27,7 +34,7 @@ def _sub_due(sub, now) -> bool:
     freq = sub.check_frequency or "5m"
     if freq == "realtime":
         return False
-    last = sub.last_checked_at
+    last = _as_utc(sub.last_checked_at)
     if last is None:
         return True
     elapsed = (now - last).total_seconds()
@@ -301,7 +308,7 @@ class SyncEngine:
                         if latest_job and latest_job.attempt > 1 and latest_job.status == JobStatus.QUEUED:
                             # This item has been retried; check if backoff window has elapsed
                             backoff_sec = min(2 ** latest_job.attempt * base_backoff, max_backoff)
-                            elapsed = (datetime.now(timezone.utc) - latest_job.updated_at).total_seconds()
+                            elapsed = (datetime.now(timezone.utc) - _as_utc(latest_job.updated_at)).total_seconds()
                             if elapsed < backoff_sec:
                                 # Backoff window not yet elapsed; release this item and try next
                                 await media.set_status(session, item.id, MediaStatus.PENDING)
@@ -582,11 +589,12 @@ class SyncEngine:
                         session, sub.channel_id, media_dto.tg_msg_id
                     )
                     if not existing:
-                        # New gap item: upsert via lower-level function using channel_id (DB ID, not tg_id)
+                        # New gap item: use the DB FK ids from the subscription,
+                        # NOT the Telegram topic id on the DTO (FK -> topics.id).
                         item = await media.upsert_from_tg(
                             session,
                             channel_id=sub.channel_id,
-                            topic_id=media_dto.topic_tg_id,
+                            topic_id=sub.topic_id,
                             subscription_id=sub.id,
                             tg_msg_id=media_dto.tg_msg_id,
                             caption=media_dto.caption,
@@ -705,7 +713,7 @@ class SyncEngine:
             if sub.retention_days:
                 sub_cutoff = datetime.now(timezone.utc) - timedelta(days=sub.retention_days)
                 for item in list(items):
-                    if item.downloaded_at and item.downloaded_at < sub_cutoff:
+                    if item.downloaded_at and _as_utc(item.downloaded_at) < sub_cutoff:
                         _prune(item, "age")
                         await media.set_local_path(session, item.id, None)
                         await media.set_status(session, item.id, MediaStatus.SKIPPED)
