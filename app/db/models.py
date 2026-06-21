@@ -196,6 +196,8 @@ class MediaItem(Base, TimestampMixin):
     thumb_b64: Mapped[Optional[str]] = mapped_column(String(8192), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=MediaStatus.PENDING, nullable=False)
     local_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    # Quick content fingerprint (size+head+tail) for dedup / renamed-file relink.
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reactions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     comments_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

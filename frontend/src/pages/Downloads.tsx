@@ -96,12 +96,12 @@ export default function Downloads() {
                 <ProgressBar progress={(job.progress ?? 0) * 100} animated />
                 {job.error && <p className="mt-1 text-xs text-destructive">{job.error}</p>}
               </div>
-              <div className="flex w-44 shrink-0 justify-end gap-3 text-xs tabular-nums text-muted-foreground">
-                <span className="w-12 text-right font-medium text-foreground">
+              <div className="flex shrink-0 items-center gap-3 text-xs tabular-nums text-muted-foreground">
+                <span className="w-10 text-right font-medium text-foreground">
                   {Math.round((job.progress ?? 0) * 100)}%
                 </span>
-                <span>{job.speed_bps ? `${fmtBytes(job.speed_bps)}/s` : '—'}</span>
-                <span>{fmtEta(job.eta_sec)}</span>
+                <span className="w-24 text-right">{job.speed_bps ? `${fmtBytes(job.speed_bps)}/s` : '—'}</span>
+                <span className="w-16 text-right">{fmtEta(job.eta_sec)}</span>
               </div>
               <div className="flex shrink-0 gap-1">
                 {job.status === 'paused' ? (

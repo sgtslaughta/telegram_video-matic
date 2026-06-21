@@ -232,6 +232,26 @@ async def list_downloaded_oldest_first(
     return result.scalars().all()
 
 
+async def find_downloaded_by_hash(
+    session: AsyncSession,
+    content_hash: str,
+    exclude_id: int | None = None,
+) -> MediaItem | None:
+    """Find a DOWNLOADED item with this content hash (for dedup/relink)."""
+    if not content_hash:
+        return None
+    stmt = select(MediaItem).where(
+        and_(
+            MediaItem.content_hash == content_hash,
+            MediaItem.status == MediaStatus.DOWNLOADED,
+        )
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(MediaItem.id != exclude_id)
+    result = await session.execute(stmt.limit(1))
+    return result.scalars().first()
+
+
 async def list_downloaded_for_sub(
     session: AsyncSession,
     subscription_id: int,

@@ -13,6 +13,7 @@ from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatu
 from app.db.repositories import subscriptions, media, events, downloads
 from app.telegram.dtos import ChannelDTO, TopicDTO
 from app.sync.naming import detect_season_episode, render_path
+from app.hashing import quick_hash
 
 
 def _as_utc(dt):
@@ -431,6 +432,26 @@ class SyncEngine:
                                     offset=resume_offset,
                                 )
 
+                                # Quick content hash -> dedup: if an identical file
+                                # is already on disk (renamed, or grabbed by another
+                                # sub), relink instead of storing a second copy.
+                                file_hash = quick_hash(temp_file)
+                                dup = (await media.find_downloaded_by_hash(session, file_hash, exclude_id=item.id)
+                                       if file_hash else None)
+                                if dup and dup.local_path and Path(dup.local_path).exists():
+                                    Path(temp_file).unlink(missing_ok=True)
+                                    item.local_path = dup.local_path
+                                    item.content_hash = file_hash
+                                    item.downloaded_at = datetime.now(timezone.utc)
+                                    await media.set_status(session, item.id, MediaStatus.DOWNLOADED)
+                                    self._control.pop(item.id, None)
+                                    await downloads.finish(session, job.id, error=None)
+                                    await events.add(session, level=EventLevel.INFO, kind="download",
+                                                     media_id=item.id,
+                                                     message=f"Deduplicated → existing file {dup.local_path}")
+                                    await session.commit()
+                                    return
+
                                 # FIX 1: Explicit season/episode detection decision
                                 # Check if filename/caption has S/E pattern
                                 text = item.file_name or item.caption or ""
@@ -481,6 +502,7 @@ class SyncEngine:
 
                                 # Update DB: mark as downloaded
                                 item.local_path = str(target_full)
+                                item.content_hash = file_hash
                                 item.downloaded_at = datetime.now(timezone.utc)
                                 await media.set_status(session, item.id, MediaStatus.DOWNLOADED)
 
@@ -573,6 +595,27 @@ class SyncEngine:
                             )
                             await session.commit()
 
+    def _relink_by_hash(self, item) -> str | None:
+        """Find item's file under a new name (renamed/moved) by content hash.
+        Searches the file's directory tree, size-filtered. None if not found.
+        ponytail: synchronous rglob; fine for hourly maintenance, one dir."""
+        if not item.content_hash or not item.local_path or not item.size_bytes:
+            return None
+        base = Path(item.local_path).parent
+        if not base.exists():
+            base = Path(self.download_root)
+            if not base.exists():
+                return None
+        for f in base.rglob("*"):
+            try:
+                if not f.is_file() or f.stat().st_size != item.size_bytes:
+                    continue
+            except OSError:
+                continue
+            if quick_hash(f) == item.content_hash:
+                return str(f)
+        return None
+
     async def _maintenance_pass(self, session) -> None:
         """Single pass of maintenance: drift detection and pruning.
 
@@ -582,10 +625,20 @@ class SyncEngine:
         - Disk% pruning: when disk usage >= retention_disk_pct, delete oldest DOWNLOADED files
         - Orphan tolerance: files on disk not in DB are never touched (no directory scan)
         """
-        # 1. Missing-file drift: DOWNLOADED items with missing local_path
+        # 1. Missing-file drift: DOWNLOADED items with missing local_path.
+        # Before re-downloading, try to find the file under a new name (renamed/
+        # moved) by content hash and relink — avoids re-fetching.
         downloaded = await media.list_by_status(session, MediaStatus.DOWNLOADED)
         for item in downloaded:
             if item.local_path and not Path(item.local_path).exists():
+                relinked = self._relink_by_hash(item)
+                if relinked:
+                    item.local_path = relinked
+                    await events.add(
+                        session, level=EventLevel.INFO, kind="drift", media_id=item.id,
+                        message=f"Renamed file relinked: {relinked}",
+                    )
+                    continue
                 await media.set_status(session, item.id, MediaStatus.PENDING)
                 await events.add(
                     session,
