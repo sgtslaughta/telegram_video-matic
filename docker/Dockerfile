@@ -37,7 +37,9 @@ LABEL org.opencontainers.image.title="Telegram Video-Matic" \
 
 # Runtime shared libs (cffi loads libffi.so; cryptography's wheel bundles OpenSSL).
 # su-exec drops root → PUID:PGID in the entrypoint (Unraid bind-mount ownership).
-RUN apk add --no-cache libffi su-exec
+# libgcc: cryptg's compiled .so links _Unwind_* from libgcc_s.so.1 — without it
+# the import fails at runtime and Telethon silently falls back to pure-Python AES.
+RUN apk add --no-cache libffi su-exec libgcc
 
 # Bring in the prebuilt virtualenv.
 COPY --from=pydeps /opt/venv /opt/venv
