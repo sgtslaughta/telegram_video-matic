@@ -45,6 +45,28 @@ class FakeApi:
                 "strLogo": "https://x/l.png", "strCountry": "England"}
 
 
+def test_recent_seasons_format():
+    """Deep fetch must target current+previous season (free-tier list is stale)."""
+    from app.rugby.service import _recent_seasons
+    seasons = _recent_seasons()
+    assert len(seasons) == 2
+    for s in seasons:
+        a, b = s.split("-")
+        assert int(b) == int(a) + 1  # contiguous "YYYY-YYYY"
+    # previous season directly precedes current
+    assert int(seasons[1].split("-")[0]) == int(seasons[0].split("-")[0]) - 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_catalog_empty_scrape_uses_seed(ctx, factory, monkeypatch):
+    """A scrape that returns [] (not an exception) must still seed the catalog."""
+    async def empty():
+        return []
+    monkeypatch.setattr("app.rugby.scraper.fetch_league_catalog", empty)
+    n = await RugbyService(ctx, api=FakeApi()).refresh_catalog()
+    assert n >= 50
+
+
 @pytest.mark.asyncio
 async def test_refresh_catalog_falls_back_to_seed(ctx, factory, monkeypatch):
     async def boom():

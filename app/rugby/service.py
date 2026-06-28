@@ -42,6 +42,10 @@ class RugbyService:
         except Exception as ex:  # noqa: BLE001 - scrape is best-effort
             await self.ctx.log("warning", "rugby",
                                f"Catalog scrape failed, using seed: {ex}")
+            leagues = []
+        # Empty (page changed / parser missed / network blocked) is as good as a
+        # failure — fall back to the bundled seed so the catalog is never empty.
+        if not leagues:
             leagues = scraper.load_seed()
         async with self.ctx.session() as s:
             for row in leagues:
@@ -61,9 +65,10 @@ class RugbyService:
     async def deep_fetch(self, league_id: int, season: str | None = None):
         """Pull a league's fixtures (and the teams they reference) from the API."""
         try:
-            seasons = [season] if season else (await self.api.list_seasons(league_id))[-2:]
-            if not seasons:
-                seasons = [_current_season()]
+            # Free-tier search_all_seasons returns only OLD seasons (truncated), so
+            # default to the locally-computed current + previous season instead —
+            # eventsseason serves the current season fine by id.
+            seasons = [season] if season else _recent_seasons()
             team_ids: set[int] = set()
             league_badge = None
             async with self.ctx.session() as s:
@@ -313,6 +318,13 @@ def _current_season():
     now = datetime.now(timezone.utc)
     start = now.year if now.month >= 7 else now.year - 1
     return f"{start}-{start + 1}"
+
+
+def _recent_seasons():
+    """Current + previous season as 'YYYY-YYYY' strings (covers a season rollover)."""
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 7 else now.year - 1
+    return [f"{start}-{start + 1}", f"{start - 1}-{start}"]
 
 
 def _to_int(value):

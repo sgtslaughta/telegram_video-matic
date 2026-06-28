@@ -19,7 +19,9 @@ def parse_league_catalog(html: str) -> list[dict]:
     Return list of {"id": int, "slug": str, "name": str, "category": str | None}.
     """
     soup = BeautifulSoup(html, "html.parser")
-    pattern = re.compile(r"^/(?:season|league)/(\d+)-([a-z0-9\-]+)")
+    # Live hrefs are relative with a "../" prefix (e.g. ../league/4414-english-prem-rugby),
+    # so search anywhere in the href rather than anchoring to a leading "/".
+    pattern = re.compile(r"(?:season|league)/(\d+)-([a-z0-9\-]+)")
 
     seen_ids = {}
     for anchor in soup.find_all("a"):
@@ -27,7 +29,7 @@ def parse_league_catalog(html: str) -> list[dict]:
         if not href:
             continue
 
-        match = pattern.match(href)
+        match = pattern.search(href)
         if not match:
             continue
 
@@ -38,7 +40,8 @@ def parse_league_catalog(html: str) -> list[dict]:
         if league_id in seen_ids:
             continue
 
-        name = anchor.get_text(strip=True) or slug
+        # Live anchors are icon-only (no text) -> title-case the slug for display.
+        name = anchor.get_text(strip=True) or slug.replace("-", " ").title()
         entry = {
             "id": league_id,
             "slug": slug,

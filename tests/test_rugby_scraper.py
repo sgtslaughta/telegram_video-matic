@@ -54,7 +54,8 @@ class TestParseLeagueCatalog:
         assert len(result) == 1
         assert result[0]["id"] == 4414
         assert result[0]["slug"] == "english-prem-rugby"
-        assert result[0]["name"] == "english-prem-rugby"
+        # Empty anchor text -> title-cased slug for a readable display name.
+        assert result[0]["name"] == "English Prem Rugby"
 
     def test_category_none(self):
         """Test that category is None (best-effort)."""
