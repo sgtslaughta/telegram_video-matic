@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.db.models import Subscription, SubMode, FilterMode
 
 
@@ -71,9 +72,13 @@ async def list(
 
 
 async def get(session: AsyncSession, sub_id: int) -> Subscription | None:
-    """Get subscription by ID."""
+    """Get subscription by ID, with channel + topic eager-loaded so the sync
+    naming path (choose_target_path) can read them without a lazy load (which
+    raises 'greenlet_spawn has not been called' under async SQLAlchemy)."""
     result = await session.execute(
-        select(Subscription).where(Subscription.id == sub_id)
+        select(Subscription)
+        .where(Subscription.id == sub_id)
+        .options(selectinload(Subscription.channel), selectinload(Subscription.topic))
     )
     return result.scalar_one_or_none()
 
