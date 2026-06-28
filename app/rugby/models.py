@@ -61,6 +61,8 @@ class RugbyFixture(Base, TimestampMixin):
     away_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     home_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     away_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    venue: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    country: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
 
 class RugbyMatch(Base, TimestampMixin):

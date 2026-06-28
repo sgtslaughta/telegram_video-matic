@@ -33,6 +33,11 @@ class SubLeague(BaseModel):
     league_id: int | None = None
 
 
+class PreviewRequest(BaseModel):
+    league_id: int
+    text: str
+
+
 @router.get("/status")
 async def status(request: Request):
     return await _service(request).status_snapshot()
@@ -58,6 +63,18 @@ async def refresh_league(league_id: int, request: Request, bg: BackgroundTasks):
 @router.get("/leagues/{league_id}/fixtures")
 async def fixtures(league_id: int, request: Request, season: str | None = None):
     return await _service(request).list_fixtures(league_id, season=season)
+
+
+@router.get("/enrichment")
+async def enrichment(channel_id: int, request: Request):
+    """Match data for a channel's media, keyed by tg_msg_id (for Browse cards/drawer)."""
+    return await _service(request).enrichment(channel_id)
+
+
+@router.post("/preview")
+async def preview(body: PreviewRequest, request: Request):
+    """Dry-run match for the subscription wizard preview."""
+    return await _service(request).preview(body.league_id, body.text)
 
 
 @router.get("/matches")

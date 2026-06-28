@@ -52,10 +52,10 @@ class RugbyPlugin(PluginBase):
             await self.service.match_item(item)
 
     async def on_post_download(self, item, path):
-        """Drop the home team's badge next to the file for Jellyfin/Kodi."""
+        """Write a rich Jellyfin NFO (teams as actors) + poster beside the file."""
         if not self.service or not self.ctx.config.get("jellyfin_artwork"):
             return
-        await self.service.write_artwork(item, Path(path))
+        await self.service.write_jellyfin(item, Path(path))
 
     # --- provider hook (host merges into naming tokens) ---
     async def provide_naming_tokens(self, item, sub):
