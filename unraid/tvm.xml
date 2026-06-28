@@ -95,6 +95,6 @@
     </Variable>
   </Environment>
   <Labels>
-    <Label>telegram-video-matic.version=1.0.7</Label>
+    <Label>telegram-video-matic.version=1.0.8</Label>
   </Labels>
 </Container>
