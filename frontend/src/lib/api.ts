@@ -270,6 +270,24 @@ export const rugby = {
       params: { channel_id: channelId },
     }),
 
+  enrichMessages: (messages: { tg_msg_id: number; text: string | null; date: string | null }[]) =>
+    fetchAPI<Record<string, T.RugbyEnrichment>>('/plugins/rugby/enrichment/messages', {
+      method: 'POST',
+      body: JSON.stringify({ messages }),
+    }),
+
+  enrichmentByMedia: (mediaIds: number[]) =>
+    fetchAPI<Record<string, T.RugbyEnrichment>>('/plugins/rugby/enrichment/by-media', {
+      params: { ids: mediaIds.join(',') },
+    }),
+
+  autodetect: (channelId: number) =>
+    fetchAPI<{ detected: number[]; scheduled: boolean }>(
+      `/plugins/rugby/channels/${channelId}/autodetect`, { method: 'POST' }),
+
+  rescan: () =>
+    fetchAPI<{ scheduled: boolean }>('/plugins/rugby/rescan', { method: 'POST' }),
+
   preview: (leagueId: number, text: string) =>
     fetchAPI<T.RugbyPreview>('/plugins/rugby/preview', {
       method: 'POST',

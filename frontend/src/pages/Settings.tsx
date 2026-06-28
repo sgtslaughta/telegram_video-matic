@@ -3,7 +3,9 @@ import { motion } from 'framer-motion'
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
 import { useTheme } from '@/hooks/useTheme'
 import { usePlugins, useUpdatePlugin } from '@/hooks/usePlugins'
+import { useRugbyRescan, useRugbyStatus } from '@/hooks/useRugby'
 import { RugbyMatchReview } from '@/components/RugbyMatchReview'
+import { ProgressBar } from '@/components/shared/ProgressBar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,9 +13,31 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { AlertCircle, Info } from 'lucide-react'
+import { AlertCircle, Info, RefreshCw, Clock, PackagePlus } from 'lucide-react'
 import { toast } from 'sonner'
 import type * as T from '@/lib/types'
+
+function InstallPluginCard() {
+  return (
+    <Card className="mt-4 border-dashed">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <PackagePlus className="h-5 w-5" /> Install a plugin
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm text-muted-foreground">
+        <p>
+          Drop a <code className="rounded bg-muted px-1">*_plugin.py</code> file into the{' '}
+          <code className="rounded bg-muted px-1">plugins/</code> directory, then restart the
+          container. It's auto-discovered and appears above with its own settings.
+        </p>
+        <p className="text-xs">
+          Plugins run as application code — only install ones you trust.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
 
 function InfoTip({ text }: { text: string }) {
   return (
@@ -53,6 +77,13 @@ export default function Settings() {
   const { theme, setTheme } = useTheme()
   const updateSettings = useUpdateSettings()
   const updatePlugin = useUpdatePlugin()
+  const rescan = useRugbyRescan()
+  const rugbyStatus = useRugbyStatus()
+  const sync = (rugbyStatus.data?.status ?? {}) as Record<string, unknown>
+  const syncing = Boolean(sync.syncing)
+  const syncDone = Number(sync.sync_done ?? 0)
+  const syncTotal = Number(sync.sync_total ?? 0)
+  const syncCurrent = (sync.sync_current as string | null) ?? null
 
   const [formData, setFormData] = useState<T.SettingPatchRequest>(() => {
     if (!settings) return {}
@@ -234,7 +265,18 @@ export default function Settings() {
 
         <div className="space-y-4">
           {plugins && plugins.length > 0 ? (
-            plugins.map((plugin) => (
+            plugins.map((plugin) => {
+            const isRugby = plugin.name === 'rugby'
+            const enabled = pluginStates[plugin.name]?.enabled ?? plugin.enabled
+            const rateLimited = isRugby && Boolean(
+              (plugin.status as Record<string, unknown> | undefined)?.rate_limited
+            )
+            const onScan = () =>
+              rescan.mutate(undefined, {
+                onSuccess: () => toast.success('Scan started — fetching fixtures in the background'),
+                onError: (e) => toast.error(e instanceof Error ? e.message : 'Scan failed'),
+              })
+            return (
               <Card key={plugin.id}>
                 <CardContent className="pt-6">
                   <div className="space-y-4">
@@ -250,18 +292,33 @@ export default function Settings() {
                     )}
 
                     {/* Plugin Header */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{plugin.name}</p>
-                        <p className="text-sm text-muted-foreground">v{plugin.version}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <p className="font-medium capitalize">{plugin.name}</p>
+                          <p className="text-sm text-muted-foreground">v{plugin.version}</p>
+                        </div>
+                        {rateLimited && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                            <Clock className="h-3 w-3" /> Rate limited — coverage may be incomplete
+                          </span>
+                        )}
                       </div>
-                      <Switch
-                        aria-label={plugin.name}
-                        checked={pluginStates[plugin.name]?.enabled ?? plugin.enabled}
-                        onCheckedChange={(checked) =>
-                          handlePluginToggle(plugin.name, checked)
-                        }
-                      />
+                      <div className="flex items-center gap-2">
+                        {isRugby && enabled && (
+                          <Button size="sm" variant="outline" onClick={onScan} disabled={rescan.isPending}>
+                            <RefreshCw className={`mr-2 h-4 w-4 ${rescan.isPending ? 'animate-spin' : ''}`} />
+                            {rescan.isPending ? 'Scanning…' : 'Scan now'}
+                          </Button>
+                        )}
+                        <Switch
+                          aria-label={plugin.name}
+                          checked={enabled}
+                          onCheckedChange={(checked) =>
+                            handlePluginToggle(plugin.name, checked)
+                          }
+                        />
+                      </div>
                     </div>
 
                     {/* Config Schema Fields */}
@@ -310,10 +367,28 @@ export default function Settings() {
                         ))}
                       </div>
                     )}
+
+                    {/* Rugby: live metadata-sync progress */}
+                    {isRugby && enabled && syncing && (
+                      <div className="space-y-1 border-t pt-4">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Syncing metadata{syncCurrent ? `: ${syncCurrent}` : ''}…</span>
+                          <span className="tabular-nums">{syncDone}/{syncTotal || '—'}</span>
+                        </div>
+                        <ProgressBar progress={syncTotal ? (syncDone / syncTotal) * 100 : 5} animated />
+                      </div>
+                    )}
+
+                    {/* Rugby-specific: needs-review queue (same card, no duplicate) */}
+                    {isRugby && enabled && (
+                      <div className="border-t pt-4">
+                        <RugbyMatchReview />
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-            ))
+            )})
           ) : (
             <Card>
               <CardContent className="pt-6">
@@ -323,17 +398,7 @@ export default function Settings() {
           )}
         </div>
 
-        {/* Rugby Section */}
-        {plugins?.find((p) => p.name === 'rugby' && p.enabled) && (
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle className="text-lg">Rugby Plugin</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RugbyMatchReview />
-            </CardContent>
-          </Card>
-        )}
+        <InstallPluginCard />
       </motion.div>
 
       {/* Save Button */}

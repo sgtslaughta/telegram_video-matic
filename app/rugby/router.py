@@ -4,6 +4,8 @@ Handlers resolve the live RugbyService off the plugin host so the router stays a
 thin shell over the service. Auth reuses the app-wide require_app_auth.
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -54,6 +56,14 @@ async def refresh(request: Request, bg: BackgroundTasks):
     return {"scheduled": True}
 
 
+@router.post("/rescan")
+async def rescan(request: Request, bg: BackgroundTasks):
+    """Manual 'Scan now': detect leagues from every channel's topic names +
+    cached titles, refresh tracked leagues, then deep-fetch all."""
+    bg.add_task(_service(request).rescan)
+    return {"scheduled": True}
+
+
 @router.post("/leagues/{league_id}/refresh")
 async def refresh_league(league_id: int, request: Request, bg: BackgroundTasks):
     bg.add_task(_service(request).deep_fetch, league_id)
@@ -65,10 +75,52 @@ async def fixtures(league_id: int, request: Request, season: str | None = None):
     return await _service(request).list_fixtures(league_id, season=season)
 
 
+@router.post("/channels/{channel_id}/autodetect")
+async def autodetect(channel_id: int, request: Request, bg: BackgroundTasks):
+    """Detect leagues from a channel's topic names + cached titles, deep-fetch them."""
+    svc = _service(request)
+    detected = await svc.detect_channel_leagues(channel_id)
+    bg.add_task(svc.autofetch_channel, channel_id)
+    return {"detected": detected, "scheduled": True}
+
+
 @router.get("/enrichment")
 async def enrichment(channel_id: int, request: Request):
     """Match data for a channel's media, keyed by tg_msg_id (for Browse cards/drawer)."""
     return await _service(request).enrichment(channel_id)
+
+
+@router.get("/enrichment/by-media")
+async def enrichment_by_media(request: Request, ids: str = ""):
+    """Match data keyed by media_id for a comma-separated id list (Downloads)."""
+    media_ids = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    return await _service(request).enrichment_by_media(media_ids)
+
+
+class EnrichMessage(BaseModel):
+    tg_msg_id: int
+    text: str | None = None
+    date: datetime | None = None
+
+
+class EnrichMessages(BaseModel):
+    messages: list[EnrichMessage]
+
+
+@router.post("/enrichment/messages")
+async def enrichment_messages(body: EnrichMessages, request: Request,
+                              bg: BackgroundTasks):
+    """Enrich LIVE browsed messages (not cached), keyed by tg_msg_id. Matches
+    locally now; schedules a targeted single lookup for any misses so they
+    appear on the next load."""
+    svc = _service(request)
+    msgs = [{"tg_msg_id": m.tg_msg_id, "text": m.text, "date": m.date}
+            for m in body.messages]
+    result = await svc.enrich_messages(msgs)
+    misses = [m for m in msgs if m["tg_msg_id"] not in result]
+    if misses:
+        bg.add_task(svc.ondemand_fill, misses)
+    return {str(k): v for k, v in result.items()}
 
 
 @router.post("/preview")

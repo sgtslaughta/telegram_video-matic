@@ -30,14 +30,23 @@ class FakeApi:
     async def list_seasons(self, league_id):
         return ["2025-2026"]
 
+    _EVENT = {
+        "idEvent": "2309783", "strSeason": "2025-2026", "intRound": "1",
+        "dateEvent": "2025-09-25", "idHomeTeam": "135207", "idAwayTeam": "135201",
+        "strHomeTeam": "Sale Sharks", "strAwayTeam": "Gloucester",
+        "intHomeScore": "27", "intAwayScore": "10",
+        "strLeagueBadge": "https://x/leaguebadge.png",
+    }
+
     async def fetch_season(self, league_id, season):
-        return [{
-            "idEvent": "2309783", "strSeason": "2025-2026", "intRound": "1",
-            "dateEvent": "2025-09-25", "idHomeTeam": "135207", "idAwayTeam": "135201",
-            "strHomeTeam": "Sale Sharks", "strAwayTeam": "Gloucester",
-            "intHomeScore": "27", "intAwayScore": "10",
-            "strLeagueBadge": "https://x/leaguebadge.png",
-        }]
+        return [self._EVENT]
+
+    async def fetch_round(self, league_id, rnd, season):
+        return [self._EVENT] if rnd == 1 and season == "2025-2026" else []
+
+    async def fetch_past_league(self, league_id):
+        # Same final the playoff sweep also returns -> exercises dedup.
+        return [self._EVENT]
 
     async def lookup_team(self, team_id):
         return {"strTeam": f"Team {team_id}", "strTeamAlternate": "Alt",
@@ -45,16 +54,40 @@ class FakeApi:
                 "strLogo": "https://x/l.png", "strCountry": "England"}
 
 
-def test_recent_seasons_format():
-    """Deep fetch must target current+previous season (free-tier list is stale)."""
+class RateLimitedApi(FakeApi):
+    async def fetch_round(self, league_id, rnd, season):
+        from app.rugby.api import RugbyApiError
+        raise RugbyApiError("eventsround.php", "HTTP 429: rate limited")
+
+    async def fetch_past_league(self, league_id):
+        return []
+
+
+def test_event_datetime_extracts_time():
+    """Kick-off time comes from strTimestamp / dateEvent+strTime, not just date."""
+    from app.rugby.service import _event_datetime
+    d = _event_datetime({"dateEvent": "2026-06-06", "strTime": "14:00:00"})
+    assert (d.hour, d.minute) == (14, 0)
+    d2 = _event_datetime({"strTimestamp": "2026-06-06T19:45:00+00:00",
+                          "dateEvent": "2026-06-06"})
+    assert d2.hour == 19 and d2.minute == 45
+    d3 = _event_datetime({"dateEvent": "2026-06-06"})  # date only still works
+    assert d3.year == 2026 and d3.hour == 0
+    assert _event_datetime({}) is None
+
+
+def test_recent_seasons_both_formats():
+    """Scan must cover split-year (northern) AND single-year (southern) seasons."""
     from app.rugby.service import _recent_seasons
     seasons = _recent_seasons()
-    assert len(seasons) == 2
-    for s in seasons:
+    split = [s for s in seasons if "-" in s]
+    single = [s for s in seasons if "-" not in s]
+    assert len(split) == 2 and len(single) == 2
+    for s in split:  # contiguous "YYYY-YYYY"
         a, b = s.split("-")
-        assert int(b) == int(a) + 1  # contiguous "YYYY-YYYY"
-    # previous season directly precedes current
-    assert int(seasons[1].split("-")[0]) == int(seasons[0].split("-")[0]) - 1
+        assert int(b) == int(a) + 1
+    for s in single:  # bare "YYYY"
+        assert s.isdigit() and len(s) == 4
 
 
 @pytest.mark.asyncio
@@ -80,6 +113,30 @@ async def test_refresh_catalog_falls_back_to_seed(ctx, factory, monkeypatch):
         assert await s.get(rm.RugbyLeague, 4414) is not None
     assert count >= 50
     assert ctx.health["status"]["leagues"] >= 50
+
+
+@pytest.mark.asyncio
+async def test_deep_fetch_flags_rate_limited(ctx, factory):
+    """Rate-limited rounds set status.rate_limited (amber) without a hard error."""
+    async with factory() as s:
+        s.add(rm.RugbyLeague(id=4414, slug="x", name="X"))
+        await s.commit()
+    await RugbyService(ctx, api=RateLimitedApi()).deep_fetch(4414)
+    assert ctx.health["status"].get("rate_limited") is True
+    assert ctx.health["last_error"] is None  # amber, not red
+
+
+@pytest.mark.asyncio
+async def test_deep_fetch_reports_sync_progress(ctx, factory):
+    """A standalone deep_fetch flips syncing on then off with done=total=1."""
+    async with factory() as s:
+        s.add(rm.RugbyLeague(id=4414, slug="x", name="English Prem Rugby"))
+        await s.commit()
+    await RugbyService(ctx, api=FakeApi()).deep_fetch(4414)
+    st = ctx.health["status"]
+    assert st["syncing"] is False
+    assert st["sync_done"] == 1 and st["sync_total"] == 1
+    assert st["sync_current"] == "English Prem Rugby"
 
 
 @pytest.mark.asyncio

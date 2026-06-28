@@ -15,6 +15,11 @@ export function useRugbyStatus() {
     queryKey: rugbyKeys.status(),
     queryFn: () => api.rugby.status(),
     staleTime: 30 * 1000,
+    // Poll quickly while a metadata sync is running so the progress bar moves.
+    refetchInterval: (q) => {
+      const s = q.state.data?.status as Record<string, unknown> | undefined
+      return s?.syncing ? 1500 : false
+    },
   })
 }
 
@@ -93,6 +98,46 @@ export function useRugbyEnrichment(channelId: number | null) {
     queryKey: rugbyKeys.enrichment(channelId ?? 0),
     queryFn: () => api.rugby.enrichment(channelId!),
     enabled: !!channelId,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useRugbyRescan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.rugby.rescan(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['plugins'] })
+      qc.invalidateQueries({ queryKey: rugbyKeys.status() })
+    },
+  })
+}
+
+type BrowseLike = { tg_msg_id: number; caption?: string | null; file_name?: string | null; date_posted?: string | null }
+
+/** Enrich the live browse items currently on screen (works for un-cached
+ * videos in any topic). Refetches only when the visible id-set changes. */
+export function useRugbyEnrichMessages(items: BrowseLike[]) {
+  const messages = items.map((i) => ({
+    tg_msg_id: i.tg_msg_id,
+    text: i.caption || i.file_name || '',
+    date: i.date_posted ?? null,
+  }))
+  const key = messages.map((m) => m.tg_msg_id).sort((a, b) => a - b).join(',')
+  return useQuery({
+    queryKey: ['rugby', 'enrich-messages', key],
+    queryFn: () => api.rugby.enrichMessages(messages),
+    enabled: messages.length > 0,
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useRugbyEnrichmentByMedia(mediaIds: number[]) {
+  const key = mediaIds.slice().sort((a, b) => a - b).join(',')
+  return useQuery({
+    queryKey: ['rugby', 'enrichment-by-media', key],
+    queryFn: () => api.rugby.enrichmentByMedia(mediaIds),
+    enabled: mediaIds.length > 0,
     staleTime: 60 * 1000,
   })
 }

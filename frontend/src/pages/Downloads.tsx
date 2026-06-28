@@ -2,11 +2,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Trash2, Pause, Play, X, ChevronRight } from 'lucide-react'
 import { useActiveDownloads, useQueuedDownloads } from '@/hooks/useDownloads'
+import { useRugbyEnrichmentByMedia } from '@/hooks/useRugby'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { RugbyTag } from '@/components/shared/RugbyTag'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/shared'
 import * as api from '@/lib/api'
@@ -33,6 +35,17 @@ export default function Downloads() {
   const { data: queuedData } = useQueuedDownloads()
   const queued = queuedData ?? []
   const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const mediaIds = useMemo(
+    () => Array.from(new Set([
+      ...jobs.map((j) => j.media_id),
+      ...queued.map((q) => q.media_id),
+    ].filter((x): x is number => typeof x === 'number'))),
+    [jobs, queued],
+  )
+  const rugby = useRugbyEnrichmentByMedia(mediaIds)
+  const enrich = (mid?: number | null) =>
+    mid != null ? rugby.data?.[String(mid)] : undefined
 
   const clearAll = async () => {
     setConfirmOpen(false)
@@ -93,6 +106,9 @@ export default function Downloads() {
                 <p className="mb-1 truncate text-sm" title={job.file_name ?? undefined}>
                   {job.file_name || `Download #${job.id}`}
                 </p>
+                {enrich(job.media_id) && (
+                  <RugbyTag rugby={enrich(job.media_id)} className="mb-1 text-xs" />
+                )}
                 <ProgressBar progress={(job.progress ?? 0) * 100} animated />
                 {job.error && <p className="mt-1 text-xs text-destructive">{job.error}</p>}
               </div>
@@ -139,9 +155,12 @@ export default function Downloads() {
               {queued.map((q) => (
                 <div key={q.media_id} className="flex items-center gap-4 px-4 py-2">
                   <div className="w-28 shrink-0"><StatusBadge status="pending" /></div>
-                  <p className="min-w-0 flex-1 truncate text-sm" title={q.file_name ?? undefined}>
-                    {q.file_name || `Media #${q.media_id}`}
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm" title={q.file_name ?? undefined}>
+                      {q.file_name || `Media #${q.media_id}`}
+                    </p>
+                    {enrich(q.media_id) && <RugbyTag rugby={enrich(q.media_id)} className="text-xs" />}
+                  </div>
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{fmtBytes(q.size_bytes)}</span>
                 </div>
               ))}

@@ -3,6 +3,33 @@ import httpx
 from app.rugby.api import RugbyApi, RugbyApiError
 
 
+class _Resp:
+    def __init__(self, headers=None):
+        self.headers = headers or {}
+
+
+def test_adaptive_interval_widens_on_429_and_decays_on_success():
+    api = RugbyApi(min_interval=2.0, max_interval=30.0)
+    assert api._interval == 2.0
+    api._on_429(_Resp())            # 2 -> 3
+    assert api._interval == 3.0
+    api._on_429(_Resp())            # 3 -> 4.5
+    assert api._interval == 4.5
+    api._on_success()               # decay 4.5 -> 3.825
+    assert 3.8 < api._interval < 3.9
+    for _ in range(20):             # decays back to the floor, never below
+        api._on_success()
+    assert api._interval == 2.0
+
+
+def test_429_honors_retry_after_header():
+    api = RugbyApi(min_interval=2.0, max_interval=30.0)
+    wait = api._on_429(_Resp({"Retry-After": "12"}))
+    assert wait == 12.0
+    # absurd Retry-After is capped at max_interval
+    assert api._on_429(_Resp({"Retry-After": "9999"})) == 30.0
+
+
 @pytest.mark.asyncio
 async def test_fetch_season_parses_events():
     """fetch_season returns the events list from JSON."""

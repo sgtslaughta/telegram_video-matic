@@ -3,10 +3,10 @@ import { usePersistedState } from '@/hooks/usePersistedState'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Download, LayoutGrid, List, Search } from 'lucide-react'
+import { Download, LayoutGrid, List, Search, MapPin } from 'lucide-react'
 import { useChannels, useTopics, useBrowse } from '@/hooks/useChannelsTopics'
 import { useDownloadMedia } from '@/hooks/useMedia'
-import { useRugbyEnrichment } from '@/hooks/useRugby'
+import { useRugbyEnrichMessages } from '@/hooks/useRugby'
 import { MediaThumb } from '@/components/shared/MediaThumb'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -17,6 +17,8 @@ import { Label } from '@/components/ui/label'
 import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import MediaDrawer from '@/components/MediaDrawer'
+import { RugbyTag } from '@/components/shared/RugbyTag'
+import { RugbyMatchup } from '@/components/shared/RugbyMatchup'
 import * as api from '@/lib/api'
 
 function formatBytes(n?: number | null): string {
@@ -47,7 +49,6 @@ export default function Browse() {
   const channels = useChannels()
   const topics = useTopics(channelId)
   const browse = useBrowse(channelId, topicId)
-  const enrichment = useRugbyEnrichment(channelId)
   const drawerDl = useItemDownload(selected ?? { tg_msg_id: 0 }, channelId ?? 0)
 
   const openItem = (item: any) => { setSelected(item); setDrawerOpen(true) }
@@ -56,6 +57,8 @@ export default function Browse() {
     () => browse.data?.pages.flatMap((p: any) => p.items) ?? [],
     [browse.data]
   )
+  // Enrich the live items on screen — works for un-cached videos in any topic.
+  const enrichment = useRugbyEnrichMessages(allItems)
 
   const items = useMemo(() => {
     const q = (search || topbarQ).toLowerCase()
@@ -172,6 +175,7 @@ export default function Browse() {
         onOpenChange={setDrawerOpen}
         onDownload={drawerDl.onDownload}
         downloadPending={drawerDl.pending}
+        rugby={selected ? enrichment.data?.[String(selected.tg_msg_id)] : null}
       />
     </div>
   )
@@ -199,29 +203,42 @@ function useItemDownload(item: any, channelId: number) {
 
 function MediaCard({ item, channelId, rugby, onOpen }: { item: any; channelId: number; rugby?: any; onOpen: (i: any) => void }) {
   const { onDownload, pending } = useItemDownload(item, channelId)
+  const thumb = (
+    <MediaThumb src={api.channels.browseThumbUrl(channelId, item.tg_msg_id)} alt={item.caption || 'Media'} size="md" />
+  )
   return (
-    <Card className="flex h-full flex-col transition-shadow hover:shadow-md">
-      <button
-        onClick={() => onOpen(item)}
-        className="w-full overflow-hidden rounded-t-lg transition-opacity hover:opacity-80"
-      >
-        <MediaThumb src={api.channels.browseThumbUrl(channelId, item.tg_msg_id)} alt={item.caption || 'Media'} size="md" />
-      </button>
+    // Whole card is one click target — fixes the multi-click-to-open issue.
+    <Card
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(item)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(item) } }}
+      className="flex h-full cursor-pointer flex-col overflow-hidden transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {rugby ? (
+        // Rugby: thumb shares the top row with the team matchup (uses full width).
+        <div className="flex items-stretch gap-2 border-b bg-muted/30 p-2">
+          <div className="w-1/3 shrink-0 overflow-hidden rounded">{thumb}</div>
+          <div className="flex flex-1 items-center">
+            <RugbyMatchup rugby={rugby} size="sm" />
+          </div>
+        </div>
+      ) : (
+        <div className="w-full overflow-hidden">{thumb}</div>
+      )}
       <CardContent className="flex flex-1 flex-col gap-2 p-3">
-        <button onClick={() => onOpen(item)} className="line-clamp-2 text-left text-xs text-foreground hover:underline">{item.caption || item.file_name || 'Untitled'}</button>
+        <p className="line-clamp-2 text-xs text-foreground">{item.caption || item.file_name || 'Untitled'}</p>
         {item.subscription_label && (
           <p className="truncate text-[10px] text-muted-foreground">↳ {item.subscription_label}</p>
         )}
         {rugby && (
-          <div className="space-y-1 text-[10px]">
-            <div className="flex items-center gap-1">
-              {rugby.home_badge && <MediaThumb src={rugby.home_badge} alt={rugby.home} size="sm" />}
-              {rugby.away_badge && <MediaThumb src={rugby.away_badge} alt={rugby.away} size="sm" />}
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="truncate text-muted-foreground">{rugby.home} vs {rugby.away}</span>
-              {rugby.round && <span className="whitespace-nowrap rounded bg-muted px-1 text-muted-foreground">R{rugby.round}</span>}
-            </div>
+          <div className="flex flex-wrap items-center gap-1 text-[10px]">
+            {rugby.round && <span className="rounded bg-primary/10 px-1 font-medium text-primary">R{rugby.round}</span>}
+            {rugby.venue && (
+              <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                <MapPin className="h-2.5 w-2.5 shrink-0" /><span className="truncate">{rugby.venue}</span>
+              </span>
+            )}
           </div>
         )}
         <div className="mt-auto flex items-center justify-between">
@@ -229,7 +246,7 @@ function MediaCard({ item, channelId, rugby, onOpen }: { item: any; channelId: n
           <span className="text-xs text-muted-foreground">{formatBytes(item.size_bytes)}</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" onClick={onDownload} disabled={pending}><Download className="h-3 w-3" /></Button>
+              <Button size="sm" onClick={(e) => { e.stopPropagation(); onDownload() }} disabled={pending}><Download className="h-3 w-3" /></Button>
             </TooltipTrigger>
             <TooltipContent>Download</TooltipContent>
           </Tooltip>
@@ -248,10 +265,10 @@ function MediaRow({ item, channelId, rugby, onOpen }: { item: any; channelId: nu
       </button>
       <button onClick={() => onOpen(item)} className="min-w-0 flex-1 text-left">
         <p className="truncate text-sm hover:underline">{item.caption || item.file_name || 'Untitled'}</p>
-        <p className="text-xs text-muted-foreground">
-          {new Date(item.date_posted).toLocaleDateString()}
-          {item.subscription_label ? ` · ↳ ${item.subscription_label}` : ''}
-          {rugby ? ` · ${rugby.home} vs ${rugby.away}` : ''}
+        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="shrink-0">{new Date(item.date_posted).toLocaleDateString()}</span>
+          {item.subscription_label ? <span className="shrink-0">· ↳ {item.subscription_label}</span> : null}
+          {rugby ? <RugbyTag rugby={rugby} className="min-w-0" /> : null}
         </p>
       </button>
       <span className="hidden w-20 text-right text-xs text-muted-foreground sm:inline">{formatBytes(item.size_bytes)}</span>

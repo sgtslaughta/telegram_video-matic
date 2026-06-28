@@ -156,12 +156,12 @@ class TestPluginHostDispatch:
 
 
 class TestPluginHostDiscovery:
-    def test_discover_loads_example_plugin(self):
+    def test_discover_loads_plugins(self):
         """Discovery finds PluginBase subclasses without touching the DB."""
         host = PluginHost()
         host.discover()
         names = [e.name for e in host.entries]
-        assert "example" in names
+        assert "rugby" in names
 
     @pytest.mark.asyncio
     async def test_sync_db_honors_stored_enabled_flag(self, session_factory):

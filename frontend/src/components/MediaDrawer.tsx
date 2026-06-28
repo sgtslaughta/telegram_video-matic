@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { Download, MessageSquare, X } from 'lucide-react'
+import { Download, MessageSquare, X, MapPin } from 'lucide-react'
 import { Drawer, DrawerContent, DrawerTitle, DrawerClose } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { MediaThumb } from '@/components/shared/MediaThumb'
-import { useRugbyEnrichment } from '@/hooks/useRugby'
+import { RugbyMatchup } from '@/components/shared/RugbyMatchup'
+import type { RugbyEnrichment } from '@/lib/types'
 import * as api from '@/lib/api'
 
 function fmtBytes(n?: number | null): string {
@@ -29,17 +29,16 @@ interface Props {
   onOpenChange: (open: boolean) => void
   onDownload: () => void
   downloadPending: boolean
+  rugby?: RugbyEnrichment | null
 }
 
-export default function MediaDrawer({ item, channelId, open, onOpenChange, onDownload, downloadPending }: Props) {
+export default function MediaDrawer({ item, channelId, open, onOpenChange, onDownload, downloadPending, rugby = null }: Props) {
   const detail = useQuery({
     queryKey: ['message', channelId, item?.tg_msg_id],
     queryFn: () => api.channels.messageDetail(channelId!, item!.tg_msg_id),
     enabled: open && !!item && !!channelId,
     staleTime: 60_000,
   })
-  const enrichment = useRugbyEnrichment(channelId)
-  const rugby = item && enrichment.data ? enrichment.data[String(item.tg_msg_id)] : null
 
   const title = item?.caption || item?.file_name || 'Untitled'
 
@@ -91,18 +90,19 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
 
               {/* Rugby */}
               {rugby && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p className="text-xs font-medium uppercase text-muted-foreground">Rugby</p>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      {rugby.home_badge && <MediaThumb src={rugby.home_badge} alt={rugby.home} size="sm" />}
-                      {rugby.away_badge && <MediaThumb src={rugby.away_badge} alt={rugby.away} size="sm" />}
-                      <span className="text-sm font-medium">{rugby.home} vs {rugby.away}</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{rugby.league} · {rugby.season} · R{rugby.round}</p>
-                    {rugby.venue && <p className="text-sm text-muted-foreground">📍 {rugby.venue}</p>}
-                    {rugby.home_score !== null && rugby.away_score !== null && (
-                      <p className="text-sm font-medium">{rugby.home_score}–{rugby.away_score}</p>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <RugbyMatchup rugby={rugby} size="lg" showScore />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">{rugby.league}</span>
+                    {rugby.season && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{rugby.season}</span>}
+                    {rugby.round && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">R{rugby.round}</span>}
+                    {rugby.venue && (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        <MapPin className="h-3 w-3" /> {rugby.venue}
+                      </span>
                     )}
                   </div>
                 </div>
