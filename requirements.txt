@@ -11,3 +11,4 @@ python-multipart==0.0.32
 websockets==16.0
 httpx==0.28.1
 itsdangerous==2.2.0
+beautifulsoup4==4.15.0

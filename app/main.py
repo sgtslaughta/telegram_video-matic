@@ -108,22 +108,10 @@ async def lifespan(app: FastAPI):
         log(f"Telegram service init failed: {e}", "ERROR")
         app.state.tg_service = None
 
-    # Build PluginHost with dependency injection: each plugin gets a context
-    # (DB session, config, logger). discover() loads classes; sync_db() applies
-    # the stored enabled/config; create_models() creates plugin-owned tables.
+    # Wire the plugin host (built in create_app): apply stored enabled/config,
+    # create plugin-owned tables, and run on_enable for enabled plugins.
     try:
-        from app.sync.plugins import PluginContext
-
-        def _ctx_factory(name, config):
-            return PluginContext(
-                name=name, config=config, settings=settings,
-                media_root=settings.media_root,
-                # Lazy: resolved at call time so it works for the app's lifetime.
-                session_factory=lambda: app.state.async_session(),
-            )
-
-        plugin_host = PluginHost(ctx_factory=_ctx_factory)
-        plugin_host.discover()
+        plugin_host = app.state.plugin_host
         await plugin_host.sync_db(session_factory)
         await plugin_host.create_models(await get_engine())
         await create_tables()  # additive reconcile for any new plugin columns
@@ -133,11 +121,9 @@ async def lifespan(app: FastAPI):
                     await entry.instance.on_enable()
                 except Exception as ex:  # noqa: BLE001
                     log(f"Plugin {entry.name} on_enable failed: {ex}", "WARN")
-        app.state.plugin_host = plugin_host
         log("Plugin host ready", "SUCCESS")
     except Exception as e:
         log(f"Plugin host wiring failed: {e}", "ERROR")
-        app.state.plugin_host = PluginHost()
 
     # Build SyncEngine
     try:
@@ -202,6 +188,27 @@ def create_app() -> FastAPI:
     app.include_router(routers.events.router)
     app.include_router(routers.settings.router)
     app.include_router(routers.plugins.router)
+
+    # Build the plugin host HERE (not in lifespan) so plugin-contributed routers
+    # can be mounted at startup — FastAPI can't add routes after startup. The
+    # context's session factory is resolved lazily (set during lifespan).
+    from app.sync.plugins import PluginContext
+
+    def _ctx_factory(name, config):
+        return PluginContext(
+            name=name, config=config, settings=settings,
+            media_root=settings.media_root,
+            session_factory=lambda: app.state.async_session(),
+        )
+
+    plugin_host = PluginHost(ctx_factory=_ctx_factory)
+    try:
+        plugin_host.discover()
+    except Exception as e:  # noqa: BLE001
+        log(f"Plugin discovery failed: {e}", "ERROR")
+    app.state.plugin_host = plugin_host
+    for plugin_router in plugin_host.all_routers():
+        app.include_router(plugin_router)
 
     # Mount WebSocket endpoint at /api/ws with snapshot provider
     from fastapi import WebSocket as WSType

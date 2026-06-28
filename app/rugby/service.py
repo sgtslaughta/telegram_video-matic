@@ -1,0 +1,319 @@
+"""Rugby service: orchestrates scrape/API fetch, matching, and naming tokens.
+
+All DB access goes through the injected PluginContext session. The API client is
+injectable so the service can be tested without network.
+"""
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+from sqlalchemy import func, select
+
+from app.rugby import matcher, scraper
+from app.rugby.api import RugbyApi, RugbyApiError
+from app.rugby.models import (
+    RugbyFixture, RugbyLeague, RugbyMatch, RugbySubscription, RugbyTeam,
+)
+
+
+def _parse_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+class RugbyService:
+    def __init__(self, ctx, api=None):
+        self.ctx = ctx
+        cfg = getattr(ctx, "config", {}) or {}
+        self.api = api or RugbyApi(
+            api_key=cfg.get("api_key", "123"),
+            min_interval=cfg.get("min_interval", 2.0),
+        )
+
+    # ---- catalog (shallow) ---------------------------------------------
+    async def refresh_catalog(self):
+        """Scrape the league catalog; fall back to the bundled seed on failure."""
+        try:
+            leagues = await scraper.fetch_league_catalog()
+        except Exception as ex:  # noqa: BLE001 - scrape is best-effort
+            await self.ctx.log("warning", "rugby",
+                               f"Catalog scrape failed, using seed: {ex}")
+            leagues = scraper.load_seed()
+        async with self.ctx.session() as s:
+            for row in leagues:
+                league = await s.get(RugbyLeague, row["id"])
+                if league is None:
+                    league = RugbyLeague(id=row["id"])
+                    s.add(league)
+                league.slug = row.get("slug") or league.slug
+                league.name = row.get("name") or league.name
+                league.category = row.get("category")
+            await s.commit()
+        self.ctx.set_status({"leagues": len(leagues),
+                             "last_catalog_refresh": datetime.now(timezone.utc).isoformat()})
+        return len(leagues)
+
+    # ---- deep fetch (fixtures + teams for one league) ------------------
+    async def deep_fetch(self, league_id: int, season: str | None = None):
+        """Pull a league's fixtures (and the teams they reference) from the API."""
+        try:
+            seasons = [season] if season else (await self.api.list_seasons(league_id))[-2:]
+            if not seasons:
+                seasons = [_current_season()]
+            team_ids: set[int] = set()
+            league_badge = None
+            async with self.ctx.session() as s:
+                for ssn in seasons:
+                    for ev in await self.api.fetch_season(league_id, ssn):
+                        await self._upsert_fixture(s, league_id, ev)
+                        league_badge = league_badge or ev.get("strLeagueBadge")
+                        for k in ("idHomeTeam", "idAwayTeam"):
+                            if ev.get(k):
+                                team_ids.add(int(ev[k]))
+                await s.commit()
+            for tid in team_ids:
+                await self._fetch_team(tid, league_id)
+            async with self.ctx.session() as s:
+                league = await s.get(RugbyLeague, league_id)
+                if league:
+                    league.tracked = True
+                    league.badge_url = league.badge_url or league_badge
+                    league.last_deep_fetch_at = datetime.now(timezone.utc)
+                    await s.commit()
+            self.ctx.clear_error()
+        except RugbyApiError as ex:
+            await self.ctx.log("error", "rugby",
+                               f"Deep fetch failed for league {league_id}: {ex.detail}")
+            raise
+
+    async def _upsert_fixture(self, s, league_id, ev):
+        fid = int(ev["idEvent"])
+        fx = await s.get(RugbyFixture, fid)
+        if fx is None:
+            fx = RugbyFixture(id=fid)
+            s.add(fx)
+        fx.league_id = league_id
+        fx.season = ev.get("strSeason") or ""
+        fx.round = str(ev.get("intRound") or "")
+        fx.date = _parse_date(ev.get("dateEvent"))
+        fx.home_team_id = int(ev["idHomeTeam"]) if ev.get("idHomeTeam") else None
+        fx.away_team_id = int(ev["idAwayTeam"]) if ev.get("idAwayTeam") else None
+        fx.home_name = ev.get("strHomeTeam")
+        fx.away_name = ev.get("strAwayTeam")
+        fx.home_score = _to_int(ev.get("intHomeScore"))
+        fx.away_score = _to_int(ev.get("intAwayScore"))
+
+    async def _fetch_team(self, team_id, league_id):
+        try:
+            data = await self.api.lookup_team(team_id)
+        except RugbyApiError:
+            return
+        if not data:
+            return
+        async with self.ctx.session() as s:
+            team = await s.get(RugbyTeam, team_id)
+            if team is None:
+                team = RugbyTeam(id=team_id)
+                s.add(team)
+            team.league_id = league_id
+            team.name = data.get("strTeam") or team.name or str(team_id)
+            team.short_name = data.get("strTeamShort") or None
+            alt = data.get("strTeamAlternate") or ""
+            team.alt_names = [a.strip() for a in alt.split(",") if a.strip()] or None
+            team.stadium = data.get("strStadium")
+            team.country = data.get("strCountry")
+            team.badge_url = data.get("strBadge")
+            team.logo_url = data.get("strLogo")
+            await s.commit()
+
+    # ---- subscription link ---------------------------------------------
+    async def _set_link_only(self, sub_id: int, league_id: int | None):
+        """Persist (or clear) the sub→league link without fetching."""
+        async with self.ctx.session() as s:
+            link = await s.get(RugbySubscription, sub_id)
+            if league_id is None:
+                if link:
+                    await s.delete(link)
+                    await s.commit()
+                return
+            if link is None:
+                s.add(RugbySubscription(subscription_id=sub_id, league_id=league_id))
+            else:
+                link.league_id = league_id
+            await s.commit()
+
+    async def set_subscription_league(self, sub_id: int, league_id: int | None):
+        await self._set_link_only(sub_id, league_id)
+        if league_id is not None:
+            await self.deep_fetch(league_id)
+
+    async def _league_for_sub(self, s, sub_id):
+        link = await s.get(RugbySubscription, sub_id)
+        return link.league_id if link else None
+
+    # ---- matching -------------------------------------------------------
+    async def match_item(self, item):
+        """Match a freshly discovered item to a fixture (uses its subscription)."""
+        sub_id = getattr(item, "subscription_id", None)
+        if not sub_id:
+            return None
+        async with self.ctx.session() as s:
+            league_id = await self._league_for_sub(s, sub_id)
+            if league_id is None:
+                return None
+            rows = (await s.execute(
+                select(RugbyFixture).where(RugbyFixture.league_id == league_id)
+            )).scalars().all()
+            fixtures = [{"id": f.id, "home_name": f.home_name,
+                         "away_name": f.away_name, "date": f.date,
+                         "season": f.season, "round": f.round} for f in rows]
+            text = item.file_name or item.caption or ""
+            best, conf, status = matcher.match(text, item.date_posted, fixtures)
+            if status == "none":
+                return None
+            rm = (await s.execute(
+                select(RugbyMatch).where(RugbyMatch.media_id == item.id)
+            )).scalar_one_or_none()
+            if rm is None:
+                rm = RugbyMatch(media_id=item.id)
+                s.add(rm)
+            rm.fixture_id = best["id"] if best else None
+            rm.league_id = league_id
+            rm.season = best["season"] if best else None
+            rm.round = best["round"] if best else None
+            rm.home_name = best["home_name"] if best else None
+            rm.away_name = best["away_name"] if best else None
+            rm.confidence = conf
+            rm.status = status
+            await s.commit()
+            return status
+
+    # ---- naming tokens (read) ------------------------------------------
+    async def naming_tokens(self, media_id: int) -> dict:
+        async with self.ctx.session() as s:
+            rm = (await s.execute(
+                select(RugbyMatch).where(RugbyMatch.media_id == media_id)
+            )).scalar_one_or_none()
+            if rm is None or rm.status not in ("auto", "confirmed"):
+                return {}
+            league = await s.get(RugbyLeague, rm.league_id) if rm.league_id else None
+            return _clean({
+                "rugby_league": league.name if league else "Unknown League",
+                "rugby_season": rm.season or "",
+                "rugby_round": rm.round or "0",
+                "home": rm.home_name or "",
+                "away": rm.away_name or "",
+                "rugby_sport": (league.sport if league and league.sport else "rugby"),
+            })
+
+
+    # ---- jellyfin artwork ----------------------------------------------
+    async def write_artwork(self, item, path):
+        """Save the matched home team's badge as poster.jpg beside the video."""
+        try:
+            async with self.ctx.session() as s:
+                m = (await s.execute(
+                    select(RugbyMatch).where(RugbyMatch.media_id == item.id)
+                )).scalar_one_or_none()
+                if not m or m.status not in ("auto", "confirmed"):
+                    return
+                badge = None
+                if m.home_name:
+                    team = (await s.execute(
+                        select(RugbyTeam).where(RugbyTeam.name == m.home_name)
+                    )).scalar_one_or_none()
+                    badge = team.badge_url if team else None
+                if not badge and m.league_id:
+                    league = await s.get(RugbyLeague, m.league_id)
+                    badge = league.badge_url if league else None
+            if badge:
+                await scraper.download_logo(badge, str(Path(path).parent / "poster.jpg"))
+        except Exception as ex:  # noqa: BLE001 - artwork is best-effort
+            await self.ctx.log("warning", "rugby", f"Artwork write failed: {ex}")
+
+    # ---- read helpers for the router -----------------------------------
+    async def list_leagues(self, tracked=None):
+        async with self.ctx.session() as s:
+            q = select(RugbyLeague)
+            if tracked is not None:
+                q = q.where(RugbyLeague.tracked == tracked)
+            rows = (await s.execute(q.order_by(RugbyLeague.name))).scalars().all()
+            return [{"id": lg.id, "name": lg.name, "slug": lg.slug,
+                     "category": lg.category, "tracked": lg.tracked,
+                     "badge_url": lg.badge_url} for lg in rows]
+
+    async def list_matches(self, status=None):
+        async with self.ctx.session() as s:
+            q = select(RugbyMatch)
+            if status:
+                q = q.where(RugbyMatch.status == status)
+            rows = (await s.execute(q)).scalars().all()
+            return [_match_dict(m) for m in rows]
+
+    async def update_match(self, media_id, status=None, fixture_id=None):
+        """Confirm/reject/re-point a match (the review UI). Returns the row dict."""
+        async with self.ctx.session() as s:
+            m = (await s.execute(
+                select(RugbyMatch).where(RugbyMatch.media_id == media_id)
+            )).scalar_one_or_none()
+            if m is None:
+                return None
+            if fixture_id is not None:
+                fx = await s.get(RugbyFixture, fixture_id)
+                if fx:
+                    m.fixture_id = fx.id
+                    m.league_id = fx.league_id
+                    m.season = fx.season
+                    m.round = fx.round
+                    m.home_name = fx.home_name
+                    m.away_name = fx.away_name
+            if status is not None:
+                m.status = status
+            await s.commit()
+            return _match_dict(m)
+
+    async def status_snapshot(self):
+        async with self.ctx.session() as s:
+            leagues = (await s.execute(
+                select(func.count()).select_from(RugbyLeague))).scalar()
+            tracked = (await s.execute(
+                select(func.count()).select_from(RugbyLeague)
+                .where(RugbyLeague.tracked.is_(True)))).scalar()
+            review = (await s.execute(
+                select(func.count()).select_from(RugbyMatch)
+                .where(RugbyMatch.status == "needs_review"))).scalar()
+        return {"last_error": self.ctx.health.get("last_error"),
+                "status": self.ctx.health.get("status"),
+                "leagues": leagues, "tracked": tracked, "needs_review": review}
+
+
+def _match_dict(m):
+    return {"media_id": m.media_id, "fixture_id": m.fixture_id,
+            "league_id": m.league_id, "season": m.season, "round": m.round,
+            "home_name": m.home_name, "away_name": m.away_name,
+            "confidence": m.confidence, "status": m.status}
+
+
+def _current_season():
+    # ponytail: rugby seasons span Sep-Jun; cheap heuristic without a clock arg.
+    now = datetime.now(timezone.utc)
+    start = now.year if now.month >= 7 else now.year - 1
+    return f"{start}-{start + 1}"
+
+
+def _to_int(value):
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _clean(tokens: dict) -> dict:
+    # Filesystem-hostile characters in team/league names would break paths.
+    bad = '/\\:*?"<>|'
+    return {k: ("".join(c for c in str(v) if c not in bad).strip() if isinstance(v, str) else v)
+            for k, v in tokens.items()}
