@@ -82,6 +82,14 @@ export function usePatchMatch() {
   })
 }
 
+export function useSubscriptionLeague(subId: number | null) {
+  return useQuery({
+    queryKey: ['rugby', 'sub-league', subId] as const,
+    queryFn: () => api.rugby.getSubscriptionLeague(subId as number),
+    enabled: !!subId,
+  })
+}
+
 export function useSetSubscriptionLeague() {
   const qc = useQueryClient()
   return useMutation({

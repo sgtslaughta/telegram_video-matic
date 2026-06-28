@@ -283,6 +283,12 @@ class RugbyService:
         link = await s.get(RugbySubscription, sub_id)
         return link.league_id if link else None
 
+    async def get_subscription_league(self, sub_id: int):
+        """The league_id linked to a subscription (None if unset). For the editor
+        to show the saved value when reopening a subscription."""
+        async with self.ctx.session() as s:
+            return await self._league_for_sub(s, sub_id)
+
     # ---- matching -------------------------------------------------------
     async def match_item(self, item):
         """Match a freshly discovered item to a fixture (uses its subscription)."""

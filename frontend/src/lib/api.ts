@@ -259,6 +259,9 @@ export const rugby = {
       body: JSON.stringify(data),
     }),
 
+  getSubscriptionLeague: (subId: number) =>
+    fetchAPI<{ league_id: number | null }>(`/plugins/rugby/subscriptions/${subId}`),
+
   setSubscriptionLeague: (subId: number, leagueId: number | null) =>
     fetchAPI<void>(`/plugins/rugby/subscriptions/${subId}`, {
       method: 'PUT',

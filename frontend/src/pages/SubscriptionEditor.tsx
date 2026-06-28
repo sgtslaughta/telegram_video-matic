@@ -4,7 +4,7 @@ import { Info } from 'lucide-react'
 import { useSubscription, useCreateSubscription, useUpdateSubscription } from '@/hooks/useSubscriptions'
 import { useChannels, useTopics } from '@/hooks/useChannels'
 import { useSubscriptionEditor } from '@/hooks/useSubscriptionEditor'
-import { useRugbyLeagues, useSetSubscriptionLeague, useRugbyPreview } from '@/hooks/useRugby'
+import { useRugbyLeagues, useSetSubscriptionLeague, useSubscriptionLeague, useRugbyPreview } from '@/hooks/useRugby'
 import { usePlugins } from '@/hooks/usePlugins'
 import { MediaThumb } from '@/components/shared/MediaThumb'
 import FolderPicker from '@/components/FolderPicker'
@@ -117,6 +117,12 @@ export default function SubscriptionEditor() {
   useEffect(() => {
     if (!rugbyOn) setSelectedLeague(null)
   }, [rugbyOn])
+
+  // Preselect the saved league when editing an existing subscription.
+  const { data: savedLeague } = useSubscriptionLeague(isNew ? null : parseInt(id!))
+  useEffect(() => {
+    if (savedLeague?.league_id != null) setSelectedLeague(savedLeague.league_id)
+  }, [savedLeague])
 
   // Regex tester — mirrors backend re.search (substring, case-insensitive).
   const [testStr, setTestStr] = useState('')

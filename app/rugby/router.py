@@ -143,6 +143,13 @@ async def patch_match(media_id: int, body: MatchPatch, request: Request):
     return updated
 
 
+@router.get("/subscriptions/{sub_id}")
+async def get_subscription(sub_id: int, request: Request):
+    """Return the league linked to this subscription (for the editor to preselect)."""
+    svc = _service(request)
+    return {"league_id": await svc.get_subscription_league(sub_id)}
+
+
 @router.put("/subscriptions/{sub_id}")
 async def set_subscription(sub_id: int, body: SubLeague, request: Request,
                            bg: BackgroundTasks):
