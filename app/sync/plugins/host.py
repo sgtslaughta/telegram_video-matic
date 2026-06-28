@@ -72,6 +72,23 @@ class PluginHost:
                 await self._report(e, "provide_naming_tokens", ex)
         return tokens
 
+    async def collect_path(self, item, sub):
+        """First non-None relative path an enabled plugin offers (overrides the
+        subscription template). Lets a plugin auto-organize matched media."""
+        for e in self.entries:
+            if not e.enabled:
+                continue
+            fn = getattr(e.instance, "provide_path", None)
+            if fn is None:
+                continue
+            try:
+                p = await fn(item, sub)
+                if p:
+                    return p
+            except Exception as ex:  # noqa: BLE001
+                await self._report(e, "provide_path", ex)
+        return None
+
     async def _report(self, entry, hook, ex):
         msg = f"Plugin {entry.name} error in {hook}: {ex}"
         ctx = getattr(entry.instance, "ctx", None)

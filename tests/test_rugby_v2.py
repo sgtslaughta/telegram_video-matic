@@ -80,6 +80,19 @@ async def test_enrichment_keyed_by_tg_msg_id(ctx, factory):
 
 
 @pytest.mark.asyncio
+async def test_path_for_builds_league_season_tree(ctx, factory):
+    _c, _s, item_id = await _seed(factory)
+    path = await RugbyService(ctx).path_for(item_id, ".mp4")
+    assert path == "English Prem Rugby/2025-2026/Sale Sharks vs Gloucester.mp4"
+
+
+@pytest.mark.asyncio
+async def test_path_for_none_when_unmatched(ctx, factory):
+    _c, _s, item_id = await _seed(factory, with_match=False)
+    assert await RugbyService(ctx).path_for(item_id, ".mp4") is None
+
+
+@pytest.mark.asyncio
 async def test_enrichment_excludes_unmatched(ctx, factory):
     # Media whose filename matches no fixture is left out entirely.
     chan_id, _s, _i = await _seed(factory, with_match=False, msg_id=8,

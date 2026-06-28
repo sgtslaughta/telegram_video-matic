@@ -353,6 +353,21 @@ class RugbyService:
                 "rugby_sport": (league.sport if league and league.sport else "rugby"),
             })
 
+    async def path_for(self, media_id: int, ext: str = "") -> str | None:
+        """Relative path (league/season/Home vs Away.ext) for a matched item, so
+        rugby media auto-files into a league/season tree regardless of the
+        subscription's rename_template. None unless the match is auto/confirmed."""
+        tokens = await self.naming_tokens(media_id)
+        if not tokens:
+            return None
+        home, away = tokens.get("home"), tokens.get("away")
+        if not home or not away:
+            return None
+        league = tokens.get("rugby_league") or "Rugby"
+        season = tokens.get("rugby_season") or ""
+        parts = [league] + ([season] if season else []) + [f"{home} vs {away}{ext}"]
+        return "/".join(parts)
+
 
     # ---- browse enrichment + wizard preview ----------------------------
     async def _match_context(self, s):

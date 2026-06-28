@@ -57,6 +57,17 @@ class RugbyPlugin(PluginBase):
             return
         await self.service.write_jellyfin(item, Path(path))
 
+    # --- path override (host uses first non-None) ---
+    async def provide_path(self, item, sub):
+        """Auto-file matched rugby media into league/season folders, overriding
+        the subscription template (so the user need not author rugby tokens)."""
+        if not self.service:
+            return None
+        ext = ""
+        if item.file_name and "." in item.file_name:
+            ext = "." + item.file_name.rsplit(".", 1)[-1]
+        return await self.service.path_for(item.id, ext)
+
     # --- provider hook (host merges into naming tokens) ---
     async def provide_naming_tokens(self, item, sub):
         if not self.service:

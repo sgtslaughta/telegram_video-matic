@@ -486,8 +486,16 @@ class SyncEngine:
                                 # them and decides template-vs-original.
                                 extra = (await self.plugin_host.collect_naming_tokens(item, sub)
                                          if (self.plugin_host and sub) else {})
-                                target_path, season, episode, use_template = choose_target_path(
-                                    item, sub, extra)
+                                # A plugin may dictate the full path (e.g. rugby
+                                # league/season tree) — that wins over the template.
+                                plugin_path = (await self.plugin_host.collect_path(item, sub)
+                                               if (self.plugin_host and sub) else None)
+                                if plugin_path:
+                                    target_path, season, episode, use_template = (
+                                        plugin_path, None, None, True)
+                                else:
+                                    target_path, season, episode, use_template = choose_target_path(
+                                        item, sub, extra)
 
                                 storage_base = sub.storage_path if sub else self.download_root
                                 target_full = Path(storage_base) / target_path

@@ -43,6 +43,13 @@ class PluginBase:
     async def provide_naming_tokens(self, item, sub) -> dict:
         return {}
 
+    # --- path override (host uses the first non-None) ---
+    async def provide_path(self, item, sub) -> str | None:
+        """Return a full relative path (incl. filename + ext) to place the file,
+        overriding the subscription's rename_template. None = no opinion. Lets a
+        plugin auto-organize (e.g. rugby league/season) without a hand template."""
+        return None
+
     # --- declarations (host consumes) ---
     def models(self) -> list:
         """SQLAlchemy model classes (on the shared Base) the host create_all's."""
