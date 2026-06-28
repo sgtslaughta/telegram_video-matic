@@ -83,22 +83,39 @@ export function RugbyMatchReview() {
             <CardContent className="pt-4">
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-1">
-                    <p className="font-semibold">
-                      {match.home_name} vs {match.away_name}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {match.season ?? '—'}{match.round ? ` · R${match.round}` : ''}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Confidence: {Math.round((match.confidence ?? 0) * 100)}%
-                    </p>
+                  <div className="grid flex-1 gap-3 sm:grid-cols-2">
+                    {/* Source: the original Telegram message that was matched */}
+                    <div className="space-y-1 rounded border border-border bg-background/60 p-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Source</p>
+                      <p className="break-words text-sm font-medium" title={match.source_name ?? undefined}>
+                        {match.source_name || match.source_caption || '—'}
+                      </p>
+                      {match.source_caption && match.source_name && (
+                        <p className="line-clamp-2 text-xs text-muted-foreground">{match.source_caption}</p>
+                      )}
+                      {match.source_date && (
+                        <p className="text-xs text-muted-foreground">
+                          Posted {new Date(match.source_date).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    {/* Suggested: the fixture the matcher picked */}
+                    <div className="space-y-1 rounded border border-amber-300/60 bg-background/60 p-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Suggested match</p>
+                      <p className="font-semibold">
+                        {match.home_name} vs {match.away_name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {match.season ?? '—'}{match.round ? ` · R${match.round}` : ''}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Confidence: {Math.round((match.confidence ?? 0) * 100)}%
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100">
-                      needs review
-                    </span>
-                  </div>
+                  <span className="inline-block shrink-0 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                    needs review
+                  </span>
                 </div>
 
                 {expandedMatch === match.media_id ? (

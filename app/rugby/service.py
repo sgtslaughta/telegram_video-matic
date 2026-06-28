@@ -760,7 +760,13 @@ class RugbyService:
             if status:
                 q = q.where(RugbyMatch.status == status)
             rows = (await s.execute(q)).scalars().all()
-            return [_match_dict(m) for m in rows]
+            media_ids = [m.media_id for m in rows if m.media_id]
+            sources = {}
+            if media_ids:
+                items = (await s.execute(
+                    select(MediaItem).where(MediaItem.id.in_(media_ids)))).scalars().all()
+                sources = {it.id: it for it in items}
+            return [_match_dict(m, sources.get(m.media_id)) for m in rows]
 
     async def update_match(self, media_id, status=None, fixture_id=None):
         """Confirm/reject/re-point a match (the review UI). Returns the row dict."""
@@ -833,11 +839,17 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge, aired) ->
     )
 
 
-def _match_dict(m):
+def _match_dict(m, src=None):
+    """Serialize a RugbyMatch. `src` is the source MediaItem (optional) so the
+    review UI can show the original message next to the suggested fixture."""
     return {"media_id": m.media_id, "fixture_id": m.fixture_id,
             "league_id": m.league_id, "season": m.season, "round": m.round,
             "home_name": m.home_name, "away_name": m.away_name,
-            "confidence": m.confidence, "status": m.status}
+            "confidence": m.confidence, "status": m.status,
+            "source_name": src.file_name if src else None,
+            "source_caption": src.caption if src else None,
+            "source_date": (src.date_posted.isoformat()
+                            if src and src.date_posted else None)}
 
 
 def _current_season():

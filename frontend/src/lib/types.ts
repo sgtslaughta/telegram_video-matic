@@ -373,6 +373,10 @@ export interface RugbyMatch {
   away_name: string | null;
   confidence: number; // 0.0-1.0
   status: 'auto' | 'needs_review' | 'confirmed' | 'rejected';
+  // Source message that was matched (for review comparison).
+  source_name?: string | null;
+  source_caption?: string | null;
+  source_date?: string | null;
 }
 
 export interface RugbyStatus {
