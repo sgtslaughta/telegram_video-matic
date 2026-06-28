@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Info } from 'lucide-react'
 import { useSubscription, useCreateSubscription, useUpdateSubscription } from '@/hooks/useSubscriptions'
 import { useChannels, useTopics } from '@/hooks/useChannels'
 import { useSubscriptionEditor } from '@/hooks/useSubscriptionEditor'
-import { useRugbyLeagues, useSetSubscriptionLeague } from '@/hooks/useRugby'
+import { useRugbyLeagues, useSetSubscriptionLeague, useRugbyPreview } from '@/hooks/useRugby'
 import { usePlugins } from '@/hooks/usePlugins'
+import { MediaThumb } from '@/components/shared/MediaThumb'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,19 @@ const DAYS = [
 
 const SAMPLE = { channel: 'RugbyChannel', title: 'Final Match', season: 1, episode: 5, ext: 'mp4' }
 const DEFAULT_TEMPLATE = '{channel}/{title}.{ext}'
+
+// ponytail: simple token replacement for preview rendering
+function renderTemplate(template: string, tokens: Record<string, string | undefined>): string {
+  let result = template
+  result = result.replaceAll('{rugby_league}', tokens.rugby_league || '')
+  result = result.replaceAll('{rugby_season}', tokens.rugby_season || '')
+  result = result.replaceAll('{rugby_round}', tokens.rugby_round || '')
+  result = result.replaceAll('{home}', tokens.home || '')
+  result = result.replaceAll('{away}', tokens.away || '')
+  result = result.replaceAll('{rugby_sport}', tokens.rugby_sport || '')
+  result = result.replaceAll('{ext}', '.mp4')
+  return result
+}
 
 function InfoTip({ text }: { text: string }) {
   return (
@@ -93,7 +107,15 @@ export default function SubscriptionEditor() {
   const rugbyEnabled = plugins?.find((p) => p.name === 'rugby')?.enabled ?? false
   const { data: rugbyLeagues } = useRugbyLeagues()
   const [selectedLeague, setSelectedLeague] = useState<number | null>(null)
+  const [rugbyOn, setRugbyOn] = useState(true)
+  const [testFilename, setTestFilename] = useState('Sale Sharks v Gloucester.mp4')
   const setSubscriptionLeague = useSetSubscriptionLeague()
+  const previewMutation = useRugbyPreview()
+
+  // Update selectedLeague when turning rugby off/on
+  useEffect(() => {
+    if (!rugbyOn) setSelectedLeague(null)
+  }, [rugbyOn])
 
   // Regex tester — mirrors backend re.search (substring, case-insensitive).
   const [testStr, setTestStr] = useState('')
@@ -390,20 +412,79 @@ export default function SubscriptionEditor() {
         <Card>
           <CardHeader><CardTitle className="text-lg">Rugby League</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <FieldLabel tip="Optionally link this subscription to a rugby league for automatic match detection.">
-                League
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="rugbyToggle" tip="Enable automatic rugby match detection and filename enrichment for this subscription.">
+                Rugby Enrichment
               </FieldLabel>
-              <Combobox
-                value={selectedLeague?.toString() || ''}
-                onChange={(v) => setSelectedLeague(v ? parseInt(v) : null)}
-                placeholder="— None —"
-                options={[
-                  { value: '', label: '— None —' },
-                  ...rugbyLeagues.map((l) => ({ value: l.id.toString(), label: l.name })),
-                ]}
-              />
+              <Switch id="rugbyToggle" checked={rugbyOn} onCheckedChange={setRugbyOn} />
             </div>
+
+            {rugbyOn && (
+              <>
+                <div className="space-y-2">
+                  <FieldLabel tip="Select which rugby league to link to this subscription.">
+                    League
+                  </FieldLabel>
+                  <Combobox
+                    value={selectedLeague?.toString() || ''}
+                    onChange={(v) => setSelectedLeague(v ? parseInt(v) : null)}
+                    placeholder="— None —"
+                    options={[
+                      { value: '', label: '— None —' },
+                      ...rugbyLeagues.map((l) => ({ value: l.id.toString(), label: l.name })),
+                    ]}
+                  />
+                </div>
+
+                {/* Preview */}
+                {selectedLeague && (
+                  <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+                    <div className="space-y-2">
+                      <FieldLabel htmlFor="testFilename" tip="Test how the preview works with a sample filename.">
+                        Test Filename
+                      </FieldLabel>
+                      <Input
+                        id="testFilename"
+                        value={testFilename}
+                        onChange={(e) => {
+                          setTestFilename(e.target.value)
+                          if (selectedLeague) previewMutation.mutate({ leagueId: selectedLeague, text: e.target.value })
+                        }}
+                        placeholder="e.g. Sale Sharks v Gloucester.mp4"
+                      />
+                    </div>
+
+                    {previewMutation.data && (
+                      <div className="space-y-2 rounded bg-background p-2">
+                        {previewMutation.data.matched ? (
+                          <>
+                            <p className="text-sm font-medium text-green-600">✓ Confident match ({Math.round(previewMutation.data.confidence * 100)}%)</p>
+                            <div className="flex items-center gap-2">
+                              {previewMutation.data.home_badge && <MediaThumb src={previewMutation.data.home_badge} alt={previewMutation.data.home || ''} size="sm" />}
+                              {previewMutation.data.away_badge && <MediaThumb src={previewMutation.data.away_badge} alt={previewMutation.data.away || ''} size="sm" />}
+                              <span className="text-sm">{previewMutation.data.home} vs {previewMutation.data.away}</span>
+                            </div>
+                            {previewMutation.data.tokens && (
+                              <div className="mt-2 border-t pt-2">
+                                <p className="text-xs text-muted-foreground">Rendered path:</p>
+                                <p className="font-mono text-xs">
+                                  {renderTemplate(s.renameTemplate || DEFAULT_TEMPLATE, previewMutation.data.tokens)}
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm text-amber-600">No confident match — would keep original filename.</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {previewMutation.data.fixtures_count} fixtures · {previewMutation.data.teams_count} teams loaded
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       )}

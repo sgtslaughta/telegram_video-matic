@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Download, LayoutGrid, List, Search } from 'lucide-react'
 import { useChannels, useTopics, useBrowse } from '@/hooks/useChannelsTopics'
 import { useDownloadMedia } from '@/hooks/useMedia'
+import { useRugbyEnrichment } from '@/hooks/useRugby'
 import { MediaThumb } from '@/components/shared/MediaThumb'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -46,6 +47,7 @@ export default function Browse() {
   const channels = useChannels()
   const topics = useTopics(channelId)
   const browse = useBrowse(channelId, topicId)
+  const enrichment = useRugbyEnrichment(channelId)
   const drawerDl = useItemDownload(selected ?? { tg_msg_id: 0 }, channelId ?? 0)
 
   const openItem = (item: any) => { setSelected(item); setDrawerOpen(true) }
@@ -147,11 +149,11 @@ export default function Browse() {
         <EmptyState title="No media found" message="Try a different channel, topic, status, or search" />
       ) : view === 'cards' ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((item: any) => <MediaCard key={item.tg_msg_id} item={item} channelId={channelId} onOpen={openItem} />)}
+          {items.map((item: any) => <MediaCard key={item.tg_msg_id} item={item} channelId={channelId} rugby={enrichment.data?.[String(item.tg_msg_id)]} onOpen={openItem} />)}
         </div>
       ) : (
         <Card><div className="divide-y divide-border">
-          {items.map((item: any) => <MediaRow key={item.tg_msg_id} item={item} channelId={channelId} onOpen={openItem} />)}
+          {items.map((item: any) => <MediaRow key={item.tg_msg_id} item={item} channelId={channelId} rugby={enrichment.data?.[String(item.tg_msg_id)]} onOpen={openItem} />)}
         </div></Card>
       )}
 
@@ -195,7 +197,7 @@ function useItemDownload(item: any, channelId: number) {
   return { onDownload, pending: dl.isPending || adhocPending }
 }
 
-function MediaCard({ item, channelId, onOpen }: { item: any; channelId: number; onOpen: (i: any) => void }) {
+function MediaCard({ item, channelId, rugby, onOpen }: { item: any; channelId: number; rugby?: any; onOpen: (i: any) => void }) {
   const { onDownload, pending } = useItemDownload(item, channelId)
   return (
     <Card className="flex h-full flex-col transition-shadow hover:shadow-md">
@@ -209,6 +211,18 @@ function MediaCard({ item, channelId, onOpen }: { item: any; channelId: number; 
         <button onClick={() => onOpen(item)} className="line-clamp-2 text-left text-xs text-foreground hover:underline">{item.caption || item.file_name || 'Untitled'}</button>
         {item.subscription_label && (
           <p className="truncate text-[10px] text-muted-foreground">↳ {item.subscription_label}</p>
+        )}
+        {rugby && (
+          <div className="space-y-1 text-[10px]">
+            <div className="flex items-center gap-1">
+              {rugby.home_badge && <MediaThumb src={rugby.home_badge} alt={rugby.home} size="sm" />}
+              {rugby.away_badge && <MediaThumb src={rugby.away_badge} alt={rugby.away} size="sm" />}
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="truncate text-muted-foreground">{rugby.home} vs {rugby.away}</span>
+              {rugby.round && <span className="whitespace-nowrap rounded bg-muted px-1 text-muted-foreground">R{rugby.round}</span>}
+            </div>
+          </div>
         )}
         <div className="mt-auto flex items-center justify-between">
           <StatusBadge status={item.status} />
@@ -225,7 +239,7 @@ function MediaCard({ item, channelId, onOpen }: { item: any; channelId: number; 
   )
 }
 
-function MediaRow({ item, channelId, onOpen }: { item: any; channelId: number; onOpen: (i: any) => void }) {
+function MediaRow({ item, channelId, rugby, onOpen }: { item: any; channelId: number; rugby?: any; onOpen: (i: any) => void }) {
   const { onDownload, pending } = useItemDownload(item, channelId)
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50">
@@ -237,6 +251,7 @@ function MediaRow({ item, channelId, onOpen }: { item: any; channelId: number; o
         <p className="text-xs text-muted-foreground">
           {new Date(item.date_posted).toLocaleDateString()}
           {item.subscription_label ? ` · ↳ ${item.subscription_label}` : ''}
+          {rugby ? ` · ${rugby.home} vs ${rugby.away}` : ''}
         </p>
       </button>
       <span className="hidden w-20 text-right text-xs text-muted-foreground sm:inline">{formatBytes(item.size_bytes)}</span>

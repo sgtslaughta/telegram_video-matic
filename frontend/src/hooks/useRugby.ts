@@ -7,6 +7,7 @@ export const rugbyKeys = {
   leagues: () => ['rugby', 'leagues'] as const,
   fixtures: (leagueId: number, season: string) => ['rugby', 'fixtures', leagueId, season] as const,
   matches: (status?: string) => ['rugby', 'matches', status] as const,
+  enrichment: (channelId: number) => ['rugby', 'enrichment', channelId] as const,
 }
 
 export function useRugbyStatus() {
@@ -84,5 +85,21 @@ export function useSetSubscriptionLeague() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: rugbyKeys.leagues() })
     },
+  })
+}
+
+export function useRugbyEnrichment(channelId: number | null) {
+  return useQuery({
+    queryKey: rugbyKeys.enrichment(channelId ?? 0),
+    queryFn: () => api.rugby.enrichment(channelId!),
+    enabled: !!channelId,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function useRugbyPreview() {
+  return useMutation({
+    mutationFn: (data: { leagueId: number; text: string }) =>
+      api.rugby.preview(data.leagueId, data.text),
   })
 }

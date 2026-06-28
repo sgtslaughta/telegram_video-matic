@@ -3,6 +3,8 @@ import { Download, MessageSquare, X } from 'lucide-react'
 import { Drawer, DrawerContent, DrawerTitle, DrawerClose } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/shared/StatusBadge'
+import { MediaThumb } from '@/components/shared/MediaThumb'
+import { useRugbyEnrichment } from '@/hooks/useRugby'
 import * as api from '@/lib/api'
 
 function fmtBytes(n?: number | null): string {
@@ -36,6 +38,8 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
     enabled: open && !!item && !!channelId,
     staleTime: 60_000,
   })
+  const enrichment = useRugbyEnrichment(channelId)
+  const rugby = item && enrichment.data ? enrichment.data[String(item.tg_msg_id)] : null
 
   const title = item?.caption || item?.file_name || 'Untitled'
 
@@ -82,6 +86,25 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
                 <div className="space-y-1">
                   <p className="text-xs font-medium uppercase text-muted-foreground">Caption</p>
                   <p className="whitespace-pre-wrap text-sm">{item.caption}</p>
+                </div>
+              )}
+
+              {/* Rugby */}
+              {rugby && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Rugby</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      {rugby.home_badge && <MediaThumb src={rugby.home_badge} alt={rugby.home} size="sm" />}
+                      {rugby.away_badge && <MediaThumb src={rugby.away_badge} alt={rugby.away} size="sm" />}
+                      <span className="text-sm font-medium">{rugby.home} vs {rugby.away}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{rugby.league} · {rugby.season} · R{rugby.round}</p>
+                    {rugby.venue && <p className="text-sm text-muted-foreground">📍 {rugby.venue}</p>}
+                    {rugby.home_score !== null && rugby.away_score !== null && (
+                      <p className="text-sm font-medium">{rugby.home_score}–{rugby.away_score}</p>
+                    )}
+                  </div>
                 </div>
               )}
 

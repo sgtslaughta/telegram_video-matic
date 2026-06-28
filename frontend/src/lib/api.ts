@@ -264,4 +264,15 @@ export const rugby = {
       method: 'PUT',
       body: JSON.stringify({ league_id: leagueId }),
     }),
+
+  enrichment: (channelId: number) =>
+    fetchAPI<Record<string, T.RugbyEnrichment>>('/plugins/rugby/enrichment', {
+      params: { channel_id: channelId },
+    }),
+
+  preview: (leagueId: number, text: string) =>
+    fetchAPI<T.RugbyPreview>('/plugins/rugby/preview', {
+      method: 'POST',
+      body: JSON.stringify({ league_id: leagueId, text }),
+    }),
 }

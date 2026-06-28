@@ -382,3 +382,44 @@ export interface RugbyStatus {
   tracked?: number;
   needs_review?: number;
 }
+
+// Enrichment response: per-message rugby data keyed by tg_msg_id
+export interface RugbyEnrichment {
+  league: string;
+  league_badge?: string | null;
+  season: string;
+  round: string;
+  home: string;
+  away: string;
+  home_badge?: string | null;
+  away_badge?: string | null;
+  venue?: string | null;
+  home_score?: number | null;
+  away_score?: number | null;
+  status: string;
+}
+
+// Preview response for filename matching
+export interface RugbyPreview {
+  matched: boolean;
+  status: string;
+  confidence: number; // 0..1
+  fixtures_count: number;
+  teams_count: number;
+  league: string;
+  league_badge?: string | null;
+  home?: string | null;
+  away?: string | null;
+  season?: string | null;
+  round?: string | null;
+  home_badge?: string | null;
+  away_badge?: string | null;
+  tokens?: {
+    rugby_league?: string;
+    rugby_season?: string;
+    rugby_round?: string;
+    home?: string;
+    away?: string;
+    rugby_sport?: string;
+  };
+}
