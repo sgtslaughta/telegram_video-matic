@@ -232,3 +232,36 @@ export const plugins = {
       body: JSON.stringify(config),
     }),
 }
+
+// Rugby
+export const rugby = {
+  status: () =>
+    fetchAPI<T.RugbyStatus>('/plugins/rugby/status'),
+
+  leagues: (tracked?: boolean) =>
+    fetchAPI<T.RugbyLeague[]>('/plugins/rugby/leagues', { params: tracked !== undefined ? { tracked } : {} }),
+
+  refreshCatalog: () =>
+    fetchAPI<{ scheduled: boolean }>('/plugins/rugby/refresh', { method: 'POST' }),
+
+  refreshLeague: (leagueId: number) =>
+    fetchAPI<{ scheduled: boolean }>(`/plugins/rugby/leagues/${leagueId}/refresh`, { method: 'POST' }),
+
+  fixtures: (leagueId: number, season: string) =>
+    fetchAPI<T.RugbyFixture[]>(`/plugins/rugby/leagues/${leagueId}/fixtures`, { params: { season } }),
+
+  matches: (status?: string) =>
+    fetchAPI<T.RugbyMatch[]>('/plugins/rugby/matches', { params: status ? { status } : {} }),
+
+  patchMatch: (mediaId: number, data: { status?: string; fixture_id?: number }) =>
+    fetchAPI<T.RugbyMatch>(`/plugins/rugby/matches/${mediaId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  setSubscriptionLeague: (subId: number, leagueId: number | null) =>
+    fetchAPI<void>(`/plugins/rugby/subscriptions/${subId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ league_id: leagueId }),
+    }),
+}

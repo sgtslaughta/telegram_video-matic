@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
 import { useTheme } from '@/hooks/useTheme'
 import { usePlugins, useUpdatePlugin } from '@/hooks/usePlugins'
+import { RugbyMatchReview } from '@/components/RugbyMatchReview'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,7 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Info } from 'lucide-react'
+import { AlertCircle, Info } from 'lucide-react'
+import { toast } from 'sonner'
 import type * as T from '@/lib/types'
 
 function InfoTip({ text }: { text: string }) {
@@ -67,12 +69,12 @@ export default function Settings() {
   })
 
   const [pluginStates, setPluginStates] = useState<
-    Record<string, { enabled: boolean }>
+    Record<string, { enabled: boolean; config?: Record<string, unknown> }>
   >(() => {
     if (!plugins) return {}
-    const states: Record<string, { enabled: boolean }> = {}
+    const states: Record<string, { enabled: boolean; config?: Record<string, unknown> }> = {}
     plugins.forEach((p) => {
-      states[p.name] = { enabled: p.enabled }
+      states[p.name] = { enabled: p.enabled, config: p.config || {} }
     })
     return states
   })
@@ -90,15 +92,26 @@ export default function Settings() {
   const handlePluginToggle = (name: string, enabled: boolean) => {
     setPluginStates((prev) => ({
       ...prev,
-      [name]: { enabled },
+      [name]: { ...prev[name], enabled },
+    }))
+  }
+
+  const handlePluginConfigChange = (name: string, key: string, value: unknown) => {
+    setPluginStates((prev) => ({
+      ...prev,
+      [name]: {
+        ...prev[name],
+        config: { ...prev[name].config, [key]: value },
+      },
     }))
   }
 
   const handleSave = () => {
     updateSettings.mutate(formData)
     Object.entries(pluginStates).forEach(([name, state]) => {
-      updatePlugin.mutate({ name, config: { enabled: state.enabled } })
+      updatePlugin.mutate({ name, config: { enabled: state.enabled, ...state.config } })
     })
+    toast.success('Settings saved')
   }
 
   const getSettingValue = (key: string): string => {
@@ -219,36 +232,108 @@ export default function Settings() {
       <motion.div variants={itemVariants} className="mt-8">
         <h2 className="text-2xl font-bold mb-4">Plugins</h2>
 
-        <Card>
-          <CardContent className="pt-6">
-            {plugins && plugins.length > 0 ? (
-              <div className="space-y-3">
-                {plugins.map((plugin) => (
-                  <motion.div
-                    key={plugin.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center justify-between p-3 border border-border rounded-lg hover:shadow-md transition-all"
-                  >
-                    <div>
-                      <p className="font-medium">{plugin.name}</p>
-                      <p className="text-sm text-muted-foreground">v{plugin.version}</p>
+        <div className="space-y-4">
+          {plugins && plugins.length > 0 ? (
+            plugins.map((plugin) => (
+              <Card key={plugin.id}>
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    {/* Error Banner */}
+                    {plugin.last_error && (
+                      <div className="flex gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950">
+                        <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-600 dark:text-red-400" />
+                        <div className="text-sm text-red-900 dark:text-red-100">
+                          <p className="font-medium">Error</p>
+                          <p>{plugin.last_error}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Plugin Header */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{plugin.name}</p>
+                        <p className="text-sm text-muted-foreground">v{plugin.version}</p>
+                      </div>
+                      <Switch
+                        aria-label={plugin.name}
+                        checked={pluginStates[plugin.name]?.enabled ?? plugin.enabled}
+                        onCheckedChange={(checked) =>
+                          handlePluginToggle(plugin.name, checked)
+                        }
+                      />
                     </div>
-                    <Switch
-                      aria-label={plugin.name}
-                      checked={pluginStates[plugin.name]?.enabled ?? plugin.enabled}
-                      onCheckedChange={(checked) =>
-                        handlePluginToggle(plugin.name, checked)
-                      }
-                    />
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-muted-foreground">No plugins installed</p>
-            )}
-          </CardContent>
-        </Card>
+
+                    {/* Config Schema Fields */}
+                    {plugin.config_schema?.fields && plugin.config_schema.fields.length > 0 && (
+                      <div className="border-t pt-4 space-y-3">
+                        {plugin.config_schema.fields.map((field) => (
+                          <div key={field.key} className="space-y-2">
+                            <div className="flex items-center gap-1">
+                              <Label htmlFor={`${plugin.name}-${field.key}`} className="text-sm">
+                                {field.label}
+                              </Label>
+                              {field.help && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button type="button" tabIndex={-1} className="text-muted-foreground hover:text-foreground" aria-label="Help">
+                                      <Info className="h-3.5 w-3.5" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="text-sm">{field.help}</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                            {field.type === 'boolean' ? (
+                              <Switch
+                                id={`${plugin.name}-${field.key}`}
+                                checked={(pluginStates[plugin.name]?.config?.[field.key] as boolean) ?? false}
+                                onCheckedChange={(checked) =>
+                                  handlePluginConfigChange(plugin.name, field.key, checked)
+                                }
+                              />
+                            ) : (
+                              <Input
+                                id={`${plugin.name}-${field.key}`}
+                                type={field.type === 'number' ? 'number' : 'text'}
+                                value={(pluginStates[plugin.name]?.config?.[field.key] as string) ?? ''}
+                                onChange={(e) =>
+                                  handlePluginConfigChange(
+                                    plugin.name,
+                                    field.key,
+                                    field.type === 'number' ? (e.target.value ? Number(e.target.value) : null) : e.target.value
+                                  )
+                                }
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-muted-foreground">No plugins installed</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Rugby Section */}
+        {plugins?.find((p) => p.name === 'rugby' && p.enabled) && (
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-lg">Rugby Plugin</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RugbyMatchReview />
+            </CardContent>
+          </Card>
+        )}
       </motion.div>
 
       {/* Save Button */}

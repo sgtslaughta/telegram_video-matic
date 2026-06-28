@@ -4,6 +4,8 @@ import { Info } from 'lucide-react'
 import { useSubscription, useCreateSubscription, useUpdateSubscription } from '@/hooks/useSubscriptions'
 import { useChannels, useTopics } from '@/hooks/useChannels'
 import { useSubscriptionEditor } from '@/hooks/useSubscriptionEditor'
+import { useRugbyLeagues, useSetSubscriptionLeague } from '@/hooks/useRugby'
+import { usePlugins } from '@/hooks/usePlugins'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -87,6 +89,11 @@ export default function SubscriptionEditor() {
   const s = editor.state
 
   const topics = useTopics(s.channelId)
+  const { data: plugins } = usePlugins()
+  const rugbyEnabled = plugins?.find((p) => p.name === 'rugby')?.enabled ?? false
+  const { data: rugbyLeagues } = useRugbyLeagues()
+  const [selectedLeague, setSelectedLeague] = useState<number | null>(null)
+  const setSubscriptionLeague = useSetSubscriptionLeague()
 
   // Regex tester — mirrors backend re.search (substring, case-insensitive).
   const [testStr, setTestStr] = useState('')
@@ -133,15 +140,23 @@ export default function SubscriptionEditor() {
     }
 
     try {
+      let subId: number
       if (isNew) {
-        await createMutation.mutateAsync({
+        const result = await createMutation.mutateAsync({
           channel_id: s.channelId, topic_id: s.topicId, enabled: true, mode: 'immediate', ...common,
         } as T.SubscriptionCreateRequest)
+        subId = result.id
         toast.success('Subscription created')
       } else {
         await updateMutation.mutateAsync(common as T.SubscriptionUpdateRequest)
+        subId = parseInt(id!)
         toast.success('Subscription updated')
       }
+
+      if (rugbyEnabled && selectedLeague !== null) {
+        await setSubscriptionLeague.mutateAsync({ subId, leagueId: selectedLeague })
+      }
+
       navigate('/subscriptions')
     } catch (e) {
       toast.error((e as Error).message)
@@ -369,6 +384,29 @@ export default function SubscriptionEditor() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Rugby League */}
+      {rugbyEnabled && rugbyLeagues && (
+        <Card>
+          <CardHeader><CardTitle className="text-lg">Rugby League</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <FieldLabel tip="Optionally link this subscription to a rugby league for automatic match detection.">
+                League
+              </FieldLabel>
+              <Combobox
+                value={selectedLeague?.toString() || ''}
+                onChange={(v) => setSelectedLeague(v ? parseInt(v) : null)}
+                placeholder="— None —"
+                options={[
+                  { value: '', label: '— None —' },
+                  ...rugbyLeagues.map((l) => ({ value: l.id.toString(), label: l.name })),
+                ]}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Storage & Naming */}
       <Card>

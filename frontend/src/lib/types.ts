@@ -274,7 +274,17 @@ export interface PluginRead {
   name: string;
   version: string;
   enabled: boolean;
+  last_error?: string | null;
+  status?: Record<string, unknown> | null;
   config?: Record<string, unknown> | null;
+  config_schema?: {
+    fields: Array<{
+      key: string;
+      type: 'string' | 'number' | 'boolean';
+      label: string;
+      help?: string;
+    }>;
+  } | null;
   installed_at: string; // ISO datetime
 }
 
@@ -329,4 +339,46 @@ export interface MessageDetail {
   date_posted: string | null;
   reactions: MessageReaction[];
   comments: MessageComment[];
+}
+
+// ============================================================================
+// Rugby Plugin Types
+// ============================================================================
+
+export interface RugbyLeague {
+  id: number;
+  name: string;
+  slug: string;
+  category: string;
+  tracked: boolean;
+  badge_url?: string | null;
+}
+
+export interface RugbyFixture {
+  id: number;
+  season: string;   // e.g. "2025-2026"
+  round: string;    // e.g. "1"
+  home_name: string;
+  away_name: string;
+  date: string | null; // ISO datetime
+}
+
+export interface RugbyMatch {
+  media_id: number;
+  fixture_id?: number | null;
+  league_id: number;
+  season: string | null;
+  round: string | null;
+  home_name: string | null;
+  away_name: string | null;
+  confidence: number; // 0.0-1.0
+  status: 'auto' | 'needs_review' | 'confirmed' | 'rejected';
+}
+
+export interface RugbyStatus {
+  last_error?: string | null;
+  status?: Record<string, unknown> | null;
+  leagues?: RugbyLeague[];
+  tracked?: number;
+  needs_review?: number;
 }
