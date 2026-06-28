@@ -11,6 +11,7 @@
   <Category>MediaServer</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/sgtslaughta/telegram_video-matic/main/unraid/tvm.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/sgtslaughta/telegram_video-matic/main/unraid/icon.png</Icon>
   <Description>
     Self-hosted Telegram media downloader with automatic channel/topic monitoring,
     smart naming for Jellyfin/Plex, retry logic, and pruning. Single container, one port.
