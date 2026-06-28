@@ -1027,3 +1027,23 @@ async def test_set_credentials_builds_client_and_enables_login(mock_client, mock
     mock_client.send_code_request = AsyncMock(return_value=MagicMock(phone_code_hash="h"))
     await service.start_login("+1234567890")
     mock_client.send_code_request.assert_awaited_once_with("+1234567890")
+
+
+@pytest.mark.asyncio
+async def test_thumb_b64_for_caches(mock_client, mock_account_repo):
+    """Second call for the same (channel, msg) is served from the LRU — no refetch."""
+    mock_client.get_messages = AsyncMock(return_value=MagicMock())
+    service = TelegramService(
+        account_repo=mock_account_repo,
+        client_factory=lambda *a: mock_client,
+    )
+    service.client = mock_client
+    service._channel_input = AsyncMock(return_value="entity")
+    service.fetch_thumb = AsyncMock(return_value="B64DATA")
+
+    first = await service.thumb_b64_for(111, 222)
+    second = await service.thumb_b64_for(111, 222)
+
+    assert first == "B64DATA" and second == "B64DATA"
+    mock_client.get_messages.assert_awaited_once()  # only the first call hit Telegram
+    service.fetch_thumb.assert_awaited_once()

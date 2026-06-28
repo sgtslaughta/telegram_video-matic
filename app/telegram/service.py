@@ -2,6 +2,7 @@ import asyncio
 import base64
 import inspect
 import pathlib
+from collections import OrderedDict
 from typing import Callable, Optional
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -41,6 +42,10 @@ class TelegramService:
         self._login_lock = asyncio.Lock()
         self._phone_code_hash: Optional[str] = None
         self.event_sink = event_sink
+        # Browse thumbnails are otherwise re-fetched from Telegram (2 RPCs each)
+        # on every request. Bounded in-memory LRU; small (~KB each), lost on
+        # restart. ponytail: in-memory, swap for a table if cross-restart matters.
+        self._thumb_cache: "OrderedDict[tuple[int, int], str]" = OrderedDict()
 
     async def load_account(self) -> None:
         """Load Account from DB; build client whenever API credentials exist.
@@ -294,18 +299,32 @@ class TelegramService:
         # Iterator exhausted -> reached the end of the channel/topic.
         return items, last_id, False
 
+    _THUMB_CACHE_MAX = 1024
+
     async def thumb_b64_for(self, channel_tg_id: int, msg_id: int) -> Optional[str]:
-        """Resolve a message by id and return its thumbnail as base64, or None."""
+        """Resolve a message by id and return its thumbnail as base64, or None.
+        Cached in a bounded LRU so repeat/Browse renders don't re-hit Telegram."""
         if not self.client:
             return None
+        key = (channel_tg_id, msg_id)
+        cached = self._thumb_cache.get(key)
+        if cached is not None:
+            self._thumb_cache.move_to_end(key)
+            return cached
         try:
             entity = await self._channel_input(channel_tg_id)
             msg = await self.client.get_messages(entity, ids=msg_id)
             if not msg:
                 return None
-            return await self.fetch_thumb(msg)
+            b64 = await self.fetch_thumb(msg)
         except Exception:
             return None
+        if b64:
+            self._thumb_cache[key] = b64
+            self._thumb_cache.move_to_end(key)
+            if len(self._thumb_cache) > self._THUMB_CACHE_MAX:
+                self._thumb_cache.popitem(last=False)
+        return b64
 
     async def iter_media(
         self,
