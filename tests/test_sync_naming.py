@@ -1,7 +1,59 @@
 """Test suite for app/sync/naming.py — season/episode detection and path rendering."""
 
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
 import pytest
-from app.sync.naming import detect_season_episode, render_path
+from app.sync.naming import choose_target_path, detect_season_episode, render_path
+
+
+def _item(file_name=None, caption=None):
+    return SimpleNamespace(
+        file_name=file_name, caption=caption, tg_msg_id=42,
+        date_posted=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+
+
+def _sub(template, season_detection=True):
+    return SimpleNamespace(
+        rename_template=template, season_detection=season_detection,
+        channel=SimpleNamespace(title="Rugby HD"), topic=None,
+    )
+
+
+class TestChooseTargetPath:
+    """choose_target_path() decides template-vs-original and merges plugin tokens."""
+
+    def test_no_pattern_no_extra_keeps_original(self):
+        path, season, ep, used = choose_target_path(
+            _item("match.mp4"), _sub("{channel}/{title}{ext}"), {})
+        assert path == "match.mp4" and used is False and season is None
+
+    def test_season_episode_uses_template(self):
+        path, season, ep, used = choose_target_path(
+            _item("Show.S02E05.mp4"), _sub("S{season:02d}E{episode:02d}{ext}"), {})
+        assert path == "S02E05.mp4" and (season, ep) == (2, 5) and used is True
+
+    def test_extra_tokens_force_template_without_pattern(self):
+        """Plugin-supplied tokens (rugby) trigger the template even with no S/E."""
+        extra = {"rugby_league": "Prem", "home": "Sale", "away": "Gloucester"}
+        path, season, ep, used = choose_target_path(
+            _item("sale v glos.mp4"),
+            _sub("{rugby_league}/{home} vs {away}{ext}"),
+            extra,
+        )
+        assert path == "Prem/Sale vs Gloucester.mp4" and used is True
+
+    def test_extra_tokens_work_even_if_season_detection_off(self):
+        extra = {"home": "Bath", "away": "Sale"}
+        path, _s, _e, used = choose_target_path(
+            _item("x.mp4"), _sub("{home}-{away}{ext}", season_detection=False), extra)
+        assert path == "Bath-Sale.mp4" and used is True
+
+    def test_pattern_ignored_when_season_detection_off_and_no_extra(self):
+        path, _s, _e, used = choose_target_path(
+            _item("Show.S01E01.mp4"), _sub("{title}{ext}", season_detection=False), {})
+        assert path == "Show.S01E01.mp4" and used is False
 
 
 class TestDetectSeasonEpisode:

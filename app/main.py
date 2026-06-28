@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.config import Settings
 from app.crypto import init_crypto
-from app.db.engine import init_engine, create_tables, get_session_factory
+from app.db.engine import init_engine, create_tables, get_session_factory, get_engine
 from app.utils.log import log
 from app.api import routers
 from app.api.ws import WSHub, websocket_endpoint
@@ -51,6 +51,9 @@ async def lifespan(app: FastAPI):
     except RuntimeError as e:
         log(f"Session factory init failed: {e}", "ERROR")
         raise
+    # Expose early so plugin contexts (lazy session) and get_db can resolve it.
+    app.state.session_factory = session_factory
+    app.state.async_session = session_factory
 
     # Seed default settings rows so the Settings page has editable values.
     try:
@@ -105,14 +108,35 @@ async def lifespan(app: FastAPI):
         log(f"Telegram service init failed: {e}", "ERROR")
         app.state.tg_service = None
 
-    # Build PluginHost
+    # Build PluginHost with dependency injection: each plugin gets a context
+    # (DB session, config, logger). discover() loads classes; sync_db() applies
+    # the stored enabled/config; create_models() creates plugin-owned tables.
     try:
-        plugin_host = PluginHost()
+        from app.sync.plugins import PluginContext
+
+        def _ctx_factory(name, config):
+            return PluginContext(
+                name=name, config=config, settings=settings,
+                media_root=settings.media_root,
+                # Lazy: resolved at call time so it works for the app's lifetime.
+                session_factory=lambda: app.state.async_session(),
+            )
+
+        plugin_host = PluginHost(ctx_factory=_ctx_factory)
         plugin_host.discover()
+        await plugin_host.sync_db(session_factory)
+        await plugin_host.create_models(await get_engine())
+        await create_tables()  # additive reconcile for any new plugin columns
+        for entry in plugin_host.entries:
+            if entry.enabled:
+                try:
+                    await entry.instance.on_enable()
+                except Exception as ex:  # noqa: BLE001
+                    log(f"Plugin {entry.name} on_enable failed: {ex}", "WARN")
         app.state.plugin_host = plugin_host
         log("Plugin host ready", "SUCCESS")
     except Exception as e:
-        log(f"Plugin discovery failed: {e}", "ERROR")
+        log(f"Plugin host wiring failed: {e}", "ERROR")
         app.state.plugin_host = PluginHost()
 
     # Build SyncEngine

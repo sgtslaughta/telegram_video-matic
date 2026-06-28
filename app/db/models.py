@@ -264,6 +264,11 @@ class Plugin(Base, TimestampMixin):
     version: Mapped[str] = mapped_column(String(32), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Health surface (set by the host): whether it imported, last error message,
+    # and a free-form status snapshot for the UI.
+    loaded_ok: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_error: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    status: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     installed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

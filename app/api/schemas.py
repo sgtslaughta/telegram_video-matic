@@ -285,6 +285,11 @@ class PluginRead(BaseModel):
     enabled: bool
     config: Optional[dict] = None
     installed_at: datetime
+    # Health surface + generic-settings-form schema (overlaid from the host).
+    loaded_ok: bool = True
+    last_error: Optional[str] = None
+    status: Optional[dict] = None
+    config_schema: Optional[dict] = None
 
 
 class PluginPatchRequest(BaseModel):

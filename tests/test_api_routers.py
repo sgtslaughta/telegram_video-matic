@@ -935,6 +935,48 @@ async def test_plugins_patch():
     await engine.dispose()
 
 
+@pytest.mark.asyncio
+async def test_plugins_patch_enable_runs_host_lifecycle():
+    """PATCH enabled=true persists AND drives the host (lifecycle + dispatch gate)."""
+    from types import SimpleNamespace
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.db.models import Base, Plugin
+    from app.db.repositories.plugins import get_by_name
+    from app.sync.plugins import PluginBase, PluginContext, PluginHost
+    from app.api.routers.plugins import patch_plugin
+    from app.api.schemas import PluginPatchRequest
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as s:
+        s.add(Plugin(name="rec", version="1.0", enabled=False))
+        await s.commit()
+
+    enabled_flag = {"v": False}
+
+    class _Rec(PluginBase):
+        name = "rec"
+        async def on_enable(self):
+            enabled_flag["v"] = True
+
+    host = PluginHost()
+    host.register(_Rec(PluginContext(name="rec", config={})), enabled=False)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+        plugin_host=host, session_factory=factory)))
+
+    async with factory() as db:
+        await patch_plugin("rec", PluginPatchRequest(enabled=True), request, db)
+
+    assert enabled_flag["v"] is True
+    assert host._entry("rec").enabled is True
+    async with factory() as s:
+        assert (await get_by_name(s, "rec")).enabled is True
+    await engine.dispose()
+
+
 # ============================================================================
 # TASK 14: Real-Wiring Test (App Factory + Lifespan)
 # ============================================================================

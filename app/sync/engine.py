@@ -12,7 +12,7 @@ from telethon.errors import FloodWaitError
 from app.db.models import SubMode, FilterMode, MediaStatus, EventLevel, JobStatus, Channel, Topic
 from app.db.repositories import subscriptions, media, events, downloads
 from app.telegram.dtos import ChannelDTO, TopicDTO
-from app.sync.naming import detect_season_episode, render_path
+from app.sync.naming import choose_target_path
 from app.hashing import quick_hash
 
 
@@ -89,9 +89,6 @@ def _write_jellyfin_nfo(target_full, item, show_title, season, episode) -> None:
             f"  <premiered>{aired}</premiered>\n  <runtime>{runtime}</runtime>\n</movie>\n",
             encoding="utf-8",
         )
-
-# ponytail: regex compiled once, explicit season/episode pattern detection
-_SE_PATTERN = re.compile(r'(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)', re.IGNORECASE)
 
 
 def classify(subscription, media, today: Optional[str] = None) -> Tuple[str, Optional[str]]:
@@ -460,32 +457,14 @@ class SyncEngine:
                                     await session.commit()
                                     return
 
-                                # FIX 1: Explicit season/episode detection decision
-                                # Check if filename/caption has S/E pattern
-                                text = item.file_name or item.caption or ""
-                                has_pattern = bool(_SE_PATTERN.search(text))
-                                use_template = bool(sub and sub.season_detection) and has_pattern
-
-                                if use_template:
-                                    # Pattern found and detection enabled: use template with season/episode
-                                    season, episode = detect_season_episode(text)
-                                    title = item.file_name.rsplit(".", 1)[0] if item.file_name else "unknown"
-                                    ext = "." + item.file_name.rsplit(".", 1)[-1] if item.file_name else ""
-
-                                    tokens = {
-                                        "channel": sub.channel.title or "Unknown",
-                                        "topic": sub.topic.title if sub.topic else "General",
-                                        "season": season,
-                                        "episode": episode,
-                                        "title": title,
-                                        "ext": ext,
-                                        "original": item.file_name or "unknown",
-                                        "date": item.date_posted.isoformat() if item.date_posted else "",
-                                    }
-                                    target_path = render_path(sub.rename_template, tokens)
-                                else:
-                                    # No pattern found OR detection disabled: keep original filename
-                                    target_path = item.file_name or f"{item.tg_msg_id}.mp4"
+                                # Naming: plugins may contribute tokens (e.g. rugby
+                                # league/season/teams) that trigger the template even
+                                # without an S##E## marker. choose_target_path merges
+                                # them and decides template-vs-original.
+                                extra = (await self.plugin_host.collect_naming_tokens(item, sub)
+                                         if (self.plugin_host and sub) else {})
+                                target_path, season, episode, use_template = choose_target_path(
+                                    item, sub, extra)
 
                                 storage_base = sub.storage_path if sub else self.download_root
                                 target_full = Path(storage_base) / target_path
