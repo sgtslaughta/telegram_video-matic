@@ -294,3 +294,9 @@ export const rugby = {
       body: JSON.stringify({ league_id: leagueId, text }),
     }),
 }
+
+// Server-side directory browse for the storage-path picker (sandboxed to MEDIA_ROOT).
+export const fs = {
+  listDirs: (path?: string) =>
+    fetchAPI<T.FsDirs>('/fs/dirs', path ? { params: { path } } : undefined),
+}

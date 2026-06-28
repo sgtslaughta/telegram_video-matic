@@ -423,3 +423,10 @@ export interface RugbyPreview {
     rugby_sport?: string;
   };
 }
+
+export interface FsDirs {
+  root: string;
+  path: string;
+  parent: string | null;
+  dirs: string[];
+}

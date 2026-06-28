@@ -10,6 +10,7 @@ from . import (
     events,
     settings,
     plugins,
+    fs,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "events",
     "settings",
     "plugins",
+    "fs",
 ]

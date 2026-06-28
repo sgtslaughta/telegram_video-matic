@@ -188,6 +188,7 @@ def create_app() -> FastAPI:
     app.include_router(routers.events.router)
     app.include_router(routers.settings.router)
     app.include_router(routers.plugins.router)
+    app.include_router(routers.fs.router)
 
     # Build the plugin host HERE (not in lifespan) so plugin-contributed routers
     # can be mounted at startup — FastAPI can't add routes after startup. The

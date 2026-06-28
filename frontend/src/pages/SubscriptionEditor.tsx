@@ -7,6 +7,7 @@ import { useSubscriptionEditor } from '@/hooks/useSubscriptionEditor'
 import { useRugbyLeagues, useSetSubscriptionLeague, useRugbyPreview } from '@/hooks/useRugby'
 import { usePlugins } from '@/hooks/usePlugins'
 import { MediaThumb } from '@/components/shared/MediaThumb'
+import FolderPicker from '@/components/FolderPicker'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -495,8 +496,8 @@ export default function SubscriptionEditor() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <FieldLabel htmlFor="path" tip="Base folder on the server where files are saved. Must be writable.">Storage Path</FieldLabel>
-            <Input id="path" value={s.storagePath}
-              onChange={(e) => editor.update('storagePath', e.target.value)} placeholder="/media/downloads" />
+            <FolderPicker id="path" value={s.storagePath}
+              onChange={(p) => editor.update('storagePath', p)} placeholder="/media/downloads" />
           </div>
           <div className="space-y-2">
             <FieldLabel htmlFor="template" tip="Tokens: {channel} {topic} {title} {season} {episode} {date} {original} {ext}. Slashes create folders.">
