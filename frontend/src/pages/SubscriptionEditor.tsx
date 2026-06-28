@@ -29,7 +29,7 @@ const DAYS = [
 ]
 
 const SAMPLE = { channel: 'RugbyChannel', title: 'Final Match', season: 1, episode: 5, ext: 'mp4' }
-const DEFAULT_TEMPLATE = '{channel}/{title}.{ext}'
+const DEFAULT_TEMPLATE = '{channel}/{title}{ext}'
 
 // ponytail: simple token replacement for preview rendering
 function renderTemplate(template: string, tokens: Record<string, string | undefined>): string {

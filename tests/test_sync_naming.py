@@ -103,6 +103,14 @@ class TestRenderPath:
         )
         assert result == "Show/Season 01/Show - S01E02.mkv"
 
+    def test_render_path_collapses_doubled_dot_extension(self):
+        """A '{title}.{ext}' template (ext already has the dot) must not yield '..'."""
+        result = render_path(
+            "{channel}/{title}.{ext}",
+            {"channel": "Ch", "title": "Match", "ext": ".mp4"},
+        )
+        assert result == "Ch/Match.mp4"
+
     def test_render_path_missing_token_fallback_to_original(self):
         """Fallback to {original} when token missing."""
         result = render_path(

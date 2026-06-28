@@ -64,12 +64,17 @@ def render_path(template: str, tokens: dict[str, str | int]) -> str:
         ValueError: If template contains missing tokens and no {original} fallback.
     """
     try:
-        return template.format(**tokens)
+        rendered = template.format(**tokens)
     except KeyError:
         # Fallback to {original}
         if "original" in tokens:
             return tokens["original"]
         raise ValueError(f"Template contains missing tokens and no fallback: {template}")
+    # Collapse accidental doubled dots in the filename (e.g. a "{title}.{ext}"
+    # template where {ext} already carries the leading dot -> "name..mp4").
+    # Only the last path segment, so directory names are untouched.
+    head, sep, tail = rendered.rpartition("/")
+    return head + sep + re.sub(r"\.{2,}", ".", tail)
 
 
 def choose_target_path(item, sub, extra: dict | None = None):
