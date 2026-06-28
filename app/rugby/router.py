@@ -55,6 +55,11 @@ async def refresh_league(league_id: int, request: Request, bg: BackgroundTasks):
     return {"scheduled": True}
 
 
+@router.get("/leagues/{league_id}/fixtures")
+async def fixtures(league_id: int, request: Request, season: str | None = None):
+    return await _service(request).list_fixtures(league_id, season=season)
+
+
 @router.get("/matches")
 async def matches(request: Request, status: str | None = "needs_review"):
     return await _service(request).list_matches(status=status)

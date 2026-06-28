@@ -246,6 +246,16 @@ class RugbyService:
                      "category": lg.category, "tracked": lg.tracked,
                      "badge_url": lg.badge_url} for lg in rows]
 
+    async def list_fixtures(self, league_id, season=None):
+        async with self.ctx.session() as s:
+            q = select(RugbyFixture).where(RugbyFixture.league_id == league_id)
+            if season:
+                q = q.where(RugbyFixture.season == season)
+            rows = (await s.execute(q.order_by(RugbyFixture.date))).scalars().all()
+            return [{"id": f.id, "season": f.season, "round": f.round,
+                     "home_name": f.home_name, "away_name": f.away_name,
+                     "date": f.date.isoformat() if f.date else None} for f in rows]
+
     async def list_matches(self, status=None):
         async with self.ctx.session() as s:
             q = select(RugbyMatch)
