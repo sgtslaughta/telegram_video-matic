@@ -9,3 +9,8 @@ media/
 .env
 node_modules/
 frontend/dist/
+
+# stray local sqlite db at repo root
+tvm.sqlite
+*.sqlite
+*.sqlite-*
