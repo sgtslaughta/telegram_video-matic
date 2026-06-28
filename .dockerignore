@@ -27,6 +27,7 @@ tests/
 docs/
 .dockerignore
 docker/
+!docker/entrypoint.sh
 compose.yml
 docker-compose.yml
 requirements-dev.txt

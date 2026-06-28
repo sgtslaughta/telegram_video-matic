@@ -40,6 +40,18 @@
   </Data>
   <Environment>
     <Variable>
+      <Name>PUID</Name>
+      <Description>User ID the app runs as; must own the appdata dir. Unraid default: 99 (nobody).</Description>
+      <Default>99</Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
+      <Name>PGID</Name>
+      <Description>Group ID the app runs as; must own the appdata dir. Unraid default: 100 (users).</Description>
+      <Default>100</Default>
+      <Mode></Mode>
+    </Variable>
+    <Variable>
       <Name>TVM_SECRET_KEY</Name>
       <Description>Encryption key for storing Telegram API credentials. Required. Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"</Description>
       <Default></Default>
@@ -83,6 +95,6 @@
     </Variable>
   </Environment>
   <Labels>
-    <Label>telegram-video-matic.version=1.0.0</Label>
+    <Label>telegram-video-matic.version=1.0.2</Label>
   </Labels>
 </Container>

@@ -36,10 +36,8 @@ LABEL org.opencontainers.image.title="Telegram Video-Matic" \
       org.opencontainers.image.source="https://github.com/sgtslaughta/telegram_video-matic"
 
 # Runtime shared libs (cffi loads libffi.so; cryptography's wheel bundles OpenSSL).
-RUN apk add --no-cache libffi
-
-# Non-root user.
-RUN addgroup -S tvm && adduser -S -G tvm -h /app tvm
+# su-exec drops root → PUID:PGID in the entrypoint (Unraid bind-mount ownership).
+RUN apk add --no-cache libffi su-exec
 
 # Bring in the prebuilt virtualenv.
 COPY --from=pydeps /opt/venv /opt/venv
@@ -56,9 +54,10 @@ COPY plugins/ ./plugins/
 COPY alembic.ini .
 COPY --from=frontend /build/dist ./frontend/dist
 
-# Data + media volumes, owned by the runtime user.
-RUN mkdir -p /data /media && chown -R tvm:tvm /app /data /media
-USER tvm
+# Data + media volume mountpoints; runtime ownership is set by the entrypoint.
+RUN mkdir -p /data /media
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
@@ -66,4 +65,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').getcode()==200 else 1)"
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Entrypoint chowns volumes to PUID:PGID and drops root, then runs the app
+# (which preflights env/data-dir and emits clear errors, no traceback).
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python", "-m", "app"]
