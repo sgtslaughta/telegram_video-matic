@@ -4,6 +4,10 @@ sqlalchemy[asyncio]==2.0.51
 aiosqlite==0.22.1
 alembic==1.18.4
 telethon==1.44.0
+# C-accelerated MTProto crypto (AES-IGE). Without it Telethon falls back to
+# pure-Python AES on the event loop, pegging one core during downloads and
+# starving the API. Telethon auto-detects it on import.
+cryptg==0.6.0
 cryptography==49.0.0
 pydantic==2.13.4
 pydantic-settings==2.14.2

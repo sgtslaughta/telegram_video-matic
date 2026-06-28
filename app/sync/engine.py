@@ -382,6 +382,7 @@ class SyncEngine:
                             try:  # Download attempt
                                 # Throttle broadcast to ~1 Hz; track last sample for speed/ETA.
                                 last_broadcast_time = [None]
+                                last_db_time = [None]  # DB-persist throttle (slower than broadcast)
                                 last_bytes = [0]
                                 ema_speed = [None]  # smoothed bytes/sec
 
@@ -412,10 +413,16 @@ class SyncEngine:
                                                     eta_sec = int((total_bytes - current_bytes) / speed_bps)
                                         last_broadcast_time[0] = now
                                         last_bytes[0] = current_bytes
-                                        await downloads.update_progress(
-                                            session, job.id, current_bytes,
-                                            eta_sec=eta_sec, speed_bps=speed_bps,
-                                        )
+                                        # Persist to the DB at most every ~5s to ease SQLite
+                                        # write pressure under concurrent downloads; the WS
+                                        # broadcast below still fires every ~1s for the live UI.
+                                        if (last_db_time[0] is None
+                                                or (now - last_db_time[0]).total_seconds() >= 5.0):
+                                            last_db_time[0] = now
+                                            await downloads.update_progress(
+                                                session, job.id, current_bytes,
+                                                eta_sec=eta_sec, speed_bps=speed_bps,
+                                            )
                                         await self.broadcast({
                                             "kind": "download_progress",
                                             "job_id": job.id,
@@ -440,7 +447,7 @@ class SyncEngine:
                                 # Quick content hash -> dedup: if an identical file
                                 # is already on disk (renamed, or grabbed by another
                                 # sub), relink instead of storing a second copy.
-                                file_hash = quick_hash(temp_file)
+                                file_hash = await asyncio.to_thread(quick_hash, temp_file)
                                 dup = (await media.find_downloaded_by_hash(session, file_hash, exclude_id=item.id)
                                        if file_hash else None)
                                 if dup and dup.local_path and Path(dup.local_path).exists():
@@ -469,9 +476,11 @@ class SyncEngine:
                                 storage_base = sub.storage_path if sub else self.download_root
                                 target_full = Path(storage_base) / target_path
 
-                                # Move file into place
+                                # Move file into place. Offloaded to a thread: a
+                                # cross-filesystem move becomes a full copy, which would
+                                # otherwise block the shared event loop (and the API).
                                 target_full.parent.mkdir(parents=True, exist_ok=True)
-                                shutil.move(temp_file, str(target_full))
+                                await asyncio.to_thread(shutil.move, temp_file, str(target_full))
 
                                 # Jellyfin/Kodi .nfo sidecar (opt-in per sub)
                                 if sub and sub.jellyfin_metadata:
