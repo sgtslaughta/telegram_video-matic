@@ -173,7 +173,7 @@ def create_app() -> FastAPI:
     """Create and configure FastAPI app."""
     app = FastAPI(
         title="Telegram Video-Matic",
-        version="1.0.5",
+        version="1.0.6",
         lifespan=lifespan,
     )
 
