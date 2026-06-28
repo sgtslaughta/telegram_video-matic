@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, BookOpen, Compass, DownloadCloud, ActivitySquare, Settings, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import Logo from '@/components/Logo'
 import { useActiveDownloads, useQueuedDownloads } from '@/hooks/useDownloads'
 
 export default function Sidebar({
@@ -29,7 +30,8 @@ export default function Sidebar({
 
   return (
     <nav className="flex h-screen w-60 flex-col border-r border-border bg-card">
-      <div className="flex h-16 items-center border-b border-border px-6">
+      <div className="flex h-16 items-center gap-2 border-b border-border px-6">
+        <Logo className="h-6 w-6" style={{ color: 'var(--accent)' }} />
         <h1 className="text-lg font-semibold tracking-tight">Video-Matic</h1>
       </div>
       <div className="flex-1 space-y-1 p-3">

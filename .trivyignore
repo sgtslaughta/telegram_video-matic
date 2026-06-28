@@ -1,0 +1,6 @@
+# AVD-DS-0002: "Image user should not be root."
+# Intentional: the entrypoint (docker/entrypoint.sh) MUST start as root to chown
+# the bind-mounted /data and /media to PUID:PGID for Unraid, then drops privileges
+# via su-exec before running the app. The container does not run the app as root.
+AVD-DS-0002
+DS002

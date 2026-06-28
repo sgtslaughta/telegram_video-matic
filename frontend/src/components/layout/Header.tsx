@@ -3,7 +3,6 @@ import { useTheme } from '@/hooks/useTheme'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import AccentPicker from '@/components/AccentPicker'
-import Logo from '@/components/Logo'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -25,14 +24,6 @@ export default function Header({
 
   return (
     <header className="flex h-16 items-center gap-4 border-b border-border bg-background px-6">
-      <a
-        href="/"
-        className="flex items-center gap-2 font-semibold tracking-tight"
-        style={{ color: 'var(--accent)' }}
-      >
-        <Logo className="h-7 w-7" />
-        Video-Matic
-      </a>
       <div className="ml-auto flex items-center gap-2">
         <Badge
           variant="outline"
