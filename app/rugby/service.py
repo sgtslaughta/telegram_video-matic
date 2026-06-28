@@ -365,7 +365,10 @@ class RugbyService:
             return None
         league = tokens.get("rugby_league") or "Rugby"
         season = tokens.get("rugby_season") or ""
-        parts = [league] + ([season] if season else []) + [f"{home} vs {away}{ext}"]
+        rnd = (tokens.get("rugby_round") or "").strip()
+        label = f"Round {int(rnd):02d}" if rnd.isdigit() else (rnd or "Match")
+        fname = f"{label} - {home} vs {away}{ext}"
+        parts = [league] + ([season] if season else []) + [fname]
         return "/".join(parts)
 
 
@@ -722,11 +725,20 @@ class RugbyService:
                 fx = await s.get(RugbyFixture, m.fixture_id) if m.fixture_id else None
                 home_badge = await self._team_badge(s, fx.home_team_id) if fx else None
                 away_badge = await self._team_badge(s, fx.away_team_id) if fx else None
-            aired = item.date_posted.date().isoformat() if item.date_posted else ""
-            nfo = _build_episode_nfo(m, fx, league, home_badge, away_badge, aired)
-            Path(path).with_suffix(".nfo").write_text(nfo, encoding="utf-8")
+            runtime_min = int((item.duration_sec or 0) / 60)
+            dateadded = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            nfo = _build_episode_nfo(m, fx, league, home_badge, away_badge,
+                                     runtime_min, dateadded)
+            p = Path(path)
+            p.with_suffix(".nfo").write_text(nfo, encoding="utf-8")
+            # Series-level tvshow.nfo at the league root (path = league/season/file)
+            # so the folder is recognized as a show and episodes order by round.
+            show_root = p.parent.parent
+            tv = show_root / "tvshow.nfo"
+            if show_root.exists() and not tv.exists():
+                tv.write_text(_build_tvshow_nfo(league), encoding="utf-8")
             if home_badge:
-                await scraper.download_logo(home_badge, str(Path(path).parent / "poster.jpg"))
+                await scraper.download_logo(home_badge, str(p.parent / "poster.jpg"))
         except Exception as ex:  # noqa: BLE001 - artwork is best-effort
             await self.ctx.log("warning", "rugby", f"Jellyfin write failed: {ex}")
 
@@ -826,38 +838,110 @@ class RugbyService:
                 "leagues": leagues, "tracked": tracked, "needs_review": review}
 
 
-def _build_episode_nfo(match, fixture, league, home_badge, away_badge, aired) -> str:
-    """Kodi/Jellyfin episodedetails with the two teams as <actor> (badge=thumb)."""
+def _episode_number(match, fixture):
+    """(episode_int, round_label). Numeric rounds map straight to the episode
+    number so Jellyfin orders by round. Non-numeric rounds (finals) are pushed
+    after the regular season and ordered by date played, so they sort last and
+    chronologically."""
+    r = (match.round or "").strip()
+    if r.isdigit():
+        return int(r), f"Round {int(r)}"
+    base = 900
+    if fixture and fixture.date:
+        base += fixture.date.timetuple().tm_yday
+    return base, (r or "Match")
+
+
+def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
+                       runtime_min=0, dateadded="") -> str:
+    """Fully-populated Kodi/Jellyfin episodedetails: ordered by round/date,
+    teams as actors, league as show/studio, played date as premiered/aired."""
     home = match.home_name or ""
     away = match.away_name or ""
     league_name = league.name if league else ""
-    score = ""
-    venue = ""
+    sport = (league.sport if league and league.sport else "rugby")
+    season_int = int(match.season[:4]) if (match.season or "")[:4].isdigit() else 1
+    episode_int, label = _episode_number(match, fixture)
+
+    score = venue = ""
+    played = ""
     if fixture:
         if fixture.home_score is not None and fixture.away_score is not None:
             score = f"{fixture.home_score}-{fixture.away_score} "
         venue = f"at {fixture.venue} " if fixture.venue else ""
-    plot = f"{score}{venue}{league_name} {match.season or ''} Round {match.round or ''}".strip()
-    season_int = int(match.season[:4]) if (match.season or "")[:4].isdigit() else 1
-    episode_int = int(match.round) if (match.round or "").isdigit() else 1
+        played = fixture.date.date().isoformat() if fixture.date else ""
+    title = f"{label}: {home} vs {away}"
+    plot = f"{score}{venue}{league_name} {match.season or ''} {label}".strip()
+    sorttitle = f"{episode_int:04d} {home} vs {away}"
 
-    actors = ""
-    for name, role, thumb in ((home, "Home", home_badge), (away, "Away", away_badge)):
-        actors += (f"  <actor>\n    <name>{escape(name)}</name>\n"
-                   f"    <role>{role}</role>\n    <type>Actor</type>\n")
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        "<episodedetails>",
+        f"  <title>{escape(title)}</title>",
+        f"  <originaltitle>{escape(f'{home} vs {away}')}</originaltitle>",
+        f"  <showtitle>{escape(league_name)}</showtitle>",
+        f"  <season>{season_int}</season>",
+        f"  <episode>{episode_int}</episode>",
+        f"  <sorttitle>{escape(sorttitle)}</sorttitle>",
+        f"  <plot>{escape(plot)}</plot>",
+        f"  <outline>{escape(f'{label} - {home} vs {away}')}</outline>",
+    ]
+    if score.strip():
+        lines.append(f"  <tagline>{escape(score.strip())}</tagline>")
+    if runtime_min:
+        lines.append(f"  <runtime>{int(runtime_min)}</runtime>")
+    if played:
+        lines.append(f"  <premiered>{played}</premiered>")
+        lines.append(f"  <aired>{played}</aired>")
+    if dateadded:
+        lines.append(f"  <dateadded>{dateadded}</dateadded>")
+    if fixture:
+        lines.append(f'  <uniqueid type="thesportsdb" default="true">{fixture.id}</uniqueid>')
+    lines.append(f"  <studio>{escape(league_name)}</studio>")
+    lines.append(f"  <network>{escape(league_name)}</network>")
+    lines.append("  <genre>Rugby</genre>")
+    lines.append("  <genre>Sport</genre>")
+    if sport and sport.lower() not in ("rugby",):
+        lines.append(f"  <genre>{escape(sport.title())}</genre>")
+    for tag in (league_name, match.season, label, home, away,
+                (fixture.venue if fixture else None)):
+        if tag:
+            lines.append(f"  <tag>{escape(str(tag))}</tag>")
+    for order, (name, role, thumb) in enumerate(
+            ((home, "Home", home_badge), (away, "Away", away_badge)), start=1):
+        lines.append("  <actor>")
+        lines.append(f"    <name>{escape(name)}</name>")
+        lines.append(f"    <role>{role}</role>")
+        lines.append(f"    <order>{order}</order>")
+        lines.append("    <type>Actor</type>")
         if thumb:
-            actors += f"    <thumb>{escape(thumb)}</thumb>\n"
-        actors += "  </actor>\n"
+            lines.append(f"    <thumb>{escape(thumb)}</thumb>")
+        lines.append("  </actor>")
+    # Lock so Jellyfin keeps our metadata instead of generating its own.
+    lines.append("  <lockdata>true</lockdata>")
+    lines.append("</episodedetails>")
+    return "\n".join(lines) + "\n"
 
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n<episodedetails>\n'
-        f"  <title>{escape(f'{home} vs {away}')}</title>\n"
-        f"  <showtitle>{escape(league_name)}</showtitle>\n"
-        f"  <season>{season_int}</season>\n  <episode>{episode_int}</episode>\n"
-        f"  <plot>{escape(plot)}</plot>\n  <aired>{aired}</aired>\n"
-        f"  <studio>{escape(league_name)}</studio>\n  <genre>Rugby</genre>\n"
-        f"{actors}</episodedetails>\n"
-    )
+
+def _build_tvshow_nfo(league) -> str:
+    """Series-level tvshow.nfo so the league folder is recognized as a show."""
+    name = league.name if league else "Rugby"
+    sport = (league.sport if league and league.sport else "rugby")
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        "<tvshow>",
+        f"  <title>{escape(name)}</title>",
+        f"  <studio>{escape(name)}</studio>",
+        "  <genre>Rugby</genre>",
+        "  <genre>Sport</genre>",
+    ]
+    if sport and sport.lower() not in ("rugby",):
+        lines.append(f"  <genre>{escape(sport.title())}</genre>")
+    if league and league.id:
+        lines.append(f'  <uniqueid type="thesportsdb" default="true">{league.id}</uniqueid>')
+    lines.append("  <lockdata>true</lockdata>")
+    lines.append("</tvshow>")
+    return "\n".join(lines) + "\n"
 
 
 def _match_dict(m, src=None):

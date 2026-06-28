@@ -83,7 +83,7 @@ async def test_enrichment_keyed_by_tg_msg_id(ctx, factory):
 async def test_path_for_builds_league_season_tree(ctx, factory):
     _c, _s, item_id = await _seed(factory)
     path = await RugbyService(ctx).path_for(item_id, ".mp4")
-    assert path == "English Prem Rugby/2025-2026/Sale Sharks vs Gloucester.mp4"
+    assert path == "English Prem Rugby/2025-2026/Round 01 - Sale Sharks vs Gloucester.mp4"
 
 
 @pytest.mark.asyncio
@@ -250,7 +250,10 @@ async def test_write_jellyfin_nfo_has_team_actors(ctx, factory, tmp_path, monkey
 
     nfo = (tmp_path / "match.nfo").read_text()
     assert "<episodedetails>" in nfo
-    assert "<title>Sale Sharks vs Gloucester</title>" in nfo
+    assert "<originaltitle>Sale Sharks vs Gloucester</originaltitle>" in nfo
+    # Ordering metadata: round -> episode, season year, played date.
+    assert "<season>2025</season>" in nfo and "<episode>1</episode>" in nfo
+    assert "<premiered>2025-09-25</premiered>" in nfo
     assert "<genre>Rugby</genre>" in nfo
     # both teams as actors with their badge as thumb
     assert nfo.count("<actor>") == 2
