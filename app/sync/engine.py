@@ -53,15 +53,31 @@ class _DownloadPaused(Exception):
     """Raised mid-download when a pause was requested (keep partial)."""
 
 
-def _write_jellyfin_nfo(target_full, item, show_title, season, episode) -> None:
+def _write_jellyfin_nfo(target_full, item, show_title, season, episode, extra=None) -> None:
     """Write a Kodi/Jellyfin .nfo next to the video. episodedetails when a
-    season/episode was detected (+ tvshow.nfo at the series root), else movie."""
+    season/episode was detected (+ tvshow.nfo at the series root), else movie.
+
+    `extra` are plugin naming tokens (e.g. rugby league/teams/season); when
+    present they enrich the .nfo with genre/studio/tag so Jellyfin shows real
+    metadata. ponytail: maps known token keys directly — one plugin today, no
+    metadata-provider abstraction until a second needs it."""
     from xml.sax.saxutils import escape
+    extra = extra or {}
     title = escape(str(item.caption or item.file_name or target_full.stem or ""))
     plot = escape(str(item.caption or ""))
     aired = item.date_posted.date().isoformat() if item.date_posted else ""
     runtime = int((item.duration_sec or 0) / 60)
     nfo = target_full.with_suffix(".nfo")
+
+    meta = []
+    if extra.get("rugby_sport"):
+        meta.append(f"  <genre>{escape(str(extra['rugby_sport']).title())}</genre>")
+    if extra.get("rugby_league"):
+        meta.append(f"  <studio>{escape(str(extra['rugby_league']))}</studio>")
+    for key in ("home", "away", "rugby_season", "rugby_round"):
+        if extra.get(key):
+            meta.append(f"  <tag>{escape(str(extra[key]))}</tag>")
+    meta_xml = ("\n" + "\n".join(meta)) if meta else ""
 
     if season is not None and episode is not None:
         nfo.write_text(
@@ -70,7 +86,7 @@ def _write_jellyfin_nfo(target_full, item, show_title, season, episode) -> None:
             f"  <season>{escape(str(season))}</season>\n"
             f"  <episode>{escape(str(episode))}</episode>\n"
             f"  <plot>{plot}</plot>\n  <aired>{aired}</aired>\n"
-            f"  <runtime>{runtime}</runtime>\n</episodedetails>\n",
+            f"  <runtime>{runtime}</runtime>{meta_xml}\n</episodedetails>\n",
             encoding="utf-8",
         )
         # tvshow.nfo at the series root (grandparent = show folder above Season X)
@@ -86,7 +102,7 @@ def _write_jellyfin_nfo(target_full, item, show_title, season, episode) -> None:
         nfo.write_text(
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             f"<movie>\n  <title>{title}</title>\n  <plot>{plot}</plot>\n"
-            f"  <premiered>{aired}</premiered>\n  <runtime>{runtime}</runtime>\n</movie>\n",
+            f"  <premiered>{aired}</premiered>\n  <runtime>{runtime}</runtime>{meta_xml}\n</movie>\n",
             encoding="utf-8",
         )
 
@@ -490,6 +506,7 @@ class SyncEngine:
                                             target_full, item, show_title,
                                             season if use_template else None,
                                             episode if use_template else None,
+                                            extra,
                                         )
                                     except Exception as e:
                                         await events.add(session, level=EventLevel.WARNING,
