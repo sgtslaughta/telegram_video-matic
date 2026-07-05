@@ -2,6 +2,16 @@
 
 import re
 
+# Chars illegal on common filesystems (Windows/SMB shares included); collapsed
+# so a channel/league title is safe as a single path segment.
+_UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+
+
+def safe_segment(name: str, default: str = "Downloads") -> str:
+    """Sanitize a string into one filesystem-safe path segment."""
+    cleaned = _UNSAFE.sub(" ", (name or "")).strip(" .")
+    return cleaned or default
+
 # Matches the formats detect_season_episode understands (for a yes/no check).
 _SE_PATTERN = re.compile(
     r"(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)", re.IGNORECASE
@@ -98,7 +108,11 @@ def choose_target_path(item, sub, extra: dict | None = None):
     if not use_template:
         fallback = (item.file_name if item and item.file_name
                     else f"{getattr(item, 'tg_msg_id', 'media')}.mp4")
-        return fallback, None, None, False
+        # Always nest under a subfolder (channel/topic) so nothing lands loose
+        # in the storage root. Prefer channel title, then sub name, else default.
+        channel = (getattr(getattr(sub, "channel", None), "title", None)
+                   or getattr(sub, "name", None)) if sub else None
+        return f"{safe_segment(channel)}/{fallback}", None, None, False
 
     season, episode = detect_season_episode(text) if has_pattern else (None, None)
     title = item.file_name.rsplit(".", 1)[0] if item and item.file_name else "unknown"

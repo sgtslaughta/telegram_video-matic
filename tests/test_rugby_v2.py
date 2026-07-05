@@ -83,7 +83,55 @@ async def test_enrichment_keyed_by_tg_msg_id(ctx, factory):
 async def test_path_for_builds_league_season_tree(ctx, factory):
     _c, _s, item_id = await _seed(factory)
     path = await RugbyService(ctx).path_for(item_id, ".mp4")
-    assert path == "English Prem Rugby/2025-2026/Round 01 - Sale Sharks vs Gloucester.mp4"
+    assert path == "English Prem Rugby/Season 2025/Round 01 - Sale Sharks vs Gloucester.mp4"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_refiles_and_refreshes(ctx, factory, tmp_path, monkeypatch):
+    """A game matched AFTER download (file at its raw path) is moved to the
+    league/Season/round tree and gets full metadata on reconcile."""
+    _c, sub_id, item_id = await _seed(factory)
+
+    async def fake_logo(url, dest, **kw):
+        Path(dest).parent.mkdir(parents=True, exist_ok=True)
+        Path(dest).write_bytes(b"img")
+    monkeypatch.setattr("app.rugby.scraper.download_logo", fake_logo)
+    monkeypatch.setattr("app.rugby.api.RugbyApi.lookup_league",
+                        lambda self, i: _async({"strPoster": "https://x/p.jpg"}))
+    monkeypatch.setattr("app.rugby.api.RugbyApi.lookup_team",
+                        lambda self, i: _async({"strDescriptionEN": "A club."}))
+
+    # File sitting at its raw download path (unmatched at download time).
+    raw = tmp_path / "raw" / "Sale v Glos.mp4"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"x")
+    (tmp_path / "raw" / "Sale v Glos-thumb.jpg").write_bytes(b"t")
+    async with factory() as s:
+        subx = await s.get(Subscription, sub_id)
+        subx.storage_path = str(tmp_path)
+        item = await s.get(MediaItem, item_id)
+        item.local_path = str(raw)
+        await s.commit()
+
+    res = await RugbyService(ctx).reconcile()
+    assert res == {"total": 1, "moved": 1}
+
+    dest = tmp_path / "English Prem Rugby" / "Season 2025" / \
+        "Round 01 - Sale Sharks vs Gloucester.mp4"
+    assert dest.exists() and not raw.exists()
+    assert dest.with_name("Round 01 - Sale Sharks vs Gloucester-thumb.jpg").exists()
+    nfo = dest.with_suffix(".nfo").read_text()
+    assert "<episodedetails>" in nfo and "A club." in nfo
+    assert (tmp_path / "English Prem Rugby" / "tvshow.nfo").exists()
+    assert (tmp_path / "English Prem Rugby" / "poster.jpg").exists()
+    async with factory() as s:
+        assert (await s.get(MediaItem, item_id)).local_path == str(dest)
+
+
+def _async(value):
+    async def _c(*a, **k):
+        return value
+    return _c()
 
 
 @pytest.mark.asyncio
@@ -242,22 +290,46 @@ async def test_write_jellyfin_nfo_has_team_actors(ctx, factory, tmp_path, monkey
         Path(dest).write_bytes(b"img")
     monkeypatch.setattr("app.rugby.scraper.download_logo", fake_logo)
 
-    video = tmp_path / "match.mp4"
+    async def fake_lookup(self, league_id):
+        return {"strPoster": "https://x/prem-poster.jpg",
+                "strFanart": "https://x/prem-fanart.jpg",
+                "strDescriptionEN": "The English top-flight rugby union league.",
+                "intFormedYear": "1987", "strCountry": "England"}
+    monkeypatch.setattr("app.rugby.api.RugbyApi.lookup_league", fake_lookup)
+
+    async def fake_team(self, team_id):
+        return {"135207": {"strDescriptionEN": "Sale Sharks are a Manchester club."},
+                "135201": {"strDescriptionEN": "Gloucester play at Kingsholm."}}[str(team_id)]
+    monkeypatch.setattr("app.rugby.api.RugbyApi.lookup_team", fake_team)
+
+    # Realistic Jellyfin tree: league / Season N / file.
+    season_dir = tmp_path / "English Prem Rugby" / "Season 2025"
+    season_dir.mkdir(parents=True)
+    video = season_dir / "match.mp4"
     video.write_bytes(b"x")
     async with factory() as s:
         item = await s.get(MediaItem, item_id)
     await RugbyService(ctx).write_jellyfin(item, video)
 
-    nfo = (tmp_path / "match.nfo").read_text()
+    nfo = (season_dir / "match.nfo").read_text()
     assert "<episodedetails>" in nfo
     assert "<originaltitle>Sale Sharks vs Gloucester</originaltitle>" in nfo
-    # Ordering metadata: round -> episode, season year, played date.
     assert "<season>2025</season>" in nfo and "<episode>1</episode>" in nfo
     assert "<premiered>2025-09-25</premiered>" in nfo
-    assert "<genre>Rugby</genre>" in nfo
-    # both teams as actors with their badge as thumb
     assert nfo.count("<actor>") == 2
-    assert "<name>Sale Sharks</name>" in nfo and "<role>Home</role>" in nfo
     assert "<thumb>https://x/sale.png</thumb>" in nfo
     assert "Salford Community Stadium" in nfo  # venue in plot
-    assert (tmp_path / "poster.jpg").exists()  # home badge poster still written
+    assert "Sale Sharks are a Manchester club." in nfo  # home bio in plot
+    assert "Gloucester play at Kingsholm." in nfo  # away bio in plot
+    assert "<tagline>" not in nfo  # no score line
+
+    show_root = tmp_path / "English Prem Rugby"
+    tv = (show_root / "tvshow.nfo").read_text()
+    assert "top-flight rugby union" in tv and "<premiered>1987-01-01</premiered>" in tv
+    assert '<thumb aspect="poster">https://x/prem-poster.jpg</thumb>' in tv
+    season = (season_dir / "season.nfo").read_text()
+    assert "<seasonnumber>2025</seasonnumber>" in season
+    # tournament poster at the top level; season poster in the season folder
+    assert (show_root / "poster.jpg").exists()
+    assert (show_root / "fanart.jpg").exists()
+    assert (season_dir / "poster.jpg").exists()

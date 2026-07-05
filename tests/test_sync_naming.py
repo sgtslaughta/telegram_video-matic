@@ -24,10 +24,12 @@ def _sub(template, season_detection=True):
 class TestChooseTargetPath:
     """choose_target_path() decides template-vs-original and merges plugin tokens."""
 
-    def test_no_pattern_no_extra_keeps_original(self):
+    def test_no_pattern_no_extra_nests_under_channel(self):
+        # No template match still nests under a channel subfolder (never loose
+        # in the storage root).
         path, season, ep, used = choose_target_path(
             _item("match.mp4"), _sub("{channel}/{title}{ext}"), {})
-        assert path == "match.mp4" and used is False and season is None
+        assert path == "Rugby HD/match.mp4" and used is False and season is None
 
     def test_season_episode_uses_template(self):
         path, season, ep, used = choose_target_path(
@@ -53,7 +55,7 @@ class TestChooseTargetPath:
     def test_pattern_ignored_when_season_detection_off_and_no_extra(self):
         path, _s, _e, used = choose_target_path(
             _item("Show.S01E01.mp4"), _sub("{title}{ext}", season_detection=False), {})
-        assert path == "Show.S01E01.mp4" and used is False
+        assert path == "Rugby HD/Show.S01E01.mp4" and used is False
 
 
 class TestDetectSeasonEpisode:

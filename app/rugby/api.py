@@ -81,6 +81,17 @@ class RugbyApi:
         except RugbyApiError:
             raise
 
+    async def lookup_league(self, league_id: int) -> dict | None:
+        """Lookup a league by ID (badge/logo/poster/fanart/description/etc)."""
+        endpoint = "lookupleague.php"
+        url = f"{self.base}/{self.api_key}/{endpoint}"
+        try:
+            data = await self._get(url, {"id": league_id}, endpoint)
+            leagues = data.get("leagues")
+            return leagues[0] if leagues else None
+        except RugbyApiError:
+            raise
+
     async def list_seasons(self, league_id: int) -> list[str]:
         """List all seasons for a league."""
         endpoint = "search_all_seasons.php"

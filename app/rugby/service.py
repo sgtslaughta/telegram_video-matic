@@ -4,18 +4,48 @@ All DB access goes through the injected PluginContext session. The API client is
 injectable so the service can be tested without network.
 """
 
+import asyncio
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 from sqlalchemy import func, select
 
-from app.db.models import MediaItem, Topic
+from app.db.models import MediaItem, Subscription, Topic
 from app.rugby import matcher, scraper
 from app.rugby.api import RugbyApi, RugbyApiError
 from app.rugby.models import (
     RugbyFixture, RugbyLeague, RugbyMatch, RugbySubscription, RugbyTeam,
 )
+from app.sync.naming import safe_segment
+
+
+def _sidecar(video: Path, suffix: str) -> Path:
+    """Sibling artwork path for a video ("X.mp4", "-thumb.jpg" -> "X-thumb.jpg")."""
+    base = video.name[: -len(video.suffix)] if video.suffix else video.name
+    return video.parent / f"{base}{suffix}"
+
+
+def _season_year(season: str) -> int:
+    """First 4-digit year of a season string ("2024-2025" -> 2024); 1 if none."""
+    s = (season or "").strip()
+    return int(s[:4]) if s[:4].isdigit() else 1
+
+
+def _season_dir(season: str) -> str:
+    """Jellyfin season folder name for a thesportsdb season string."""
+    return f"Season {_season_year(season)}"
+
+
+def _first_sentences(text: str, max_len: int = 400) -> str:
+    """First sentence(s) of a bio, capped near max_len at a sentence boundary."""
+    text = " ".join((text or "").split())
+    if len(text) <= max_len:
+        return text
+    cut = text[:max_len]
+    dot = cut.rfind(". ")
+    return (cut[:dot + 1] if dot > 0 else cut.rstrip()) + " …"
 
 
 # Round-by-round scan bounds (covers regular season + a few playoff rounds).
@@ -70,6 +100,11 @@ class RugbyService:
         # (league_id, season, round) tuples already fetched on-demand — avoids
         # re-fetching the same round for every video of that game.
         self._ondemand_seen: set = set()
+        # league_id -> enrichment dict (poster/desc/fanart/...), one API lookup
+        # per league reused across every file of that league.
+        self._league_meta: dict[int, dict] = {}
+        # team_id -> {"bio": str} (SportsDB description), one lookup per team.
+        self._team_meta: dict[int, dict] = {}
 
     # ---- catalog (shallow) ---------------------------------------------
     async def refresh_catalog(self):
@@ -368,7 +403,9 @@ class RugbyService:
         rnd = (tokens.get("rugby_round") or "").strip()
         label = f"Round {int(rnd):02d}" if rnd.isdigit() else (rnd or "Match")
         fname = f"{label} - {home} vs {away}{ext}"
-        parts = [league] + ([season] if season else []) + [fname]
+        # Always emit a Jellyfin-recognized "Season N" subfolder so the season
+        # groups correctly (a raw "2024-2025" folder is not parsed as a season).
+        parts = [safe_segment(league), _season_dir(season), safe_segment(fname)]
         return "/".join(parts)
 
 
@@ -711,9 +748,62 @@ class RugbyService:
             })
         return res
 
-    # ---- jellyfin (rich NFO with team actors + poster) -----------------
+    async def _fetch_league_meta(self, league) -> dict:
+        """SportsDB league enrichment (poster/fanart/description/…), cached and
+        best-effort. Poster falls back to the stored badge so top-level art
+        always exists."""
+        if not league:
+            return {}
+        if league.id in self._league_meta:
+            return self._league_meta[league.id]
+        meta: dict = {}
+        try:
+            raw = await self.api.lookup_league(league.id)
+        except RugbyApiError:
+            raw = None
+        if raw:
+            meta = {
+                "poster": raw.get("strPoster"),
+                "fanart": raw.get("strFanart"),
+                "banner": raw.get("strBanner"),
+                "logo": raw.get("strLogo"),
+                "badge": raw.get("strBadge"),
+                "description": raw.get("strDescriptionEN"),
+                "formed": raw.get("intFormedYear"),
+                "country": raw.get("strCountry"),
+                "website": raw.get("strWebsite"),
+                "gender": raw.get("strGender"),
+            }
+        if not meta.get("poster"):
+            meta["poster"] = meta.get("badge") or getattr(league, "badge_url", None)
+        self._league_meta[league.id] = meta
+        return meta
+
+    async def _fetch_team_bio(self, team_id) -> str:
+        """SportsDB team description (bio), cached, best-effort. Trimmed to a
+        couple of sentences so the episode plot stays readable."""
+        if not team_id:
+            return ""
+        if team_id in self._team_meta:
+            return self._team_meta[team_id]["bio"]
+        bio = ""
+        try:
+            raw = await self.api.lookup_team(team_id)
+        except RugbyApiError:
+            raw = None
+        if raw:
+            bio = _first_sentences(raw.get("strDescriptionEN") or "")
+        self._team_meta[team_id] = {"bio": bio}
+        return bio
+
+    # ---- jellyfin (rich NFO + tournament/season artwork) ---------------
     async def write_jellyfin(self, item, path):
-        """Write a rich episodedetails .nfo (teams as actors) + poster.jpg."""
+        """Write episodedetails/season/tvshow .nfo plus tournament + season art.
+
+        Layout (Jellyfin): league/Season N/<file>. tvshow.nfo + tournament
+        poster/fanart/logo live at the league root; season.nfo + a season poster
+        live in the Season folder; the episode .nfo sits beside the video.
+        """
         try:
             async with self.ctx.session() as s:
                 m = (await s.execute(
@@ -725,22 +815,118 @@ class RugbyService:
                 fx = await s.get(RugbyFixture, m.fixture_id) if m.fixture_id else None
                 home_badge = await self._team_badge(s, fx.home_team_id) if fx else None
                 away_badge = await self._team_badge(s, fx.away_team_id) if fx else None
+            home_bio = await self._fetch_team_bio(fx.home_team_id) if fx else ""
+            away_bio = await self._fetch_team_bio(fx.away_team_id) if fx else ""
             runtime_min = int((item.duration_sec or 0) / 60)
             dateadded = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             nfo = _build_episode_nfo(m, fx, league, home_badge, away_badge,
-                                     runtime_min, dateadded)
+                                     runtime_min, dateadded, home_bio, away_bio)
             p = Path(path)
             p.with_suffix(".nfo").write_text(nfo, encoding="utf-8")
-            # Series-level tvshow.nfo at the league root (path = league/season/file)
-            # so the folder is recognized as a show and episodes order by round.
-            show_root = p.parent.parent
+
+            season_dir = p.parent          # league/Season N
+            show_root = p.parent.parent     # league root
             tv = show_root / "tvshow.nfo"
-            if show_root.exists() and not tv.exists():
-                tv.write_text(_build_tvshow_nfo(league), encoding="utf-8")
-            if home_badge:
-                await scraper.download_logo(home_badge, str(p.parent / "poster.jpg"))
+            season_nfo = season_dir / "season.nfo"
+            need_show = show_root.exists() and not tv.exists()
+            need_season = season_dir.exists() and not season_nfo.exists()
+            if not (need_show or need_season):
+                return
+
+            meta = await self._fetch_league_meta(league)
+            if need_show:
+                tv.write_text(_build_tvshow_nfo(league, meta), encoding="utf-8")
+                # Tournament artwork at the top level (English Premiership poster
+                # -> season -> content, as requested).
+                await self._save_art(meta.get("poster"), show_root / "poster.jpg")
+                await self._save_art(meta.get("fanart"), show_root / "fanart.jpg")
+                await self._save_art(meta.get("banner"), show_root / "banner.jpg")
+                await self._save_art(meta.get("logo"), show_root / "logo.png")
+            if need_season:
+                season_nfo.write_text(
+                    _build_season_nfo(m.season, league), encoding="utf-8")
+                # Reuse the tournament poster so the season tile has art too.
+                await self._save_art(meta.get("poster"), season_dir / "poster.jpg")
         except Exception as ex:  # noqa: BLE001 - artwork is best-effort
             await self.ctx.log("warning", "rugby", f"Jellyfin write failed: {ex}")
+
+    @staticmethod
+    async def _save_art(url, dest: Path) -> None:
+        """Download an image URL to dest if we have a URL and none is there yet."""
+        if url and not dest.exists():
+            await scraper.download_logo(url, str(dest))
+
+    # ---- reconcile (re-file matched items + refresh metadata) ----------
+    async def _refile(self, item, storage_base) -> str | None:
+        """Move item.local_path (+ -thumb.jpg sidecar) to path_for's league/
+        Season/round location. Drops the stale .nfo (write_jellyfin rewrites it).
+        Returns the new path if moved, else None. Updates DB + the item."""
+        if not item.local_path:
+            return None
+        cur = Path(item.local_path)
+        ext = cur.suffix or (
+            "." + item.file_name.rsplit(".", 1)[-1]
+            if item.file_name and "." in item.file_name else "")
+        rel = await self.path_for(item.id, ext)
+        if not rel:
+            return None
+        desired = Path(storage_base) / rel
+        if cur == desired or not cur.exists():
+            return None
+        desired.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(shutil.move, str(cur), str(desired))
+        thumb = _sidecar(cur, "-thumb.jpg")
+        if thumb.exists():
+            shutil.move(str(thumb), str(_sidecar(desired, "-thumb.jpg")))
+        cur.with_suffix(".nfo").unlink(missing_ok=True)
+        _sidecar(cur, "-poster.jpg").unlink(missing_ok=True)
+        async with self.ctx.session() as s:
+            it = await s.get(MediaItem, item.id)
+            if it:
+                it.local_path = str(desired)
+                await s.commit()
+        item.local_path = str(desired)
+        try:  # prune the now-empty old dir (skips if art/other files remain)
+            cur.parent.rmdir()
+        except OSError:
+            pass
+        return str(desired)
+
+    async def _reconcile_one(self, media_id) -> bool:
+        """Re-file + refresh metadata for one matched item. True if moved."""
+        async with self.ctx.session() as s:
+            m = (await s.execute(
+                select(RugbyMatch).where(RugbyMatch.media_id == media_id)
+            )).scalar_one_or_none()
+            if not m or m.status not in ("auto", "confirmed"):
+                return False
+            item = await s.get(MediaItem, media_id)
+            if not item or not item.local_path:
+                return False
+            sub = (await s.get(Subscription, item.subscription_id)
+                   if item.subscription_id else None)
+            storage_base = sub.storage_path if sub else self.ctx.media_root
+        moved = await self._refile(item, storage_base)
+        await self.write_jellyfin(item, Path(item.local_path))
+        return bool(moved)
+
+    async def reconcile(self) -> dict:
+        """Re-file every matched (auto/confirmed) rugby item to its league/
+        Season/round path and rewrite full metadata. Fixes items whose match
+        resolved after download (never moved) and stale metadata from older
+        builds. Idempotent: already-correct items are only refreshed."""
+        async with self.ctx.session() as s:
+            ids = [m.media_id for m in (await s.execute(
+                select(RugbyMatch).where(RugbyMatch.status.in_(("auto", "confirmed")))
+            )).scalars().all()]
+        moved = 0
+        for mid in ids:
+            try:
+                if await self._reconcile_one(mid):
+                    moved += 1
+            except Exception as ex:  # noqa: BLE001 - best-effort per item
+                await self.ctx.log("warning", "rugby", f"reconcile {mid}: {ex}")
+        return {"total": len(ids), "moved": moved}
 
     # ---- jellyfin artwork (legacy poster-only helper) ------------------
     async def write_artwork(self, item, path):
@@ -821,7 +1007,16 @@ class RugbyService:
             if status is not None:
                 m.status = status
             await s.commit()
-            return _match_dict(m)
+            result = _match_dict(m)
+            newly_filed = m.status in ("auto", "confirmed")
+        # Confirming a match after download re-files the video + refreshes
+        # metadata (the download-time path_for saw no match yet). Best-effort.
+        if newly_filed:
+            try:
+                await self._reconcile_one(media_id)
+            except Exception as ex:  # noqa: BLE001
+                await self.ctx.log("warning", "rugby", f"reconcile on confirm: {ex}")
+        return result
 
     async def status_snapshot(self):
         async with self.ctx.session() as s:
@@ -853,7 +1048,7 @@ def _episode_number(match, fixture):
 
 
 def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
-                       runtime_min=0, dateadded="") -> str:
+                       runtime_min=0, dateadded="", home_bio="", away_bio="") -> str:
     """Fully-populated Kodi/Jellyfin episodedetails: ordered by round/date,
     teams as actors, league as show/studio, played date as premiered/aired."""
     home = match.home_name or ""
@@ -863,15 +1058,22 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
     season_int = int(match.season[:4]) if (match.season or "")[:4].isdigit() else 1
     episode_int, label = _episode_number(match, fixture)
 
-    score = venue = ""
-    played = ""
+    venue = played = ""
     if fixture:
-        if fixture.home_score is not None and fixture.away_score is not None:
-            score = f"{fixture.home_score}-{fixture.away_score} "
-        venue = f"at {fixture.venue} " if fixture.venue else ""
+        venue = fixture.venue or ""
         played = fixture.date.date().isoformat() if fixture.date else ""
     title = f"{label}: {home} vs {away}"
-    plot = f"{score}{venue}{league_name} {match.season or ''} {label}".strip()
+    # No scores in metadata (deliberate): describe the matchup, not the result.
+    at_venue = f" at {venue}" if venue else ""
+    on_date = f" on {played}" if played else ""
+    plot = (f"{label} of the {league_name} {match.season or ''} season: "
+            f"{home} vs {away}{at_venue}{on_date}.").strip()
+    # Team bios from SportsDB appended so the episode description carries the
+    # matchup context (no scores).
+    if home_bio:
+        plot += f"\n\n{home}: {home_bio}"
+    if away_bio:
+        plot += f"\n\n{away}: {away_bio}"
     sorttitle = f"{episode_int:04d} {home} vs {away}"
 
     lines = [
@@ -886,8 +1088,6 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
         f"  <plot>{escape(plot)}</plot>",
         f"  <outline>{escape(f'{label} - {home} vs {away}')}</outline>",
     ]
-    if score.strip():
-        lines.append(f"  <tagline>{escape(score.strip())}</tagline>")
     if runtime_min:
         lines.append(f"  <runtime>{int(runtime_min)}</runtime>")
     if played:
@@ -923,24 +1123,66 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
     return "\n".join(lines) + "\n"
 
 
-def _build_tvshow_nfo(league) -> str:
-    """Series-level tvshow.nfo so the league folder is recognized as a show."""
+def _build_tvshow_nfo(league, meta=None) -> str:
+    """Series-level tvshow.nfo so the league folder is recognized as a show,
+    enriched with SportsDB tournament data (description, formed year, country,
+    poster/fanart art)."""
+    meta = meta or {}
     name = league.name if league else "Rugby"
     sport = (league.sport if league and league.sport else "rugby")
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         "<tvshow>",
         f"  <title>{escape(name)}</title>",
-        f"  <studio>{escape(name)}</studio>",
-        "  <genre>Rugby</genre>",
-        "  <genre>Sport</genre>",
+        f"  <showtitle>{escape(name)}</showtitle>",
     ]
+    if meta.get("description"):
+        lines.append(f"  <plot>{escape(meta['description'])}</plot>")
+        lines.append(f"  <outline>{escape(meta['description'])}</outline>")
+    formed = str(meta.get("formed") or "").strip()
+    if formed.isdigit():
+        lines.append(f"  <premiered>{formed}-01-01</premiered>")
+        lines.append(f"  <year>{formed}</year>")
+    lines.append(f"  <studio>{escape(name)}</studio>")
+    lines.append("  <genre>Rugby</genre>")
+    lines.append("  <genre>Sport</genre>")
     if sport and sport.lower() not in ("rugby",):
         lines.append(f"  <genre>{escape(sport.title())}</genre>")
+    for tag in (meta.get("country"), meta.get("gender")):
+        if tag:
+            lines.append(f"  <tag>{escape(str(tag))}</tag>")
+    if meta.get("poster"):
+        lines.append(f'  <thumb aspect="poster">{escape(meta["poster"])}</thumb>')
+    if meta.get("banner"):
+        lines.append(f'  <thumb aspect="banner">{escape(meta["banner"])}</thumb>')
+    if meta.get("fanart"):
+        lines.append("  <fanart>")
+        lines.append(f"    <thumb>{escape(meta['fanart'])}</thumb>")
+        lines.append("  </fanart>")
+    if meta.get("website"):
+        lines.append(f"  <website>{escape(meta['website'])}</website>")
     if league and league.id:
         lines.append(f'  <uniqueid type="thesportsdb" default="true">{league.id}</uniqueid>')
     lines.append("  <lockdata>true</lockdata>")
     lines.append("</tvshow>")
+    return "\n".join(lines) + "\n"
+
+
+def _build_season_nfo(season, league) -> str:
+    """Season-level season.nfo. seasonnumber matches the "Season N" folder and
+    the episodes' <season>, so Jellyfin groups them together."""
+    num = _season_year(season or "")
+    name = league.name if league else "Rugby"
+    pretty = season or str(num)
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        "<season>",
+        f"  <seasonnumber>{num}</seasonnumber>",
+        f"  <title>{escape(str(pretty))}</title>",
+        f"  <plot>{escape(f'{pretty} season of {name}.')}</plot>",
+        "  <lockdata>true</lockdata>",
+        "</season>",
+    ]
     return "\n".join(lines) + "\n"
 
 

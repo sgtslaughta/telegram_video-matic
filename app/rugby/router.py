@@ -56,6 +56,15 @@ async def refresh(request: Request, bg: BackgroundTasks):
     return {"scheduled": True}
 
 
+@router.post("/reconcile")
+async def reconcile(request: Request, bg: BackgroundTasks):
+    """Re-file every matched rugby video into its league/Season/round path and
+    rewrite full Jellyfin metadata. Fixes items matched after download and stale
+    metadata from older builds. Runs in the background (may move many files)."""
+    bg.add_task(_service(request).reconcile)
+    return {"scheduled": True}
+
+
 @router.post("/rescan")
 async def rescan(request: Request, bg: BackgroundTasks):
     """Manual 'Scan now': detect leagues from every channel's topic names +
