@@ -1103,10 +1103,16 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
     lines.append("  <genre>Sport</genre>")
     if sport and sport.lower() not in ("rugby",):
         lines.append(f"  <genre>{escape(sport.title())}</genre>")
-    for tag in (league_name, match.season, label, home, away,
-                (fixture.venue if fixture else None)):
-        if tag:
-            lines.append(f"  <tag>{escape(str(tag))}</tag>")
+    sport_tag = (f"Rugby {sport.title()}"
+                 if sport and sport.lower() not in ("rugby", "") else "Rugby")
+    _seen = set()
+    for tag in ("Rugby", sport_tag, str(season_int), league_name, match.season,
+                label, home, away, (fixture.venue if fixture else None),
+                (fixture.country if fixture else None)):
+        t = str(tag).strip() if tag is not None else ""
+        if t and t not in _seen:
+            _seen.add(t)
+            lines.append(f"  <tag>{escape(t)}</tag>")
     for order, (name, role, thumb) in enumerate(
             ((home, "Home", home_badge), (away, "Away", away_badge)), start=1):
         lines.append("  <actor>")
@@ -1148,9 +1154,14 @@ def _build_tvshow_nfo(league, meta=None) -> str:
     lines.append("  <genre>Sport</genre>")
     if sport and sport.lower() not in ("rugby",):
         lines.append(f"  <genre>{escape(sport.title())}</genre>")
-    for tag in (meta.get("country"), meta.get("gender")):
-        if tag:
-            lines.append(f"  <tag>{escape(str(tag))}</tag>")
+    sport_tag = (f"Rugby {sport.title()}"
+                 if sport and sport.lower() not in ("rugby", "") else "Rugby")
+    _seen = set()
+    for tag in ("Rugby", sport_tag, name, meta.get("country"), meta.get("gender")):
+        t = str(tag).strip() if tag else ""
+        if t and t not in _seen:
+            _seen.add(t)
+            lines.append(f"  <tag>{escape(t)}</tag>")
     if meta.get("poster"):
         lines.append(f'  <thumb aspect="poster">{escape(meta["poster"])}</thumb>')
     if meta.get("banner"):
@@ -1180,6 +1191,10 @@ def _build_season_nfo(season, league) -> str:
         f"  <seasonnumber>{num}</seasonnumber>",
         f"  <title>{escape(str(pretty))}</title>",
         f"  <plot>{escape(f'{pretty} season of {name}.')}</plot>",
+        f"  <year>{num}</year>",
+        "  <tag>Rugby</tag>",
+        f"  <tag>{escape(str(num))}</tag>",
+        f"  <tag>{escape(name)}</tag>",
         "  <lockdata>true</lockdata>",
         "</season>",
     ]

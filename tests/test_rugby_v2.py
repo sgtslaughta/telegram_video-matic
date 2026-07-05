@@ -322,6 +322,11 @@ async def test_write_jellyfin_nfo_has_team_actors(ctx, factory, tmp_path, monkey
     assert "Sale Sharks are a Manchester club." in nfo  # home bio in plot
     assert "Gloucester play at Kingsholm." in nfo  # away bio in plot
     assert "<tagline>" not in nfo  # no score line
+    # relevant tags: sport, year, teams, tournament
+    for t in ("<tag>Rugby</tag>", "<tag>Rugby Union</tag>", "<tag>2025</tag>",
+              "<tag>English Prem Rugby</tag>", "<tag>Sale Sharks</tag>",
+              "<tag>Gloucester</tag>"):
+        assert t in nfo, t
 
     show_root = tmp_path / "English Prem Rugby"
     tv = (show_root / "tvshow.nfo").read_text()
