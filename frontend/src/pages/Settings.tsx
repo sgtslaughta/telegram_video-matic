@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
 import { useTheme } from '@/hooks/useTheme'
 import { usePlugins, useUpdatePlugin } from '@/hooks/usePlugins'
-import { useRugbyRescan, useRugbyStatus } from '@/hooks/useRugby'
+import { useRugbyReconcile, useRugbyRescan, useRugbyStatus } from '@/hooks/useRugby'
 import { RugbyMatchReview } from '@/components/RugbyMatchReview'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { AlertCircle, Info, RefreshCw, Clock, PackagePlus } from 'lucide-react'
+import { AlertCircle, Info, RefreshCw, Clock, PackagePlus, FolderSync } from 'lucide-react'
 import { toast } from 'sonner'
 import type * as T from '@/lib/types'
 
@@ -78,6 +78,7 @@ export default function Settings() {
   const updateSettings = useUpdateSettings()
   const updatePlugin = useUpdatePlugin()
   const rescan = useRugbyRescan()
+  const reconcile = useRugbyReconcile()
   const rugbyStatus = useRugbyStatus()
   const sync = (rugbyStatus.data?.status ?? {}) as Record<string, unknown>
   const syncing = Boolean(sync.syncing)
@@ -276,6 +277,11 @@ export default function Settings() {
                 onSuccess: () => toast.success('Scan started — fetching fixtures in the background'),
                 onError: (e) => toast.error(e instanceof Error ? e.message : 'Scan failed'),
               })
+            const onReorganize = () =>
+              reconcile.mutate(undefined, {
+                onSuccess: () => toast.success('Reorganizing — re-filing matched games + metadata in the background'),
+                onError: (e) => toast.error(e instanceof Error ? e.message : 'Reorganize failed'),
+              })
             return (
               <Card key={plugin.id}>
                 <CardContent className="pt-6">
@@ -306,10 +312,17 @@ export default function Settings() {
                       </div>
                       <div className="flex items-center gap-2">
                         {isRugby && enabled && (
-                          <Button size="sm" variant="outline" onClick={onScan} disabled={rescan.isPending}>
-                            <RefreshCw className={`mr-2 h-4 w-4 ${rescan.isPending ? 'animate-spin' : ''}`} />
-                            {rescan.isPending ? 'Scanning…' : 'Scan now'}
-                          </Button>
+                          <>
+                            <Button size="sm" variant="outline" onClick={onScan} disabled={rescan.isPending}>
+                              <RefreshCw className={`mr-2 h-4 w-4 ${rescan.isPending ? 'animate-spin' : ''}`} />
+                              {rescan.isPending ? 'Scanning…' : 'Scan now'}
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={onReorganize} disabled={reconcile.isPending}
+                              title="Re-file every matched game into league/Season/round folders and refresh Jellyfin metadata">
+                              <FolderSync className={`mr-2 h-4 w-4 ${reconcile.isPending ? 'animate-spin' : ''}`} />
+                              {reconcile.isPending ? 'Reorganizing…' : 'Reorganize library'}
+                            </Button>
+                          </>
                         )}
                         <Switch
                           aria-label={plugin.name}

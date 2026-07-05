@@ -290,6 +290,8 @@ export const rugby = {
 
   rescan: () =>
     fetchAPI<{ scheduled: boolean }>('/plugins/rugby/rescan', { method: 'POST' }),
+  reconcile: () =>
+    fetchAPI<{ scheduled: boolean }>('/plugins/rugby/reconcile', { method: 'POST' }),
 
   preview: (leagueId: number, text: string) =>
     fetchAPI<T.RugbyPreview>('/plugins/rugby/preview', {

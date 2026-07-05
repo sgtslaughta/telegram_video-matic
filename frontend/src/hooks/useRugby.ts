@@ -121,6 +121,18 @@ export function useRugbyRescan() {
   })
 }
 
+/** Re-file every matched rugby video into its league/Season/round tree and
+ * rewrite full Jellyfin metadata (fixes items matched after download). */
+export function useRugbyReconcile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.rugby.reconcile(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rugbyKeys.status() })
+    },
+  })
+}
+
 type BrowseLike = { tg_msg_id: number; caption?: string | null; file_name?: string | null; date_posted?: string | null }
 
 /** Enrich the live browse items currently on screen (works for un-cached
