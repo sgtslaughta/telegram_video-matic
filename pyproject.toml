@@ -1,0 +1,38 @@
+# Project metadata is minimal on purpose — the app ships as a Docker image, not
+# a PyPI package. This file exists to configure python-semantic-release.
+[project]
+name = "telegram-video-matic"
+version = "1.0.12"
+description = "Telegram media sync + Jellyfin-ready enrichment"
+requires-python = ">=3.14"
+
+[tool.semantic_release]
+# Single source of truth for the app version; PSR rewrites this on release.
+version_variables = ["app/main.py:__version__"]
+version_toml = ["pyproject.toml:project.version"]
+tag_format = "v{version}"
+commit_message = "chore(release): {version} [skip ci]"
+# no build_command — the Docker image is built by CI, not PSR
+allow_zero_version = false
+major_on_zero = true
+
+[tool.semantic_release.branches.main]
+match = "^main$"
+
+[tool.semantic_release.changelog]
+# "init" regenerates the whole file from all tags each run, so history (v1.0.0+)
+# is never lost and no insertion marker is needed.
+mode = "init"
+exclude_commit_patterns = [
+  "^chore\\(release\\):",                  # don't list release commits themselves
+  "^Merge ",
+]
+
+[tool.semantic_release.commit_parser_options]
+# Conventional Commits: which types bump which level.
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf", "refactor"]
+allowed_tags = [
+  "feat", "fix", "perf", "refactor", "docs", "style",
+  "test", "build", "ci", "chore", "revert",
+]

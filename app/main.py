@@ -13,6 +13,8 @@ from app.telegram.service import TelegramService
 from app.sync.engine import SyncEngine
 from app.sync.plugins import PluginHost
 
+__version__ = "1.0.12"  # managed by python-semantic-release (see pyproject.toml)
+
 settings = Settings()
 
 # ponytail: static dir path, may not exist; skip mount if not found
@@ -173,7 +175,7 @@ def create_app() -> FastAPI:
     """Create and configure FastAPI app."""
     app = FastAPI(
         title="Telegram Video-Matic",
-        version="1.0.12",
+        version=__version__,
         lifespan=lifespan,
     )
 
