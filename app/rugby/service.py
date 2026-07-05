@@ -774,8 +774,14 @@ class RugbyService:
                 "website": raw.get("strWebsite"),
                 "gender": raw.get("strGender"),
             }
+        # DB stores only badge_url; use it whenever the API lacks the image, so
+        # artwork still works offline / rate-limited.
+        if not meta.get("badge"):
+            meta["badge"] = getattr(league, "badge_url", None)
         if not meta.get("poster"):
-            meta["poster"] = meta.get("badge") or getattr(league, "badge_url", None)
+            meta["poster"] = meta.get("badge")
+        if not meta.get("logo"):
+            meta["logo"] = meta.get("badge")
         self._league_meta[league.id] = meta
         return meta
 
@@ -844,7 +850,7 @@ class RugbyService:
                 await self._save_art(meta.get("logo"), show_root / "logo.png")
             if need_season:
                 season_nfo.write_text(
-                    _build_season_nfo(m.season, league), encoding="utf-8")
+                    _build_season_nfo(m.season, league, meta), encoding="utf-8")
                 # Reuse the tournament poster so the season tile has art too.
                 await self._save_art(meta.get("poster"), season_dir / "poster.jpg")
         except Exception as ex:  # noqa: BLE001 - artwork is best-effort
@@ -1162,11 +1168,18 @@ def _build_tvshow_nfo(league, meta=None) -> str:
         if t and t not in _seen:
             _seen.add(t)
             lines.append(f"  <tag>{escape(t)}</tag>")
-    if meta.get("poster"):
-        lines.append(f'  <thumb aspect="poster">{escape(meta["poster"])}</thumb>')
-    if meta.get("banner"):
-        lines.append(f'  <thumb aspect="banner">{escape(meta["banner"])}</thumb>')
-    if meta.get("fanart"):
+    # Every available artwork URL, tagged with the Jellyfin aspect it maps to so
+    # the server pulls each remotely (badge/logo/poster from DB + API). Deduped
+    # by URL so a badge reused as poster/logo isn't emitted twice.
+    seen_art = set()
+    for aspect, url in (("poster", meta.get("poster")),
+                        ("banner", meta.get("banner")),
+                        ("clearlogo", meta.get("logo")),
+                        ("keyart", meta.get("badge"))):
+        if url and url not in seen_art:
+            seen_art.add(url)
+            lines.append(f'  <thumb aspect="{aspect}">{escape(url)}</thumb>')
+    if meta.get("fanart") and meta["fanart"] not in seen_art:
         lines.append("  <fanart>")
         lines.append(f"    <thumb>{escape(meta['fanart'])}</thumb>")
         lines.append("  </fanart>")
@@ -1179,9 +1192,10 @@ def _build_tvshow_nfo(league, meta=None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _build_season_nfo(season, league) -> str:
+def _build_season_nfo(season, league, meta=None) -> str:
     """Season-level season.nfo. seasonnumber matches the "Season N" folder and
     the episodes' <season>, so Jellyfin groups them together."""
+    meta = meta or {}
     num = _season_year(season or "")
     name = league.name if league else "Rugby"
     pretty = season or str(num)
@@ -1195,9 +1209,11 @@ def _build_season_nfo(season, league) -> str:
         "  <tag>Rugby</tag>",
         f"  <tag>{escape(str(num))}</tag>",
         f"  <tag>{escape(name)}</tag>",
-        "  <lockdata>true</lockdata>",
-        "</season>",
     ]
+    if meta.get("poster"):
+        lines.append(f'  <thumb aspect="poster">{escape(meta["poster"])}</thumb>')
+    lines.append("  <lockdata>true</lockdata>")
+    lines.append("</season>")
     return "\n".join(lines) + "\n"
 
 

@@ -293,6 +293,8 @@ async def test_write_jellyfin_nfo_has_team_actors(ctx, factory, tmp_path, monkey
     async def fake_lookup(self, league_id):
         return {"strPoster": "https://x/prem-poster.jpg",
                 "strFanart": "https://x/prem-fanart.jpg",
+                "strLogo": "https://x/prem-logo.png",
+                "strBadge": "https://x/prem-badge.png",
                 "strDescriptionEN": "The English top-flight rugby union league.",
                 "intFormedYear": "1987", "strCountry": "England"}
     monkeypatch.setattr("app.rugby.api.RugbyApi.lookup_league", fake_lookup)
@@ -331,7 +333,11 @@ async def test_write_jellyfin_nfo_has_team_actors(ctx, factory, tmp_path, monkey
     show_root = tmp_path / "English Prem Rugby"
     tv = (show_root / "tvshow.nfo").read_text()
     assert "top-flight rugby union" in tv and "<premiered>1987-01-01</premiered>" in tv
+    # all available artwork URLs, each with its Jellyfin aspect
     assert '<thumb aspect="poster">https://x/prem-poster.jpg</thumb>' in tv
+    assert '<thumb aspect="clearlogo">https://x/prem-logo.png</thumb>' in tv
+    assert '<thumb aspect="keyart">https://x/prem-badge.png</thumb>' in tv
+    assert "https://x/prem-fanart.jpg" in tv
     season = (season_dir / "season.nfo").read_text()
     assert "<seasonnumber>2025</seasonnumber>" in season
     # tournament poster at the top level; season poster in the season folder
