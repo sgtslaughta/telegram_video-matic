@@ -45,6 +45,8 @@ class RugbyPlugin(PluginBase):
         leagues = await self.service.list_leagues()
         if not leagues:
             await self.service.refresh_catalog()
+            await self.ctx.log("info", "rugby",
+                               f"Seeded league catalog ({len(await self.service.list_leagues())} leagues)")
 
     # --- event hooks ---
     async def on_media_discovered(self, item):
@@ -55,7 +57,10 @@ class RugbyPlugin(PluginBase):
         """Write a rich Jellyfin NFO (teams as actors) + poster beside the file."""
         if not self.service or not self.ctx.config.get("jellyfin_artwork"):
             return
-        await self.service.write_jellyfin(item, Path(path))
+        if await self.service.write_jellyfin(item, Path(path)):
+            await self.ctx.log("success", "rugby",
+                               f"Jellyfin metadata written for {Path(path).name}",
+                               media_id=item.id)
 
     # --- path override (host uses first non-None) ---
     async def provide_path(self, item, sub):

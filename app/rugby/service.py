@@ -331,6 +331,8 @@ class RugbyService:
         if not sub_id:
             return None
         text = item.file_name or item.caption or ""
+        snippet = text[:80]
+        fetched = False
         async with self.ctx.session() as s:
             league_id = await self._league_for_sub(s, sub_id)
             if league_id is None:
@@ -349,26 +351,47 @@ class RugbyService:
             if status == "none":
                 # Incremental: try one targeted lookup, then re-match.
                 if await self._ondemand_fetch(text, item.date_posted):
+                    fetched = True
                     fixtures = await _load()
                     best, conf, status = matcher.match(text, item.date_posted, fixtures)
-                if status == "none":
-                    return None
-            rm = (await s.execute(
-                select(RugbyMatch).where(RugbyMatch.media_id == item.id)
-            )).scalar_one_or_none()
-            if rm is None:
-                rm = RugbyMatch(media_id=item.id)
-                s.add(rm)
-            rm.fixture_id = best["id"] if best else None
-            rm.league_id = league_id
-            rm.season = best["season"] if best else None
-            rm.round = best["round"] if best else None
-            rm.home_name = best["home_name"] if best else None
-            rm.away_name = best["away_name"] if best else None
-            rm.confidence = conf
-            rm.status = status
-            await s.commit()
-            return status
+            if status != "none":
+                rm = (await s.execute(
+                    select(RugbyMatch).where(RugbyMatch.media_id == item.id)
+                )).scalar_one_or_none()
+                if rm is None:
+                    rm = RugbyMatch(media_id=item.id)
+                    s.add(rm)
+                rm.fixture_id = best["id"] if best else None
+                rm.league_id = league_id
+                rm.season = best["season"] if best else None
+                rm.round = best["round"] if best else None
+                rm.home_name = best["home_name"] if best else None
+                rm.away_name = best["away_name"] if best else None
+                rm.confidence = conf
+                rm.status = status
+                await s.commit()
+        # Activity log — outside the session block so ctx.log's own session
+        # never nests inside this one. Every outcome is surfaced to the feed.
+        if fetched:
+            await self.ctx.log("info", "rugby",
+                               f"On-demand fixture lookup for “{snippet}”",
+                               media_id=item.id)
+        if status == "none":
+            await self.ctx.log("info", "rugby",
+                               f"No fixture match for “{snippet}”",
+                               media_id=item.id)
+            return None
+        teams = f"{best['home_name']} vs {best['away_name']}"
+        rnd = f" — Round {best['round']}" if best.get("round") else ""
+        if status in ("auto", "confirmed"):
+            await self.ctx.log("success", "rugby",
+                               f"Matched {teams}{rnd} ({conf:.0%})",
+                               media_id=item.id)
+        else:  # needs_review
+            await self.ctx.log("info", "rugby",
+                               f"Needs review — {teams}{rnd} ({conf:.0%})",
+                               media_id=item.id)
+        return status
 
     # ---- naming tokens (read) ------------------------------------------
     async def naming_tokens(self, media_id: int) -> dict:
@@ -803,8 +826,9 @@ class RugbyService:
         return bio
 
     # ---- jellyfin (rich NFO + tournament/season artwork) ---------------
-    async def write_jellyfin(self, item, path):
+    async def write_jellyfin(self, item, path) -> bool:
         """Write episodedetails/season/tvshow .nfo plus tournament + season art.
+        Returns True if the episode .nfo was written, False if skipped/failed.
 
         Layout (Jellyfin): league/Season N/<file>. tvshow.nfo + tournament
         poster/fanart/logo live at the league root; season.nfo + a season poster
@@ -816,7 +840,7 @@ class RugbyService:
                     select(RugbyMatch).where(RugbyMatch.media_id == item.id)
                 )).scalar_one_or_none()
                 if not m or m.status not in ("auto", "confirmed"):
-                    return
+                    return False
                 league = await s.get(RugbyLeague, m.league_id) if m.league_id else None
                 fx = await s.get(RugbyFixture, m.fixture_id) if m.fixture_id else None
                 home_badge = await self._team_badge(s, fx.home_team_id) if fx else None
@@ -852,7 +876,7 @@ class RugbyService:
             need_show = show_root.exists() and not tv.exists()
             need_season = season_dir.exists() and not season_nfo.exists()
             if not (need_show or need_season):
-                return
+                return True  # episode .nfo written; show/season already present
 
             meta = await self._fetch_league_meta(league)
             if need_show:
@@ -868,8 +892,10 @@ class RugbyService:
                     _build_season_nfo(m.season, league, meta), encoding="utf-8")
                 # Reuse the tournament poster so the season tile has art too.
                 await self._save_art(meta.get("poster"), season_dir / "poster.jpg")
+            return True
         except Exception as ex:  # noqa: BLE001 - artwork is best-effort
             await self.ctx.log("warning", "rugby", f"Jellyfin write failed: {ex}")
+            return False
 
     @staticmethod
     async def _save_art(url, dest: Path) -> None:
@@ -947,6 +973,8 @@ class RugbyService:
                     moved += 1
             except Exception as ex:  # noqa: BLE001 - best-effort per item
                 await self.ctx.log("warning", "rugby", f"reconcile {mid}: {ex}")
+        await self.ctx.log("success", "rugby",
+                           f"Reconcile: {moved} re-filed, {len(ids)} refreshed")
         return {"total": len(ids), "moved": moved}
 
     # ---- jellyfin artwork (legacy poster-only helper) ------------------

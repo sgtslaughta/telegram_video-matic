@@ -187,6 +187,14 @@ async def test_match_item_and_naming_tokens(ctx, factory):
     status = await svc.match_item(item)
     assert status in ("auto", "needs_review")
 
+    # match_item now surfaces every outcome to the activity feed.
+    async with factory() as s:
+        from app.db.models import Event
+        evs = (await s.execute(
+            select(Event).where(Event.kind == "rugby"))).scalars().all()
+    assert evs and any(
+        ("Matched" in e.message) or ("Needs review" in e.message) for e in evs)
+
     tokens = await svc.naming_tokens(item_id)
     if status == "auto":
         assert tokens["rugby_league"] == "English Prem Rugby"
