@@ -1,6 +1,41 @@
 # CHANGELOG
 
 
+## v1.0.13 (2026-07-11)
+
+### Bug Fixes
+
+- **rugby/nfo**: Unique episode number per game so Jellyfin stops merging rounds
+  ([`d14d58b`](https://github.com/sgtslaughta/telegram_video-matic/commit/d14d58b83e69f41c2af8c45696cecc9a8d736921))
+
+_episode_number mapped a numeric round straight to <episode>, so every game in a round shared one
+  SxxExx. Jellyfin keys episodes by season+episode and collapses collisions into a single episode
+  (extras become hidden "versions"), leaving later games bare — e.g. Round 2's three games all
+  claimed S2026E02.
+
+Episode is now round*100 + slot, where slot is the game's 1-based position within its round (by
+  kickoff, then fixture id). Keeps rounds grouped and ordered while staying unique (Round 2 -> 201,
+  202, 203). Non-numeric rounds (finals) map to 90000 + dayofyear*100 + slot so they sort last and
+  distinct. write_jellyfin computes slot from the round's sibling fixtures.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+### Continuous Integration
+
+- Automate semver + changelog with python-semantic-release
+  ([`dc81c98`](https://github.com/sgtslaughta/telegram_video-matic/commit/dc81c98e797bd480b54ee9067e863cb7e28e2bf0))
+
+- pyproject.toml [tool.semantic_release]: version in app/main.py:__version__ + pyproject;
+  conventional-commit parser (feat->minor, fix/perf/refactor-> patch, ! / BREAKING->major);
+  CHANGELOG.md in init mode (full history). - ci.yml: new `version` job runs PSR on main push (bump
+  + changelog + tag + GH release via GITHUB_TOKEN); `release` job builds/pushes the image in the
+  same run using PSR's version output (:main always; :X.Y.Z/:X.Y/:latest on release) — no PAT
+  needed. - Seed CHANGELOG.md from existing tags; document convention in CONTRIBUTING.md. -
+  app/main.py: version -> module-level __version__ (PSR single source).
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+
+
 ## v1.0.12 (2026-07-05)
 
 ### Features
