@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v1.1.0 (2026-07-11)
+
+### Features
+
+- **rugby**: Surface plugin actions in the activity feed
+  ([`c390c4d`](https://github.com/sgtslaughta/telegram_video-matic/commit/c390c4dacc5826d9f00622ad28d2274d22fe142a))
+
+The activity feed showed almost nothing for the rugby plugin — ctx.log was only called on
+  warnings/errors, so normal enrichment was invisible. Emit INFO/SUCCESS events at each milestone
+  (all linked to the media item):
+
+- match_item: Matched / Needs review / No match / on-demand lookup - write_jellyfin: NFO written
+  (now returns bool so the log is accurate) - reconcile: "N re-filed, M refreshed" summary -
+  on_enable: league-catalog seed
+
+Events are emitted after the DB session block closes so ctx.log's own session never nests inside
+  match_item's. Existing warning/error logs kept.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v1.0.14 (2026-07-11)
 
 ### Bug Fixes
