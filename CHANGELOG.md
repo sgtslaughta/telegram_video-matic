@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v1.0.14 (2026-07-11)
+
+### Bug Fixes
+
+- **rugby/nfo**: Drop <lockdata> so Jellyfin re-reads corrected metadata
+  ([`434838b`](https://github.com/sgtslaughta/telegram_video-matic/commit/434838b9edcf0a10a058ab43bf0e4f100a749d4f))
+
+lockdata=true made Jellyfin set IsLocked=1 on import, after which it ignores the NFO on every
+  subsequent scan — so metadata corrections (re-match, episode renumbering, artwork) never
+  propagated. Users had to force "Replace all metadata" in Jellyfin for any fix to appear.
+
+Stop emitting <lockdata> in episode/tvshow/season NFOs. Unlocked items are re-read from the NFO on
+  each scan, so fixes self-propagate. These custom league shows don't match online scrapers; disable
+  metadata downloaders on the rugby library to keep Jellyfin from clobbering the NFO.
+
+Note: already-locked items stay locked in Jellyfin's DB — a one-time "Replace all metadata" is still
+  needed to adopt the new unlocked NFOs.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v1.0.13 (2026-07-11)
 
 ### Bug Fixes

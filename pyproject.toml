@@ -2,7 +2,7 @@
 # a PyPI package. This file exists to configure python-semantic-release.
 [project]
 name = "telegram-video-matic"
-version = "1.0.13"
+version = "1.0.14"
 description = "Telegram media sync + Jellyfin-ready enrichment"
 requires-python = ">=3.14"
 
