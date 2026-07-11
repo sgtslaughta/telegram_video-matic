@@ -1147,8 +1147,9 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
         if thumb:
             lines.append(f"    <thumb>{escape(thumb)}</thumb>")
         lines.append("  </actor>")
-    # Lock so Jellyfin keeps our metadata instead of generating its own.
-    lines.append("  <lockdata>true</lockdata>")
+    # No <lockdata>: leaving items unlocked lets Jellyfin re-read the NFO on
+    # every scan, so later fixes (re-match, numbering, artwork) self-propagate.
+    # Disable online metadata downloaders on the rugby library to protect these.
     lines.append("</episodedetails>")
     return "\n".join(lines) + "\n"
 
@@ -1205,7 +1206,6 @@ def _build_tvshow_nfo(league, meta=None) -> str:
         lines.append(f"  <website>{escape(meta['website'])}</website>")
     if league and league.id:
         lines.append(f'  <uniqueid type="thesportsdb" default="true">{league.id}</uniqueid>')
-    lines.append("  <lockdata>true</lockdata>")
     lines.append("</tvshow>")
     return "\n".join(lines) + "\n"
 
@@ -1230,7 +1230,6 @@ def _build_season_nfo(season, league, meta=None) -> str:
     ]
     if meta.get("poster"):
         lines.append(f'  <thumb aspect="poster">{escape(meta["poster"])}</thumb>')
-    lines.append("  <lockdata>true</lockdata>")
     lines.append("</season>")
     return "\n".join(lines) + "\n"
 
