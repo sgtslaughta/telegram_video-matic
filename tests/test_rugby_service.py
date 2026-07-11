@@ -194,3 +194,26 @@ async def test_match_item_and_naming_tokens(ctx, factory):
         assert tokens["rugby_season"] == "2025-2026" and tokens["rugby_sport"] == "union"
     else:
         assert tokens == {}  # needs_review withholds tokens until confirmed
+
+
+def test_episode_number_unique_per_game_in_round():
+    """Round number alone collides (Jellyfin merges the round into one episode);
+    round*100 + slot keeps each game distinct while preserving round order."""
+    from types import SimpleNamespace
+    from app.rugby.service import _episode_number
+
+    m = SimpleNamespace(round="2")
+    e1, lbl = _episode_number(m, None, slot=1)
+    e2, _ = _episode_number(m, None, slot=2)
+    e3, _ = _episode_number(m, None, slot=3)
+    assert (e1, e2, e3) == (201, 202, 203)   # distinct, ordered
+    assert lbl == "Round 2"
+    # Later rounds sort after earlier ones regardless of slot.
+    r18, _ = _episode_number(SimpleNamespace(round="18"), None, slot=1)
+    assert r18 > e3
+
+    # Finals (non-numeric) land after the regular season and stay distinct.
+    fx = SimpleNamespace(date=datetime(2026, 6, 1, tzinfo=timezone.utc))
+    f1, flbl = _episode_number(SimpleNamespace(round="Final"), fx, slot=1)
+    f2, _ = _episode_number(SimpleNamespace(round="Final"), fx, slot=2)
+    assert f1 != f2 and f1 > r18 and flbl == "Final"

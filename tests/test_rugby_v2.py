@@ -316,7 +316,9 @@ async def test_write_jellyfin_nfo_has_team_actors(ctx, factory, tmp_path, monkey
     nfo = (season_dir / "match.nfo").read_text()
     assert "<episodedetails>" in nfo
     assert "<originaltitle>Sale Sharks vs Gloucester</originaltitle>" in nfo
-    assert "<season>2025</season>" in nfo and "<episode>1</episode>" in nfo
+    # Round 1, first (only) game of the round → round*100 + slot = 101.
+    # Episode is unique per game so Jellyfin never merges a round.
+    assert "<season>2025</season>" in nfo and "<episode>101</episode>" in nfo
     assert "<premiered>2025-09-25</premiered>" in nfo
     assert nfo.count("<actor>") == 2
     assert "<thumb>https://x/sale.png</thumb>" in nfo

@@ -821,12 +821,27 @@ class RugbyService:
                 fx = await s.get(RugbyFixture, m.fixture_id) if m.fixture_id else None
                 home_badge = await self._team_badge(s, fx.home_team_id) if fx else None
                 away_badge = await self._team_badge(s, fx.away_team_id) if fx else None
+                # Slot = this game's 1-based position among its round's fixtures
+                # (by kickoff, then id). Disambiguates the episode number so
+                # Jellyfin keeps each match distinct instead of merging a round.
+                slot = 1
+                if fx:
+                    sib = (await s.execute(
+                        select(RugbyFixture.id)
+                        .where(RugbyFixture.league_id == fx.league_id,
+                               RugbyFixture.season == fx.season,
+                               RugbyFixture.round == fx.round)
+                        .order_by(RugbyFixture.date, RugbyFixture.id)
+                    )).scalars().all()
+                    if fx.id in sib:
+                        slot = sib.index(fx.id) + 1
             home_bio = await self._fetch_team_bio(fx.home_team_id) if fx else ""
             away_bio = await self._fetch_team_bio(fx.away_team_id) if fx else ""
             runtime_min = int((item.duration_sec or 0) / 60)
             dateadded = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             nfo = _build_episode_nfo(m, fx, league, home_badge, away_badge,
-                                     runtime_min, dateadded, home_bio, away_bio)
+                                     runtime_min, dateadded, home_bio, away_bio,
+                                     slot)
             p = Path(path)
             p.with_suffix(".nfo").write_text(nfo, encoding="utf-8")
 
@@ -1039,22 +1054,25 @@ class RugbyService:
                 "leagues": leagues, "tracked": tracked, "needs_review": review}
 
 
-def _episode_number(match, fixture):
-    """(episode_int, round_label). Numeric rounds map straight to the episode
-    number so Jellyfin orders by round. Non-numeric rounds (finals) are pushed
-    after the regular season and ordered by date played, so they sort last and
-    chronologically."""
+def _episode_number(match, fixture, slot=1):
+    """(episode_int, round_label). Episode number must be UNIQUE per game or
+    Jellyfin collapses every match in a round into one episode (round number
+    alone collides). Numeric rounds → round*100 + slot, where slot is the
+    game's 1-based position within the round; keeps rounds grouped and ordered
+    while staying distinct (e.g. Round 2 → 201, 202, 203). Non-numeric rounds
+    (finals) are pushed after the regular season, ordered by date then slot."""
     r = (match.round or "").strip()
     if r.isdigit():
-        return int(r), f"Round {int(r)}"
-    base = 900
+        return int(r) * 100 + slot, f"Round {int(r)}"
+    base = 90000
     if fixture and fixture.date:
-        base += fixture.date.timetuple().tm_yday
-    return base, (r or "Match")
+        base += fixture.date.timetuple().tm_yday * 100
+    return base + slot, (r or "Match")
 
 
 def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
-                       runtime_min=0, dateadded="", home_bio="", away_bio="") -> str:
+                       runtime_min=0, dateadded="", home_bio="", away_bio="",
+                       slot=1) -> str:
     """Fully-populated Kodi/Jellyfin episodedetails: ordered by round/date,
     teams as actors, league as show/studio, played date as premiered/aired."""
     home = match.home_name or ""
@@ -1062,7 +1080,7 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
     league_name = league.name if league else ""
     sport = (league.sport if league and league.sport else "rugby")
     season_int = int(match.season[:4]) if (match.season or "")[:4].isdigit() else 1
-    episode_int, label = _episode_number(match, fixture)
+    episode_int, label = _episode_number(match, fixture, slot)
 
     venue = played = ""
     if fixture:
