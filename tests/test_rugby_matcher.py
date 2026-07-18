@@ -203,3 +203,61 @@ def test_short_city_names_match_full_team_names():
     text = "Sale v Bristol - PREM Round 18 - 6th June 2026.mp4"
     res, conf, status = match(text, None, [fx])
     assert res is not None and status == "auto"
+
+
+# --- grade / league separation -------------------------------------------
+# Regression: Junior World Championship (JWC) games were auto-filed under senior
+# tournaments. The teams are identical ("England v France"), so team matching
+# alone reached the 0.8 auto threshold with nothing corroborating it.
+
+def _senior(**kw):
+    fx = {"id": 1, "home_name": "England", "away_name": "France", "round": "3",
+          "date": datetime(2026, 7, 4, tzinfo=timezone.utc),
+          "league_name": "Nations Championship"}
+    fx.update(kw)
+    return fx
+
+
+def test_u20_game_never_matches_senior_fixture():
+    text = "England U20 v France U20 - 4th July 2026.mp4"
+    assert match(text, None, [_senior()]) == (None, 0.0, "none")
+
+
+def test_u20_game_matches_its_own_grade():
+    u20 = _senior(id=2, league_name="World Rugby U20 Championship")
+    fx, _conf, status = match("England U20 v France U20 - 4th July 2026.mp4",
+                              None, [u20])
+    assert fx["id"] == 2 and status == "auto"
+
+
+def test_grade_can_come_from_the_channel_or_topic_name():
+    """Titles often omit the grade; the JWC topic it was posted in carries it."""
+    text = "England v France - 4th July 2026.mp4"
+    assert match(text, None, [_senior()], context="JWC 2026")[2] == "none"
+    u20 = _senior(id=3, league_name="World Rugby U20 Championship")
+    assert match(text, None, [u20], context="JWC 2026")[0]["id"] == 3
+
+
+def test_womens_game_never_matches_the_mens_fixture():
+    assert match("England Women v France Women - 4th July 2026.mp4",
+                 None, [_senior()])[2] == "none"
+
+
+def test_jwc_hint_does_not_resolve_to_the_senior_world_cup():
+    assert league_hint("England v France - Junior World Championship") == "junior world"
+    assert league_hint("England v Fiji - JWC 2026") == "junior world"
+
+
+def test_title_naming_another_league_is_penalised():
+    """A Six Nations title should not auto-file into a Nations Championship."""
+    fx, conf, status = match("England v France - Six Nations - 4th July 2026.mp4",
+                             None, [_senior()])
+    assert status != "auto" and conf < 0.8
+
+
+def test_teams_alone_never_auto_file():
+    """No round, no date, no league hint -> reviewable, not automatic."""
+    fx = {"id": 1, "home_name": "Sale Sharks", "away_name": "Bristol Bears",
+          "round": None, "date": None, "league_name": "English Prem Rugby"}
+    res, conf, status = match("Sale v Bristol.mp4", None, [fx])
+    assert res is not None and status == "needs_review" and conf < 0.8

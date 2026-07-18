@@ -12,7 +12,7 @@ from xml.sax.saxutils import escape
 
 from sqlalchemy import func, select
 
-from app.db.models import MediaItem, Subscription, Topic
+from app.db.models import Channel, MediaItem, Subscription, Topic
 from app.rugby import matcher, scraper
 from app.rugby.api import RugbyApi, RugbyApiError
 from app.rugby.models import (
@@ -324,6 +324,26 @@ class RugbyService:
         async with self.ctx.session() as s:
             return await self._league_for_sub(s, sub_id)
 
+    @staticmethod
+    async def _source_context(s, item) -> str:
+        """Topic + channel name for an item — where the competition is named.
+
+        A file called "England v France.mp4" is only identifiable as an U20 game
+        by the "JWC" topic it was posted in.
+        """
+        parts = []
+        topic_id = getattr(item, "topic_id", None)
+        if topic_id:
+            topic = await s.get(Topic, topic_id)
+            if topic and topic.title:
+                parts.append(topic.title)
+        channel_id = getattr(item, "channel_id", None)
+        if channel_id:
+            ch = await s.get(Channel, channel_id)
+            if ch and ch.title:
+                parts.append(ch.title)
+        return " ".join(parts)
+
     # ---- matching -------------------------------------------------------
     async def match_item(self, item):
         """Match a freshly discovered item to a fixture (uses its subscription)."""
@@ -337,6 +357,9 @@ class RugbyService:
             league_id = await self._league_for_sub(s, sub_id)
             if league_id is None:
                 return None
+            league = await s.get(RugbyLeague, league_id)
+            league_name = league.name if league else ""
+            context = await self._source_context(s, item)
 
             async def _load():
                 rows = (await s.execute(
@@ -344,16 +367,19 @@ class RugbyService:
                 )).scalars().all()
                 return [{"id": f.id, "home_name": f.home_name,
                          "away_name": f.away_name, "date": f.date,
-                         "season": f.season, "round": f.round} for f in rows]
+                         "season": f.season, "round": f.round,
+                         "league_name": league_name} for f in rows]
 
             fixtures = await _load()
-            best, conf, status = matcher.match(text, item.date_posted, fixtures)
+            best, conf, status = matcher.match(text, item.date_posted, fixtures,
+                                               context=context)
             if status == "none":
                 # Incremental: try one targeted lookup, then re-match.
-                if await self._ondemand_fetch(text, item.date_posted):
+                if await self._ondemand_fetch(text, item.date_posted, context):
                     fetched = True
                     fixtures = await _load()
-                    best, conf, status = matcher.match(text, item.date_posted, fixtures)
+                    best, conf, status = matcher.match(
+                        text, item.date_posted, fixtures, context=context)
             if status != "none":
                 rm = (await s.execute(
                     select(RugbyMatch).where(RugbyMatch.media_id == item.id)
@@ -461,7 +487,23 @@ class RugbyService:
         )).scalars().all()}
         return fixtures, {f["id"]: f for f in fixtures}, leagues, teams, stored
 
-    def _entry_for(self, item, fixtures, by_id, leagues, teams, stored):
+    @staticmethod
+    async def _context_map(s, media) -> dict:
+        """media_id -> "topic channel" text, in two queries for the whole page."""
+        topic_ids = {m.topic_id for m in media if m.topic_id}
+        chan_ids = {m.channel_id for m in media if m.channel_id}
+        topics = dict((await s.execute(
+            select(Topic.id, Topic.title).where(Topic.id.in_(topic_ids)))).all()
+        ) if topic_ids else {}
+        chans = dict((await s.execute(
+            select(Channel.id, Channel.title).where(Channel.id.in_(chan_ids)))).all()
+        ) if chan_ids else {}
+        return {m.id: " ".join(p for p in (topics.get(m.topic_id),
+                                           chans.get(m.channel_id)) if p)
+                for m in media}
+
+    def _entry_for(self, item, fixtures, by_id, leagues, teams, stored,
+                   context: str = ""):
         """Build one enrichment entry for a media item, or None if no match.
 
         A stored rugby_match (auto/confirmed/needs_review) overrides the live
@@ -472,7 +514,8 @@ class RugbyService:
             fx, status = by_id[m.fixture_id], m.status
         else:
             text = item.file_name or item.caption or ""
-            fx, _conf, status = matcher.match(text, item.date_posted, fixtures)
+            fx, _conf, status = matcher.match(text, item.date_posted, fixtures,
+                                              context=context)
             if status == "none" or not fx:
                 return None
         return self._fixture_entry(fx, leagues, teams, status)
@@ -539,14 +582,15 @@ class RugbyService:
                     return lid
         return None
 
-    async def _ondemand_fetch(self, text, date) -> bool:
+    async def _ondemand_fetch(self, text, date, context: str = "") -> bool:
         """Fill one missing fixture with a single targeted round lookup.
 
         Needs league (title hint) + numeric round to target. Tries the season
         formats implied by the date (≤2 calls), deduped so a burst of videos for
         the same game costs one fetch. Returns True if new fixtures landed.
         """
-        needle = matcher.league_hint(text or "")
+        # League may only be named by the topic; the round only ever by the title.
+        needle = matcher.league_hint(text or "") or matcher.league_hint(context or "")
         rnd = matcher.parse_round(text or "")
         if not needle or rnd is None:
             return False
@@ -599,8 +643,10 @@ class RugbyService:
             media = (await s.execute(
                 select(MediaItem).where(MediaItem.channel_id == channel_id)
             )).scalars().all()
+            ctxs = await self._context_map(s, media)
         for item in media:
-            e = self._entry_for(item, fixtures, by_id, leagues, teams, stored)
+            e = self._entry_for(item, fixtures, by_id, leagues, teams, stored,
+                                ctxs.get(item.id, ""))
             if e:
                 out[item.tg_msg_id] = e
         return out
@@ -617,8 +663,10 @@ class RugbyService:
             media = (await s.execute(
                 select(MediaItem).where(MediaItem.id.in_(media_ids))
             )).scalars().all()
+            ctxs = await self._context_map(s, media)
         for item in media:
-            e = self._entry_for(item, fixtures, by_id, leagues, teams, stored)
+            e = self._entry_for(item, fixtures, by_id, leagues, teams, stored,
+                                ctxs.get(item.id, ""))
             if e:
                 out[item.id] = e
         return out
@@ -748,7 +796,8 @@ class RugbyService:
                 select(RugbyTeam).where(RugbyTeam.league_id == league_id)
             )).scalars().all()
         fixtures = [{"id": f.id, "home_name": f.home_name, "away_name": f.away_name,
-                     "date": f.date, "season": f.season, "round": f.round} for f in rows]
+                     "date": f.date, "season": f.season, "round": f.round,
+                     "league_name": league.name if league else None} for f in rows]
         best, conf, status = matcher.match(text, date, fixtures)
         res = {"matched": status != "none", "status": status, "confidence": conf,
                "fixtures_count": len(fixtures), "teams_count": len(teams),

@@ -267,7 +267,8 @@ async def test_ondemand_fetch_single_lookup(ctx, factory):
 async def test_preview_matches_and_renders(ctx, factory):
     await _seed(factory, with_match=False)
     res = await RugbyService(ctx).preview(4414, "Sale Sharks v Gloucester highlights.mp4")
-    assert res["matched"] is True and res["status"] == "auto"
+    # Teams only, nothing corroborating -> a match, but not an automatic one.
+    assert res["matched"] is True and res["status"] == "needs_review"
     assert res["home"] == "Sale Sharks" and res["away"] == "Gloucester"
     assert res["home_badge"] == "https://x/sale.png"
     assert res["fixtures_count"] == 1 and res["teams_count"] == 2
