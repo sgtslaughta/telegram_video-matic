@@ -1,6 +1,36 @@
 # CHANGELOG
 
 
+## v1.1.1 (2026-07-18)
+
+### Bug Fixes
+
+- **rugby**: Stop age-grade games matching senior fixtures
+  ([`a0eef5b`](https://github.com/sgtslaughta/telegram_video-matic/commit/a0eef5ba70137beb2f62afea96550ea028bc0ed9))
+
+Junior World Championship videos were auto-filed under senior tournaments. Three defects compounded:
+
+- U20/women's fixtures reuse the senior team names, and team presence alone scored 0.6 base + 0.2
+  coverage = the 0.8 auto threshold, so "England U20 v France U20" auto-matched a senior England v
+  France fixture. - "Junior World Championship" contains "world cup" as a substring, so
+  league_hint() resolved it to the senior Rugby World Cup. - _load() never populated league_name,
+  leaving the league-hint factor dead in every real code path; only the demo exercised it.
+
+Fixes:
+
+- grades() derives u20/u19/u18/women/sevens tags from the title, the source channel/topic and the
+  fixture's league + team names. Disagreement vetoes the fixture outright rather than penalising it.
+  - Team names alone now cap at 0.79 (needs_review). Round, date or league must corroborate before
+  anything auto-files. - League hint is two-sided: +0.05 on a hit, -0.35 when the title names a
+  different competition. - JWC hint tokens precede "world cup" and resolve to a needle no catalog
+  league contains, since thesportsdb has no JWC league. Those games now come back unmatched instead
+  of wrong. - Channel and topic titles reach the matcher in match_item() and both enrichment paths,
+  where the competition is often the only place the grade is named. Round and date still come from
+  the title alone.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v1.1.0 (2026-07-11)
 
 ### Features
