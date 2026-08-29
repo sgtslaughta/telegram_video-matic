@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v1.2.0 (2026-08-29)
+
+### Features
+
+- **rugby**: Add a re-match action for media that never matched
+  ([`4033df0`](https://github.com/sgtslaughta/telegram_video-matic/commit/4033df06d1c064d94681233910eee6f4ae1fb16a))
+
+Fixture matching only runs at discovery (on_media_discovered), so fixtures that arrive later — a
+  deep fetch, a newly tracked league — can never attach to an already-downloaded video. Those items
+  keep a bare Jellyfin NFO with no league, teams or tags, and no existing action fixes them:
+  reconcile only walks rows that are already auto/confirmed, and update_match needs a row that was
+  never written.
+
+rematch() retries every item with no match row at all, then re-files and rewrites metadata for
+  whatever lands. Items already matched or awaiting review are left alone. Exposed as POST
+  /api/plugins/rugby/rematch and a "Re-match unmatched" button beside Scan now / Reorganize library.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
 ## v1.1.2 (2026-08-29)
 
 ### Bug Fixes
