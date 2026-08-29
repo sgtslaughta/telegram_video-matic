@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v1.3.0 (2026-08-29)
+
+### Features
+
+- **rugby**: Fall back to other tracked leagues when the bound one misses
+  ([`cf86137`](https://github.com/sgtslaughta/telegram_video-matic/commit/cf86137569841da4b6023ca92f825071109710c3))
+
+A subscription binds exactly one league, but a forum topic routinely mixes competitions — a Summer
+  Internationals topic carries tour games, friendlies and a championship at once, so games outside
+  the binding could never match no matter how many fixtures were fetched.
+
+When the bound league (and the on-demand lookup) come up empty, matching now retries across every
+  other tracked league. Cross-league hits are forced to needs_review regardless of confidence, so
+  the binding remains the only path that files anything unattended, and the match records the
+  fixture's own league rather than the subscription's.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
 ## v1.2.0 (2026-08-29)
 
 ### Features
