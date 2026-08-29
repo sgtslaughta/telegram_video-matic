@@ -361,14 +361,20 @@ class RugbyService:
             league_name = league.name if league else ""
             context = await self._source_context(s, item)
 
-            async def _load():
+            names = {lid: nm for lid, nm in (await s.execute(
+                select(RugbyLeague.id, RugbyLeague.name))).all()}
+
+            async def _load(ids=None):
                 rows = (await s.execute(
-                    select(RugbyFixture).where(RugbyFixture.league_id == league_id)
+                    select(RugbyFixture).where(
+                        RugbyFixture.league_id.in_(ids or [league_id]))
                 )).scalars().all()
                 return [{"id": f.id, "home_name": f.home_name,
                          "away_name": f.away_name, "date": f.date,
                          "season": f.season, "round": f.round,
-                         "league_name": league_name} for f in rows]
+                         "league_id": f.league_id,
+                         "league_name": names.get(f.league_id, league_name)}
+                        for f in rows]
 
             fixtures = await _load()
             best, conf, status = matcher.match(text, item.date_posted, fixtures,
@@ -380,6 +386,20 @@ class RugbyService:
                     fixtures = await _load()
                     best, conf, status = matcher.match(
                         text, item.date_posted, fixtures, context=context)
+            if status == "none":
+                # A subscription binds one league, but a forum topic often mixes
+                # competitions (tour games, friendlies, a cup the topic never
+                # names). Widen to every other tracked league — always landing in
+                # needs_review, so the narrow binding stays the only path that
+                # files anything unattended.
+                others = [lid for lid in (await s.execute(
+                    select(RugbyLeague.id).where(RugbyLeague.tracked.is_(True))
+                )).scalars().all() if lid != league_id]
+                if others:
+                    alt, alt_conf, alt_status = matcher.match(
+                        text, item.date_posted, await _load(others), context=context)
+                    if alt_status != "none":
+                        best, conf, status = alt, alt_conf, "needs_review"
             if status != "none":
                 rm = (await s.execute(
                     select(RugbyMatch).where(RugbyMatch.media_id == item.id)
@@ -388,7 +408,9 @@ class RugbyService:
                     rm = RugbyMatch(media_id=item.id)
                     s.add(rm)
                 rm.fixture_id = best["id"] if best else None
-                rm.league_id = league_id
+                # The fixture's own league, which the fallback above may have
+                # taken from outside the subscription's binding.
+                rm.league_id = (best or {}).get("league_id") or league_id
                 rm.season = best["season"] if best else None
                 rm.round = best["round"] if best else None
                 rm.home_name = best["home_name"] if best else None

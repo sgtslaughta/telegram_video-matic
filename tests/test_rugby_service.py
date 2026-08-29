@@ -276,3 +276,48 @@ async def test_rematch_picks_up_fixtures_that_arrived_after_download(ctx, factor
         rows = {m.media_id: m for m in (await s.execute(select(rm.RugbyMatch))).scalars()}
     assert rows[unmatched_id].home_name == "Sale Sharks"
     assert rows[done_id].home_name is None  # untouched
+
+
+@pytest.mark.asyncio
+async def test_match_falls_back_to_other_tracked_leagues(ctx, factory):
+    """A forum topic mixes competitions, so a miss in the bound league retries
+    across every tracked league — but only ever as needs_review."""
+    async with factory() as s:
+        s.add(rm.RugbyLeague(id=5852, slug="nations", name="Nations Championship",
+                             sport="union", tracked=True))
+        s.add(rm.RugbyLeague(id=5479, slug="friendlies", sport="union",
+                             name="Rugby Union International Friendlies", tracked=True))
+        # Only the *unbound* league has the fixture.
+        s.add(rm.RugbyFixture(
+            id=99, league_id=5479, season="2026", round="0",
+            date=datetime(2026, 8, 25, tzinfo=timezone.utc),
+            home_name="Lions", away_name="New Zealand Rugby"))
+        chan = Channel(tg_id=1, title="Rugby")
+        s.add(chan)
+        await s.flush()
+        sub = Subscription(channel_id=chan.id, storage_path="/d",
+                           rename_template="{title}{ext}")
+        s.add(sub)
+        await s.flush()
+        item = MediaItem(channel_id=chan.id, tg_msg_id=9, subscription_id=sub.id,
+                         file_name="2026 08 25 Lions v New Zealand [Ellis Park].mp4",
+                         date_posted=datetime(2026, 8, 25, tzinfo=timezone.utc),
+                         status=MediaStatus.DOWNLOADED)
+        s.add(item)
+        await s.flush()
+        s.add(rm.RugbySubscription(subscription_id=sub.id, league_id=5852))
+        await s.commit()
+        item_id = item.id
+
+    svc = RugbyService(ctx, api=FakeApi())
+    async with factory() as s:
+        item = await s.get(MediaItem, item_id)
+    status = await svc.match_item(item)
+
+    assert status == "needs_review"  # never auto-files across the binding
+    async with factory() as s:
+        row = (await s.execute(
+            select(rm.RugbyMatch).where(rm.RugbyMatch.media_id == item_id)
+        )).scalar_one()
+    assert row.league_id == 5479  # the fixture's league, not the subscription's
+    assert row.home_name == "Lions" and row.away_name == "New Zealand Rugby"
