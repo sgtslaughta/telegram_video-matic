@@ -1064,12 +1064,17 @@ class RugbyService:
                 .where(MediaItem.subscription_id.in_(
                     select(RugbySubscription.subscription_id)))
             )).scalars().all()
-        matched = filed = 0
+        matched = review = filed = 0
         for item in items:
             try:
                 status = await self.match_item(item)
             except Exception as ex:  # noqa: BLE001 - best-effort per item
                 await self.ctx.log("warning", "rugby", f"rematch {item.id}: {ex}")
+                continue
+            if status == "needs_review":
+                # Counted separately: a cross-league hit never files itself, it
+                # waits for a decision in the review UI.
+                review += 1
                 continue
             if status not in ("auto", "confirmed"):
                 continue
@@ -1077,9 +1082,10 @@ class RugbyService:
             if item.local_path and await self._reconcile_one(item.id):
                 filed += 1
         await self.ctx.log("success", "rugby",
-                           f"Re-match: {matched} of {len(items)} unmatched "
-                           f"now matched, {filed} re-filed")
-        return {"scanned": len(items), "matched": matched, "filed": filed}
+                           f"Re-match: {len(items)} unmatched → {matched} matched "
+                           f"({filed} re-filed), {review} awaiting review")
+        return {"scanned": len(items), "matched": matched,
+                "review": review, "filed": filed}
 
     # ---- jellyfin artwork (legacy poster-only helper) ------------------
     async def write_artwork(self, item, path):

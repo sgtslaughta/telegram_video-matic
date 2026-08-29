@@ -259,7 +259,7 @@ async def test_rematch_picks_up_fixtures_that_arrived_after_download(ctx, factor
         unmatched_id, done_id = unmatched.id, done.id
 
     svc = RugbyService(ctx, api=FakeApi())
-    assert await svc.rematch() == {"scanned": 1, "matched": 0, "filed": 0}
+    assert await svc.rematch() == {"scanned": 1, "matched": 0, "review": 0, "filed": 0}
 
     # The fixture lands (deep fetch, newly tracked league) — now it can match.
     async with factory() as s:
