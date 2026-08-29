@@ -192,7 +192,11 @@ class RugbyService:
 
                 for ssn in seasons:
                     empty = 0
-                    for rnd in range(1, _ROUND_SCAN + 1):
+                    # From 0: friendlies, tours and one-off internationals are
+                    # all round 0 upstream, so a scan starting at 1 only ever
+                    # caught the handful that pastleague's recent window
+                    # happened to include.
+                    for rnd in range(0, _ROUND_SCAN + 1):
                         if consec >= _MAX_CONSEC_ERRORS:
                             broke = True
                             break  # hard block — stop hammering

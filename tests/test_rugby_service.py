@@ -321,3 +321,34 @@ async def test_match_falls_back_to_other_tracked_leagues(ctx, factory):
         )).scalar_one()
     assert row.league_id == 5479  # the fixture's league, not the subscription's
     assert row.home_name == "Lions" and row.away_name == "New Zealand Rugby"
+
+
+@pytest.mark.asyncio
+async def test_deep_fetch_scans_round_zero(ctx, factory):
+    """Friendlies, tours and one-off internationals are all round 0 upstream —
+    a scan starting at round 1 sees none of them."""
+    class RoundZeroApi(FakeApi):
+        _FRIENDLY = {
+            "idEvent": "5001", "strSeason": "2026", "intRound": "0",
+            "dateEvent": "2026-08-15", "idHomeTeam": "1", "idAwayTeam": "2",
+            "strHomeTeam": "Australia Rugby", "strAwayTeam": "Japan Rugby",
+        }
+
+        async def fetch_round(self, league_id, rnd, season):
+            return [self._FRIENDLY] if rnd == 0 and season == "2026" else []
+
+        async def fetch_past_league(self, league_id):
+            return []
+
+    async with factory() as s:
+        s.add(rm.RugbyLeague(id=5479, slug="friendlies", sport="union",
+                             name="Rugby Union International Friendlies"))
+        await s.commit()
+
+    svc = RugbyService(ctx, api=RoundZeroApi())
+    await svc.deep_fetch(5479, season="2026")
+
+    async with factory() as s:
+        fx = (await s.execute(select(rm.RugbyFixture))).scalars().all()
+    assert [(f.home_name, f.away_name, f.round) for f in fx] == [
+        ("Australia Rugby", "Japan Rugby", "0")]
