@@ -13,7 +13,7 @@ from app.telegram.service import TelegramService
 from app.sync.engine import SyncEngine
 from app.sync.plugins import PluginHost
 
-__version__ = "1.3.0"  # managed by python-semantic-release (see pyproject.toml)
+__version__ = "1.3.1"  # managed by python-semantic-release (see pyproject.toml)
 
 settings = Settings()
 

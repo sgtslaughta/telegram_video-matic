@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v1.3.1 (2026-08-29)
+
+### Bug Fixes
+
+- **rugby**: Count review candidates in the re-match summary
+  ([`da9185f`](https://github.com/sgtslaughta/telegram_video-matic/commit/da9185fd87a43ddbf5ec94f209d57fcc5a9fd004))
+
+Cross-league hits land in needs_review, which the summary counted as neither matched nor anything
+  else — a run that surfaced two games for review still reported "0 of 17 unmatched now matched",
+  reading as a total failure.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
 ## v1.3.0 (2026-08-29)
 
 ### Features
