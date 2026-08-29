@@ -225,3 +225,54 @@ def test_episode_number_unique_per_game_in_round():
     f1, flbl = _episode_number(SimpleNamespace(round="Final"), fx, slot=1)
     f2, _ = _episode_number(SimpleNamespace(round="Final"), fx, slot=2)
     assert f1 != f2 and f1 > r18 and flbl == "Final"
+
+
+@pytest.mark.asyncio
+async def test_rematch_picks_up_fixtures_that_arrived_after_download(ctx, factory):
+    """Matching only runs at discovery, so a fixture fetched later can never
+    attach on its own — rematch() is the catch-up pass."""
+    async with factory() as s:
+        s.add(rm.RugbyLeague(id=4414, slug="english-prem-rugby",
+                             name="English Prem Rugby", sport="union"))
+        chan = Channel(tg_id=1, title="Rugby")
+        s.add(chan)
+        await s.flush()
+        sub = Subscription(channel_id=chan.id, storage_path="/d",
+                           rename_template="{title}{ext}")
+        s.add(sub)
+        await s.flush()
+        # Downloaded while no fixture existed -> no match row was ever written.
+        unmatched = MediaItem(channel_id=chan.id, tg_msg_id=7, subscription_id=sub.id,
+                              file_name="Sale Sharks v Gloucester.mp4",
+                              date_posted=datetime(2025, 9, 25, tzinfo=timezone.utc),
+                              status=MediaStatus.DOWNLOADED)
+        # Already matched: rematch must leave it alone.
+        done = MediaItem(channel_id=chan.id, tg_msg_id=8, subscription_id=sub.id,
+                         file_name="Bath v Saracens.mp4",
+                         date_posted=datetime(2025, 9, 25, tzinfo=timezone.utc),
+                         status=MediaStatus.DOWNLOADED)
+        s.add_all([unmatched, done])
+        await s.flush()
+        s.add(rm.RugbyMatch(media_id=done.id, status="auto", league_id=4414))
+        s.add(rm.RugbySubscription(subscription_id=sub.id, league_id=4414))
+        await s.commit()
+        unmatched_id, done_id = unmatched.id, done.id
+
+    svc = RugbyService(ctx, api=FakeApi())
+    assert await svc.rematch() == {"scanned": 1, "matched": 0, "filed": 0}
+
+    # The fixture lands (deep fetch, newly tracked league) — now it can match.
+    async with factory() as s:
+        s.add(rm.RugbyFixture(
+            id=2309783, league_id=4414, season="2025-2026", round="1",
+            date=datetime(2025, 9, 25, tzinfo=timezone.utc),
+            home_name="Sale Sharks", away_name="Gloucester"))
+        await s.commit()
+
+    result = await svc.rematch()
+    assert result["scanned"] == 1 and result["matched"] == 1
+
+    async with factory() as s:
+        rows = {m.media_id: m for m in (await s.execute(select(rm.RugbyMatch))).scalars()}
+    assert rows[unmatched_id].home_name == "Sale Sharks"
+    assert rows[done_id].home_name is None  # untouched

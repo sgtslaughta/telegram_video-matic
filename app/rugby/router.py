@@ -65,6 +65,15 @@ async def reconcile(request: Request, bg: BackgroundTasks):
     return {"scheduled": True}
 
 
+@router.post("/rematch")
+async def rematch(request: Request, bg: BackgroundTasks):
+    """Retry matching for media that never matched a fixture, then file and
+    write metadata for whatever lands. Use after new fixtures arrive: matching
+    otherwise only runs once, when the item is first discovered."""
+    bg.add_task(_service(request).rematch)
+    return {"scheduled": True}
+
+
 @router.post("/rescan")
 async def rescan(request: Request, bg: BackgroundTasks):
     """Manual 'Scan now': detect leagues from every channel's topic names +

@@ -1026,6 +1026,39 @@ class RugbyService:
                            f"Reconcile: {moved} re-filed, {len(ids)} refreshed")
         return {"total": len(ids), "moved": moved}
 
+    async def rematch(self) -> dict:
+        """Retry fixture matching for media that never matched, then file +
+        write metadata for whatever lands.
+
+        match_item only ever runs at discovery, so fixtures that arrive later
+        (a deep-fetch, a newly tracked league) can never attach on their own —
+        this is the catch-up pass. Items already matched or awaiting review are
+        left alone; only media with no match row at all is retried.
+        """
+        async with self.ctx.session() as s:
+            items = (await s.execute(
+                select(MediaItem)
+                .where(MediaItem.id.not_in(select(RugbyMatch.media_id)))
+                .where(MediaItem.subscription_id.in_(
+                    select(RugbySubscription.subscription_id)))
+            )).scalars().all()
+        matched = filed = 0
+        for item in items:
+            try:
+                status = await self.match_item(item)
+            except Exception as ex:  # noqa: BLE001 - best-effort per item
+                await self.ctx.log("warning", "rugby", f"rematch {item.id}: {ex}")
+                continue
+            if status not in ("auto", "confirmed"):
+                continue
+            matched += 1
+            if item.local_path and await self._reconcile_one(item.id):
+                filed += 1
+        await self.ctx.log("success", "rugby",
+                           f"Re-match: {matched} of {len(items)} unmatched "
+                           f"now matched, {filed} re-filed")
+        return {"scanned": len(items), "matched": matched, "filed": filed}
+
     # ---- jellyfin artwork (legacy poster-only helper) ------------------
     async def write_artwork(self, item, path):
         """Save the matched home team's badge as poster.jpg beside the video."""

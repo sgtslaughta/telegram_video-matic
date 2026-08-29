@@ -133,6 +133,22 @@ export function useRugbyReconcile() {
   })
 }
 
+/** Retry matching for media that never matched a fixture, then file + write
+ * metadata for whatever lands. Matching otherwise only runs at discovery, so
+ * fixtures fetched later never attach on their own. */
+export function useRugbyRematch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.rugby.rematch(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: rugbyKeys.status() })
+      // Prefix, not rugbyKeys.matches(): that trails an undefined status which
+      // never deep-equals a real one, so the review list wouldn't refetch.
+      qc.invalidateQueries({ queryKey: ['rugby', 'matches'] })
+    },
+  })
+}
+
 type BrowseLike = { tg_msg_id: number; caption?: string | null; file_name?: string | null; date_posted?: string | null }
 
 /** Enrich the live browse items currently on screen (works for un-cached
