@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v1.3.2 (2026-08-29)
+
+### Bug Fixes
+
+- **rugby**: Scan round 0 so friendlies and tour games are fetched
+  ([`2ba6490`](https://github.com/sgtslaughta/telegram_video-matic/commit/2ba6490ae2b8600ec12ed92fbd3143ce7e792027))
+
+The round scan started at 1, but thesportsdb files friendlies, tours and one-off internationals as
+  round 0. Those leagues therefore only ever yielded the few games that pastleague's recent-events
+  window happened to cover — one fixture out of a whole season of internationals — which read as the
+  matcher working intermittently rather than the catalog being nearly empty.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
 ## v1.3.1 (2026-08-29)
 
 ### Bug Fixes
