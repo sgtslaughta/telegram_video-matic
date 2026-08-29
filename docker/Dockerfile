@@ -25,7 +25,10 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y pip setuptools wheel || true
+# ^ nothing installs packages at runtime, so pip/setuptools are dead weight that
+# only drags their own CVEs (pip vendors msgpack) into the image scan.
 
 # ---------------------------------------------------------------------------
 # Stage 3 — runtime
@@ -39,7 +42,12 @@ LABEL org.opencontainers.image.title="Telegram Video-Matic" \
 # su-exec drops root → PUID:PGID in the entrypoint (Unraid bind-mount ownership).
 # libgcc: cryptg's compiled .so links _Unwind_* from libgcc_s.so.1 — without it
 # the import fails at runtime and Telethon silently falls back to pure-Python AES.
-RUN apk add --no-cache libffi su-exec libgcc
+# apk upgrade first: the base image's openssl libs lag behind Alpine's repos,
+# and Trivy fails the build on the resulting HIGH CVEs.
+RUN apk upgrade --no-cache && apk add --no-cache libffi su-exec libgcc \
+    && rm -rf /usr/local/lib/python3.14/site-packages/pip*
+# ^ the base image's pip vendors msgpack/setuptools (own CVEs) and the app runs
+# entirely out of /opt/venv, so nothing here installs packages.
 
 # Bring in the prebuilt virtualenv.
 COPY --from=pydeps /opt/venv /opt/venv
