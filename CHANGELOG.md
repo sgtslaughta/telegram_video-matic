@@ -1,6 +1,50 @@
 # CHANGELOG
 
 
+## v1.1.2 (2026-08-29)
+
+### Bug Fixes
+
+- **docker**: Clear HIGH CVEs failing the Trivy image scan
+  ([`3c06b67`](https://github.com/sgtslaughta/telegram_video-matic/commit/3c06b6706add6007578f99968659af7dd0b64e5d))
+
+The image scan blocked releases on four HIGH findings unrelated to app code: Alpine's openssl libs
+  lagging the base image, cryptography 49.0.0, and msgpack/setuptools vendored inside the base
+  image's pip.
+
+apk upgrade picks up the openssl fix, cryptography moves to 50.0.1, and both pip installations are
+  dropped from the runtime layer — the app runs out of /opt/venv and never installs packages at
+  runtime.
+
+Verified locally: trivy image scan exits 0, container healthy in 3s.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+- **frontend**: Bump react-router-dom to 7.18.3 for GHSA-qwww-vcr4-c8h2
+  ([`c4f85e1`](https://github.com/sgtslaughta/telegram_video-matic/commit/c4f85e14914b9c54fd0a1de780f200d7b4fe470c))
+
+Trivy's filesystem scan fails the pipeline on a HIGH CSRF advisory against react-router 7.18.0 (RSC
+  mode action execution before a 400 response).
+
+102 vitest tests and the production build pass on the new version.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+- **naming**: Honor subscription topic when template has no S/E tokens
+  ([`b1eb409`](https://github.com/sgtslaughta/telegram_video-matic/commit/b1eb409df27e28ba1292e14ac73c9473b992861d))
+
+Downloads landed in a channel-named folder whenever the rugby plugin found no match:
+  choose_target_path only used rename_template if an S##E## pattern was detected or a plugin
+  supplied tokens, so a "{topic}/{title}.{ext}" template never rendered and the hardcoded fallback
+  used the channel title.
+
+Templates now render unless they reference {season}/{episode}, which still require detection. The
+  no-template fallback prefers the source topic over the channel. Season/episode are also no longer
+  parsed (into the NFO) when season_detection is off.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
 ## v1.1.1 (2026-07-18)
 
 ### Bug Fixes
