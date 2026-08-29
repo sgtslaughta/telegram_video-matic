@@ -17,6 +17,10 @@ _SE_PATTERN = re.compile(
     r"(S\d+E\d+|\d+x\d+|Season\s+\d+.*Episode\s+\d+)", re.IGNORECASE
 )
 
+# Template tokens that are only meaningful once an S##E## pattern was detected.
+# A template without them (e.g. "{topic}/{title}.{ext}") needs no detection.
+_SE_TOKENS = re.compile(r"\{(season|episode)\b")
+
 
 def detect_season_episode(text: str | None) -> tuple[int, int]:
     """
@@ -90,31 +94,38 @@ def render_path(template: str, tokens: dict[str, str | int]) -> str:
 def choose_target_path(item, sub, extra: dict | None = None):
     """Decide the relative download path for an item.
 
-    Uses ``sub.rename_template`` when an S/E pattern is detected (and
-    season_detection is on) **or** a plugin supplied ``extra`` tokens (e.g.
-    rugby league/teams); otherwise keeps the original filename. Plugin tokens
-    let a template apply even without an S##E## marker.
+    Uses ``sub.rename_template`` whenever it can be rendered: templates that
+    reference {season}/{episode} need a detected S##E## pattern (with
+    season_detection on) or plugin ``extra`` tokens; every other template
+    (e.g. "{topic}/{title}.{ext}") applies unconditionally. Only a
+    subscription with no template at all keeps the original filename.
 
     Returns ``(relative_path, season|None, episode|None, used_template)``.
     """
     extra = extra or {}
     text = (item.file_name or item.caption or "") if item else ""
     has_pattern = bool(_SE_PATTERN.search(text))
-    has_template = bool(sub and getattr(sub, "rename_template", None))
-    use_template = has_template and (
-        (getattr(sub, "season_detection", False) and has_pattern) or bool(extra)
+    template = (getattr(sub, "rename_template", None) or "") if sub else ""
+    needs_pattern = bool(_SE_TOKENS.search(template))
+    use_template = bool(template) and (
+        bool(extra)
+        or not needs_pattern
+        or (getattr(sub, "season_detection", False) and has_pattern)
     )
 
     if not use_template:
         fallback = (item.file_name if item and item.file_name
                     else f"{getattr(item, 'tg_msg_id', 'media')}.mp4")
-        # Always nest under a subfolder (channel/topic) so nothing lands loose
-        # in the storage root. Prefer channel title, then sub name, else default.
-        channel = (getattr(getattr(sub, "channel", None), "title", None)
-                   or getattr(sub, "name", None)) if sub else None
-        return f"{safe_segment(channel)}/{fallback}", None, None, False
+        # Always nest under a subfolder so nothing lands loose in the storage
+        # root. The source topic names the competition, so it wins over the
+        # channel title; then sub name, else default.
+        folder = (getattr(getattr(sub, "topic", None), "title", None)
+                  or getattr(getattr(sub, "channel", None), "title", None)
+                  or getattr(sub, "name", None)) if sub else None
+        return f"{safe_segment(folder)}/{fallback}", None, None, False
 
-    season, episode = detect_season_episode(text) if has_pattern else (None, None)
+    detect = has_pattern and getattr(sub, "season_detection", False)
+    season, episode = detect_season_episode(text) if detect else (None, None)
     title = item.file_name.rsplit(".", 1)[0] if item and item.file_name else "unknown"
     ext = "." + item.file_name.rsplit(".", 1)[-1] if item and item.file_name else ""
     tokens = {

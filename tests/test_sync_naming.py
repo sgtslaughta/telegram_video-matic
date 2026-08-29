@@ -14,22 +14,47 @@ def _item(file_name=None, caption=None):
     )
 
 
-def _sub(template, season_detection=True):
+def _sub(template, season_detection=True, topic=None):
     return SimpleNamespace(
-        rename_template=template, season_detection=season_detection,
-        channel=SimpleNamespace(title="Rugby HD"), topic=None,
+        rename_template=template, season_detection=season_detection, name="Sub",
+        channel=SimpleNamespace(title="Rugby HD"),
+        topic=SimpleNamespace(title=topic) if topic else None,
     )
 
 
 class TestChooseTargetPath:
     """choose_target_path() decides template-vs-original and merges plugin tokens."""
 
-    def test_no_pattern_no_extra_nests_under_channel(self):
-        # No template match still nests under a channel subfolder (never loose
-        # in the storage root).
+    def test_template_without_se_tokens_applies_without_pattern(self):
+        """A {channel}/{title} template needs no S##E## marker to render."""
         path, season, ep, used = choose_target_path(
             _item("match.mp4"), _sub("{channel}/{title}{ext}"), {})
-        assert path == "Rugby HD/match.mp4" and used is False and season is None
+        assert path == "Rugby HD/match.mp4" and used is True and season is None
+
+    def test_topic_template_beats_channel_without_pattern(self):
+        """Regression: unmatched rugby fell back to the channel folder, ignoring
+        the subscription's {topic} template."""
+        path, _s, _e, used = choose_target_path(
+            _item("2026 08 15 Bulls [Pretoria].mp4"),
+            _sub("{topic}/{title}.{ext}", topic="Summer Internationals"), {})
+        assert path == "Summer Internationals/2026 08 15 Bulls [Pretoria].mp4"
+        assert used is True
+
+    def test_no_template_falls_back_to_topic_folder(self):
+        path, _s, _e, used = choose_target_path(
+            _item("game.mp4"), _sub(None, topic="Six Nations 2026"), {})
+        assert path == "Six Nations 2026/game.mp4" and used is False
+
+    def test_no_template_no_topic_falls_back_to_channel(self):
+        path, _s, _e, used = choose_target_path(_item("game.mp4"), _sub(None), {})
+        assert path == "Rugby HD/game.mp4" and used is False
+
+    def test_se_template_without_pattern_keeps_original(self):
+        """A {season}/{episode} template still needs a detected pattern."""
+        path, _s, _e, used = choose_target_path(
+            _item("no markers.mp4"),
+            _sub("S{season:02d}E{episode:02d}{ext}", topic="URC"), {})
+        assert path == "URC/no markers.mp4" and used is False
 
     def test_season_episode_uses_template(self):
         path, season, ep, used = choose_target_path(
@@ -52,10 +77,13 @@ class TestChooseTargetPath:
             _item("x.mp4"), _sub("{home}-{away}{ext}", season_detection=False), extra)
         assert path == "Bath-Sale.mp4" and used is True
 
-    def test_pattern_ignored_when_season_detection_off_and_no_extra(self):
-        path, _s, _e, used = choose_target_path(
+    def test_se_pattern_ignored_when_season_detection_off(self):
+        """season_detection off = no S/E parsing, but a pattern-free template
+        still renders (season/episode stay None)."""
+        path, season, ep, used = choose_target_path(
             _item("Show.S01E01.mp4"), _sub("{title}{ext}", season_detection=False), {})
-        assert path == "Rugby HD/Show.S01E01.mp4" and used is False
+        assert path == "Show.S01E01.mp4" and used is True
+        assert (season, ep) == (None, None)
 
 
 class TestDetectSeasonEpisode:
