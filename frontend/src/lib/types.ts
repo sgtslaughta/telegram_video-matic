@@ -434,3 +434,28 @@ export interface FsDirs {
   parent: string | null;
   dirs: string[];
 }
+
+export type RugbyJob = 'import' | 'rematch' | 'reconcile'
+
+/** One planned/applied change in a rugby maintenance job report. */
+export interface RugbyPlanRow {
+  media_id: number
+  file?: string | null
+  from?: string | null
+  to?: string | null
+  status?: 'auto' | 'needs_review' | 'none'
+  fixture?: string | null
+  previous?: string | null
+}
+
+export interface RugbyJobReport {
+  running?: boolean
+  dry_run?: boolean
+  done?: number
+  total?: number
+  error?: string
+  plan?: RugbyPlanRow[]
+  conflicts?: RugbyPlanRow[]
+  files?: string[]
+  [count: string]: unknown
+}

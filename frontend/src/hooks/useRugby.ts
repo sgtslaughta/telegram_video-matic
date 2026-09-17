@@ -121,30 +121,30 @@ export function useRugbyRescan() {
   })
 }
 
-/** Re-file every matched rugby video into its league/Season/round tree and
- * rewrite full Jellyfin metadata (fixes items matched after download). */
-export function useRugbyReconcile() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => api.rugby.reconcile(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: rugbyKeys.status() })
-    },
+/** Last report of a rugby maintenance job; polls every 2s while it runs.
+ * 404 (never run) resolves to null. */
+export function useRugbyJobReport(job: T.RugbyJob | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['rugby', 'report', job],
+    queryFn: () => api.rugby.report(job!).catch(() => null),
+    enabled: enabled && !!job,
+    refetchInterval: (q) => (q.state.data?.running ? 2000 : false),
   })
 }
 
-/** Retry matching for media that never matched a fixture, then file + write
- * metadata for whatever lands. Matching otherwise only runs at discovery, so
- * fixtures fetched later never attach on their own. */
-export function useRugbyRematch() {
+/** Start import / rematch / reconcile, as a dry run (plan only) or for real. */
+export function useRugbyRunJob() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => api.rugby.rematch(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: rugbyKeys.status() })
-      // Prefix, not rugbyKeys.matches(): that trails an undefined status which
-      // never deep-equals a real one, so the review list wouldn't refetch.
-      qc.invalidateQueries({ queryKey: ['rugby', 'matches'] })
+    mutationFn: (v: { job: T.RugbyJob; dryRun: boolean }) => api.rugby.runJob(v.job, v.dryRun),
+    // Returned promise keeps the mutation pending until the report refetch
+    // lands, so the dialog never flashes the previous run's plan.
+    onSuccess: (_d, v) => {
+      if (!v.dryRun) {
+        qc.invalidateQueries({ queryKey: rugbyKeys.status() })
+        qc.invalidateQueries({ queryKey: ['rugby', 'matches'] })
+      }
+      return qc.invalidateQueries({ queryKey: ['rugby', 'report', v.job] })
     },
   })
 }

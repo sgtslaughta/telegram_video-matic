@@ -290,10 +290,13 @@ export const rugby = {
 
   rescan: () =>
     fetchAPI<{ scheduled: boolean }>('/plugins/rugby/rescan', { method: 'POST' }),
-  reconcile: () =>
-    fetchAPI<{ scheduled: boolean }>('/plugins/rugby/reconcile', { method: 'POST' }),
-  rematch: () =>
-    fetchAPI<{ scheduled: boolean }>('/plugins/rugby/rematch', { method: 'POST' }),
+  /** Start a maintenance job; dry_run returns a plan in its report, moves nothing. */
+  runJob: (job: T.RugbyJob, dryRun: boolean) =>
+    fetchAPI<{ scheduled: boolean }>(`/plugins/rugby/${job}`, {
+      method: 'POST',
+      params: job === 'rematch' ? { dry_run: dryRun, rescore: true } : { dry_run: dryRun },
+    }),
+  report: (job: T.RugbyJob) => fetchAPI<T.RugbyJobReport>(`/plugins/rugby/reports/${job}`),
 
   preview: (leagueId: number, text: string) =>
     fetchAPI<T.RugbyPreview>('/plugins/rugby/preview', {

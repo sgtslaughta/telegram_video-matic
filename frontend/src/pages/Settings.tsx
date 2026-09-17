@@ -3,7 +3,8 @@ import { motion } from 'framer-motion'
 import { useSettings, useUpdateSettings } from '@/hooks/useSettings'
 import { useTheme } from '@/hooks/useTheme'
 import { usePlugins, useUpdatePlugin } from '@/hooks/usePlugins'
-import { useRugbyReconcile, useRugbyRematch, useRugbyRescan, useRugbyStatus } from '@/hooks/useRugby'
+import { useRugbyRescan, useRugbyStatus } from '@/hooks/useRugby'
+import { RugbyJobDialog } from '@/components/RugbyJobDialog'
 import { RugbyMatchReview } from '@/components/RugbyMatchReview'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { AlertCircle, Info, RefreshCw, Clock, PackagePlus, FolderSync, Wand2 } from 'lucide-react'
+import { AlertCircle, Info, RefreshCw, Clock, PackagePlus, FolderSync, Wand2, HardDriveDownload } from 'lucide-react'
 import { toast } from 'sonner'
 import type * as T from '@/lib/types'
 
@@ -78,8 +79,7 @@ export default function Settings() {
   const updateSettings = useUpdateSettings()
   const updatePlugin = useUpdatePlugin()
   const rescan = useRugbyRescan()
-  const reconcile = useRugbyReconcile()
-  const rematch = useRugbyRematch()
+  const [rugbyJob, setRugbyJob] = useState<T.RugbyJob | null>(null)
   const rugbyStatus = useRugbyStatus()
   const sync = (rugbyStatus.data?.status ?? {}) as Record<string, unknown>
   const syncing = Boolean(sync.syncing)
@@ -278,16 +278,6 @@ export default function Settings() {
                 onSuccess: () => toast.success('Scan started — fetching fixtures in the background'),
                 onError: (e) => toast.error(e instanceof Error ? e.message : 'Scan failed'),
               })
-            const onReorganize = () =>
-              reconcile.mutate(undefined, {
-                onSuccess: () => toast.success('Reorganizing — re-filing matched games + metadata in the background'),
-                onError: (e) => toast.error(e instanceof Error ? e.message : 'Reorganize failed'),
-              })
-            const onRematch = () =>
-              rematch.mutate(undefined, {
-                onSuccess: () => toast.success('Re-matching unmatched games in the background'),
-                onError: (e) => toast.error(e instanceof Error ? e.message : 'Re-match failed'),
-              })
             return (
               <Card key={plugin.id}>
                 <CardContent className="pt-6">
@@ -323,15 +313,17 @@ export default function Settings() {
                               <RefreshCw className={`mr-2 h-4 w-4 ${rescan.isPending ? 'animate-spin' : ''}`} />
                               {rescan.isPending ? 'Scanning…' : 'Scan now'}
                             </Button>
-                            <Button size="sm" variant="outline" onClick={onRematch} disabled={rematch.isPending}
-                              title="Retry fixture matching for games that never matched, then file them and write Jellyfin metadata">
-                              <Wand2 className={`mr-2 h-4 w-4 ${rematch.isPending ? 'animate-spin' : ''}`} />
-                              {rematch.isPending ? 'Re-matching…' : 'Re-match unmatched'}
+                            <Button size="sm" variant="outline" onClick={() => setRugbyJob('rematch')}
+                              title="Preview re-matching unmatched and auto-matched games, then apply">
+                              <Wand2 className="mr-2 h-4 w-4" /> Re-match
                             </Button>
-                            <Button size="sm" variant="outline" onClick={onReorganize} disabled={reconcile.isPending}
-                              title="Re-file every matched game into league/Season/round folders and refresh Jellyfin metadata">
-                              <FolderSync className={`mr-2 h-4 w-4 ${reconcile.isPending ? 'animate-spin' : ''}`} />
-                              {reconcile.isPending ? 'Reorganizing…' : 'Reorganize library'}
+                            <Button size="sm" variant="outline" onClick={() => setRugbyJob('reconcile')}
+                              title="Preview moving every rugby video into league/Season folders, then apply">
+                              <FolderSync className="mr-2 h-4 w-4" /> Reorganize library
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setRugbyJob('import')}
+                              title="Preview adopting video files already on disk, then import">
+                              <HardDriveDownload className="mr-2 h-4 w-4" /> Import files
                             </Button>
                           </>
                         )}
@@ -407,6 +399,7 @@ export default function Settings() {
                     {isRugby && enabled && (
                       <div className="border-t pt-4">
                         <RugbyMatchReview />
+                        {rugbyJob && <RugbyJobDialog key={rugbyJob} job={rugbyJob} onClose={() => setRugbyJob(null)} />}
                       </div>
                     )}
                   </div>

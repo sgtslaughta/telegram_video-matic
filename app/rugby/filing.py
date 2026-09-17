@@ -123,7 +123,8 @@ async def reconcile(svc, dry_run: bool = False) -> dict:
             _rugby_items_query().where(MediaItem.local_path.is_not(None))
         )).scalars().all()
     plan, conflicts, sources, roots, refreshed = [], [], [], set(), 0
-    for item in items:
+    for n, item in enumerate(items):
+        progress(svc, "reconcile", n, len(items))
         try:
             cur = Path(item.local_path)
             dest = await target(svc, item)
@@ -153,6 +154,13 @@ async def reconcile(svc, dry_run: bool = False) -> dict:
     return report
 
 
+def progress(svc, name: str, done: int, total: int) -> None:
+    """Live counters on a running job's report (polled by the UI)."""
+    rep = svc.reports.get(name)
+    if rep and rep.get("running"):
+        rep.update(done=done, total=total)
+
+
 def _label(league, season, rnd, home, away) -> str:
     return f"{league} {season or ''} R{rnd or '-'}: {home} vs {away}"
 
@@ -178,7 +186,8 @@ async def rematch(svc, dry_run: bool = False, rescore: bool = False) -> dict:
     counts = {"scanned": len(items), "matched": 0, "review": 0, "filed": 0,
               "changed": 0}
     plan = []
-    for item in items:
+    for n, item in enumerate(items):
+        progress(svc, "rematch", n, len(items))
         try:
             best, conf, status, _f = await svc.resolve_item(item)
         except Exception as ex:  # noqa: BLE001 - best-effort per item

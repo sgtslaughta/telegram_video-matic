@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 
 from app.db.models import Channel, MediaItem, MediaStatus, Topic
-from app.rugby import matcher
+from app.rugby import filing, matcher
 
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".m4v", ".mov", ".ts", ".webm"}
 LOCAL_CHANNEL_TG_ID = -1
@@ -95,7 +95,8 @@ async def import_library(svc, root: str | None = None, dry_run: bool = False) ->
         await s.commit()
 
     matched = 0
-    for mid in new_ids:
+    for n, mid in enumerate(new_ids):
+        filing.progress(svc, "import", n, len(new_ids))
         async with svc.ctx.session() as s:
             item = await s.get(MediaItem, mid)
         try:
