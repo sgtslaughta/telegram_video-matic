@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v1.5.0 (2026-09-17)
+
+### Features
+
+- **rugby**: Preview-then-apply dialog for re-match, reorganize, import
+  ([`c78bfb1`](https://github.com/sgtslaughta/telegram_video-matic/commit/c78bfb14209ab3a0d635e949ca4e59668b500fdb))
+
+The Settings buttons applied immediately with no way to see what would move. Each now opens a dialog
+  that runs the job as a dry run, polls its report (with live progress), lists old -> new paths, and
+  applies only on confirm. Reports carry a running flag so polling never shows the previous run; a
+  second start while running returns 409; a crashed job ends its report as failed.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
 ## v1.4.0 (2026-09-17)
 
 ### Features
