@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v1.4.0 (2026-09-17)
+
+### Features
+
+- **rugby**: Api-first resolution, topic history and library import
+  ([`b8eb419`](https://github.com/sgtslaughta/telegram_video-matic/commit/b8eb41926aa19a5de9ab1b55bc34ddd56bd0bb4d))
+
+Subscriptions bound one league as a hard filter, so games outside it (new season, pre-season, tours)
+  fell through to the subscription template — Prem games landed in the channel folder,
+  internationals in the topic folder.
+
+- Score every stored fixture; the subscription league is a +0.05 hint and the topic's learned league
+  (>=3 matches, >=70%) a +0.10 prior. - Before giving up, ask the API: targeted round, date-window
+  sweep of every tracked league (incl. round 0 and next/opening rounds), team search. - Cross-league
+  matches auto-file when corroborated; near-ties need review. - Unmatched media files under the
+  topic's league/Season YYYY folder. - Per-league display names (Gallagher Premiership, URC, ...)
+  for folders/NFOs. - Repair stale filename years; parse "2026 08 07" dates. - POST /import adopts
+  files already on disk; rematch (rescore) and reconcile take dry_run; results at GET
+  /reports/{name}. Reconcile never overwrites, and prunes folders left with only metadata.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+
+
 ## v1.3.2 (2026-08-29)
 
 ### Bug Fixes
