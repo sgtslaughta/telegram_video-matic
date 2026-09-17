@@ -11,7 +11,10 @@ Scoring (per fixture, both teams must be present to be a candidate):
   date  in title within 2d         -> +0.30   (>14d -> -0.40)
     else upload date within 3d     -> +0.15
   league hint in title matches     -> +0.05   (names another league -> -0.35)
-Clamped to [0,1]. auto >= 0.8, needs_review >= 0.6, else none.
+  subscription's league (hint)     -> +0.05   (tie-breaker, never corroborates)
+  topic's learned league (prior)   -> +0.10   (after the cap: may lift to auto)
+Clamped to [0,1]. auto >= 0.8, needs_review >= 0.6, else none. A runner-up
+within 0.1 of an auto winner demotes it to needs_review (ambiguous).
 Team names alone cap at 0.79 (needs_review): the same two sides meet in several
 competitions a year, so round, date or league must corroborate before auto-filing.
 """
@@ -121,6 +124,12 @@ def parse_title_date(text: str) -> datetime | None:
     Handles "6th June 2026", "20th_June_2026", "31st May 2026" (separators may
     be spaces or underscores).
     """
+    iso = re.search(r"\b(20\d{2})[\s_.-](\d{2})[\s_.-](\d{2})\b", text)
+    if iso:
+        try:
+            return datetime(*map(int, iso.groups()), tzinfo=timezone.utc)
+        except ValueError:
+            pass
     m = re.search(
         r"(\d{1,2})(?:st|nd|rd|th)?[\s_]+([a-zA-Z]{3,})[\s_]+(\d{4})", text)
     if not m:
@@ -133,6 +142,33 @@ def parse_title_date(text: str) -> datetime | None:
         return datetime(year, month, day, tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+def title_date(text: str, upload: datetime | None) -> datetime | None:
+    """Title date, repairing a stale year: uploaders copy last year's filename
+    ("24th January 2025" posted 24 Jan 2026). If swapping in the upload year
+    lands within 3 days of the upload, trust that instead."""
+    d = parse_title_date(text or "")
+    if d is None or upload is None:
+        return d
+    up = _as_utc(upload)
+    if abs((d - up).days) > 300:
+        try:
+            fixed = d.replace(year=up.year)
+        except ValueError:
+            return d
+        if abs((fixed - up).days) <= 3:
+            return fixed
+    return d
+
+
+def split_teams(text: str) -> tuple[str, str] | None:
+    """("Bath", "Exeter") from "Bath v Exeter - PREM - 3rd Jan.mp4", else None."""
+    t = re.sub(r"\.\w{2,4}$", "", (text or "").replace("_", " "))
+    t = re.sub(r"^\s*20\d{2}[\s.-]\d{2}[\s.-]\d{2}\s+", "", t)
+    m = re.search(r"^\s*(.+?)\s+(?:v|vs|versus)\.?\s+(.+?)(?:\s+-\s+|\s*\[|$)",
+                  t, re.IGNORECASE)
+    return (m.group(1).strip(), m.group(2).strip()) if m else None
 
 
 def league_hint(text: str) -> str | None:
@@ -149,7 +185,8 @@ def _as_utc(d: datetime) -> datetime:
 
 
 def score_fixture(text: str, upload_date: datetime | None, fixture: dict,
-                  context: str = "") -> float:
+                  context: str = "", hint_leagues=(),
+                  prior_league: int | None = None, clamp: bool = True) -> float:
     """Multi-factor score for one fixture. 0.0 means 'not a candidate'.
 
     `context` is the source channel/topic name. Uploaders name topics after the
@@ -190,9 +227,9 @@ def score_fixture(text: str, upload_date: datetime | None, fixture: dict,
 
     # Date: title date is the strongest disambiguator; upload date is a backup.
     fx_date = fixture.get("date")
-    title_date = parse_title_date(text)
-    if title_date is not None and fx_date is not None:
-        dd = abs((_as_utc(fx_date).date() - title_date.date()).days)
+    tdate = title_date(text, upload_date)
+    if tdate is not None and fx_date is not None:
+        dd = abs((_as_utc(fx_date).date() - tdate.date()).days)
         score += 0.30 if dd <= 2 else (0.10 if dd <= 7 else (-0.40 if dd > 14 else 0.0))
         corroborated = corroborated or dd <= 7
     elif upload_date is not None and fx_date is not None:
@@ -210,9 +247,16 @@ def score_fixture(text: str, upload_date: datetime | None, fixture: dict,
         else:
             score -= 0.35
 
+    league_id = fixture.get("league_id")
+    if league_id is not None and league_id in hint_leagues:
+        score += 0.05  # subscription's league: a hint, not a filter
     if not corroborated:
         score = min(score, 0.79)  # cap below the auto threshold
-    return max(0.0, min(1.0, score))
+    # Topic history is evidence of its own (Q12): applied after the cap.
+    if prior_league is not None and league_id == prior_league:
+        score += 0.10
+    # Unclamped for ranking: two perfect scores still differ by their prior.
+    return max(0.0, min(1.0, score)) if clamp else max(0.0, score)
 
 
 def match(
@@ -221,20 +265,28 @@ def match(
     fixtures: list[dict],
     threshold: float = 0.6,
     context: str = "",
+    hint_leagues=(),
+    prior_league: int | None = None,
 ) -> tuple[dict | None, float, str]:
     """Pick the best-scoring fixture for a title.
 
     Returns (fixture|None, confidence, status). status in
     {"auto" (>=0.8), "needs_review" (>=threshold), "none"}.
     """
-    best_fixture, best = None, 0.0
+    best_fixture, best, runner_up = None, 0.0, 0.0
     for fixture in fixtures:
-        s = score_fixture(text, date, fixture, context)
+        s = score_fixture(text, date, fixture, context, hint_leagues,
+                          prior_league, clamp=False)
         if s > best:
-            best, best_fixture = s, fixture
+            best, best_fixture, runner_up = s, fixture, best
+        elif s > runner_up:
+            runner_up = s
     if best >= threshold:
-        return (best_fixture, best, "auto" if best >= 0.8 else "needs_review")
-    return (None, best, "none")
+        # Two plausible games (same sides, no date) -> a human picks.
+        ambiguous = runner_up >= threshold and best - runner_up < 0.1
+        status = "auto" if best >= 0.8 and not ambiguous else "needs_review"
+        return (best_fixture, min(best, 1.0), status)
+    return (None, min(best, 1.0), "none")
 
 
 def _to_int(v) -> int | None:

@@ -197,7 +197,7 @@ async def test_match_item_and_naming_tokens(ctx, factory):
 
     tokens = await svc.naming_tokens(item_id)
     if status == "auto":
-        assert tokens["rugby_league"] == "English Prem Rugby"
+        assert tokens["rugby_league"] == "Gallagher Premiership"  # display name
         assert tokens["home"] == "Sale Sharks" and tokens["away"] == "Gloucester"
         assert tokens["rugby_season"] == "2025-2026" and tokens["rugby_sport"] == "union"
     else:
@@ -259,7 +259,8 @@ async def test_rematch_picks_up_fixtures_that_arrived_after_download(ctx, factor
         unmatched_id, done_id = unmatched.id, done.id
 
     svc = RugbyService(ctx, api=FakeApi())
-    assert await svc.rematch() == {"scanned": 1, "matched": 0, "review": 0, "filed": 0}
+    assert await svc.rematch() == {"scanned": 1, "matched": 0, "review": 0,
+                                   "filed": 0, "changed": 0}
 
     # The fixture lands (deep fetch, newly tracked league) — now it can match.
     async with factory() as s:
@@ -280,8 +281,8 @@ async def test_rematch_picks_up_fixtures_that_arrived_after_download(ctx, factor
 
 @pytest.mark.asyncio
 async def test_match_falls_back_to_other_tracked_leagues(ctx, factory):
-    """A forum topic mixes competitions, so a miss in the bound league retries
-    across every tracked league — but only ever as needs_review."""
+    """A forum topic mixes competitions: the bound league is only a hint, so a
+    dated two-team match in another tracked league auto-files."""
     async with factory() as s:
         s.add(rm.RugbyLeague(id=5852, slug="nations", name="Nations Championship",
                              sport="union", tracked=True))
@@ -314,7 +315,7 @@ async def test_match_falls_back_to_other_tracked_leagues(ctx, factory):
         item = await s.get(MediaItem, item_id)
     status = await svc.match_item(item)
 
-    assert status == "needs_review"  # never auto-files across the binding
+    assert status == "auto"  # teams + title date corroborate across leagues
     async with factory() as s:
         row = (await s.execute(
             select(rm.RugbyMatch).where(rm.RugbyMatch.media_id == item_id)

@@ -83,7 +83,7 @@ async def test_enrichment_keyed_by_tg_msg_id(ctx, factory):
 async def test_path_for_builds_league_season_tree(ctx, factory):
     _c, _s, item_id = await _seed(factory)
     path = await RugbyService(ctx).path_for(item_id, ".mp4")
-    assert path == "English Prem Rugby/Season 2025/Round 01 - Sale Sharks vs Gloucester.mp4"
+    assert path == "Gallagher Premiership/Season 2025/Round 01 - Sale Sharks vs Gloucester.mp4"
 
 
 @pytest.mark.asyncio
@@ -114,16 +114,17 @@ async def test_reconcile_refiles_and_refreshes(ctx, factory, tmp_path, monkeypat
         await s.commit()
 
     res = await RugbyService(ctx).reconcile()
-    assert res == {"total": 1, "moved": 1}
+    assert (res["total"], res["moved"], res["conflicts"]) == (1, 1, [])
+    assert str(tmp_path / "raw") in res["removed_dirs"]  # emptied source pruned
 
-    dest = tmp_path / "English Prem Rugby" / "Season 2025" / \
+    dest = tmp_path / "Gallagher Premiership" / "Season 2025" / \
         "Round 01 - Sale Sharks vs Gloucester.mp4"
     assert dest.exists() and not raw.exists()
     assert dest.with_name("Round 01 - Sale Sharks vs Gloucester-thumb.jpg").exists()
     nfo = dest.with_suffix(".nfo").read_text()
     assert "<episodedetails>" in nfo and "A club." in nfo
-    assert (tmp_path / "English Prem Rugby" / "tvshow.nfo").exists()
-    assert (tmp_path / "English Prem Rugby" / "poster.jpg").exists()
+    assert (tmp_path / "Gallagher Premiership" / "tvshow.nfo").exists()
+    assert (tmp_path / "Gallagher Premiership" / "poster.jpg").exists()
     async with factory() as s:
         assert (await s.get(MediaItem, item_id)).local_path == str(dest)
 
@@ -329,7 +330,7 @@ async def test_write_jellyfin_nfo_has_team_actors(ctx, factory, tmp_path, monkey
     assert "<tagline>" not in nfo  # no score line
     # relevant tags: sport, year, teams, tournament
     for t in ("<tag>Rugby</tag>", "<tag>Rugby Union</tag>", "<tag>2025</tag>",
-              "<tag>English Prem Rugby</tag>", "<tag>Sale Sharks</tag>",
+              "<tag>Gallagher Premiership</tag>", "<tag>Sale Sharks</tag>",
               "<tag>Gloucester</tag>"):
         assert t in nfo, t
 

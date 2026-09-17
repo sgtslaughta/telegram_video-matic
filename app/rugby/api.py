@@ -66,6 +66,14 @@ class RugbyApi:
         data = await self._get(url, {"id": league_id}, endpoint)
         return data.get("events") or []
 
+    async def search_events(self, name: str) -> list[dict]:
+        """Events by name ("Home_vs_Away"), any league. Free tier returns few
+        rows, so this is a last resort after the round sweep."""
+        endpoint = "searchevents.php"
+        url = f"{self.base}/{self.api_key}/{endpoint}"
+        data = await self._get(url, {"e": name}, endpoint)
+        return data.get("event") or data.get("events") or []
+
     async def lookup_team(self, team_id: int) -> dict | None:
         """Lookup a team by ID."""
         endpoint = "lookupteam.php"

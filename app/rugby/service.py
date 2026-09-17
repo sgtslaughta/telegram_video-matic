@@ -4,27 +4,18 @@ All DB access goes through the injected PluginContext session. The API client is
 injectable so the service can be tested without network.
 """
 
-import asyncio
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 from sqlalchemy import func, select
 
-from app.db.models import Channel, MediaItem, Subscription, Topic
-from app.rugby import matcher, scraper
+from app.db.models import Channel, MediaItem, Topic
+from app.rugby import filing, importer, matcher, resolve, scraper
 from app.rugby.api import RugbyApi, RugbyApiError
 from app.rugby.models import (
     RugbyFixture, RugbyLeague, RugbyMatch, RugbySubscription, RugbyTeam,
 )
-from app.sync.naming import safe_segment
-
-
-def _sidecar(video: Path, suffix: str) -> Path:
-    """Sibling artwork path for a video ("X.mp4", "-thumb.jpg" -> "X-thumb.jpg")."""
-    base = video.name[: -len(video.suffix)] if video.suffix else video.name
-    return video.parent / f"{base}{suffix}"
 
 
 def _season_year(season: str) -> int:
@@ -105,6 +96,9 @@ class RugbyService:
         self._league_meta: dict[int, dict] = {}
         # team_id -> {"bio": str} (SportsDB description), one lookup per team.
         self._team_meta: dict[int, dict] = {}
+        self.resolver = resolve.Resolver(self)
+        # Last dry-run/apply result per maintenance job (import/rematch/reconcile).
+        self.reports: dict[str, dict] = {}
 
     # ---- catalog (shallow) ---------------------------------------------
     async def refresh_catalog(self):
@@ -349,84 +343,69 @@ class RugbyService:
         return " ".join(parts)
 
     # ---- matching -------------------------------------------------------
-    async def match_item(self, item):
-        """Match a freshly discovered item to a fixture (uses its subscription)."""
-        sub_id = getattr(item, "subscription_id", None)
-        if not sub_id:
-            return None
+    async def _all_fixtures(self, s) -> list[dict]:
+        names = {lg.id: lg.name for lg in (await s.execute(
+            select(RugbyLeague))).scalars().all()}
+        return [{"id": f.id, "home_name": f.home_name, "away_name": f.away_name,
+                 "date": f.date, "season": f.season, "round": f.round,
+                 "league_id": f.league_id, "league_name": names.get(f.league_id, "")}
+                for f in (await s.execute(select(RugbyFixture))).scalars().all()]
+
+    async def resolve_item(self, item):
+        """Best fixture for an item: (fixture|None, confidence, status, fetched).
+
+        Scores every stored fixture — the subscription's league is only a hint
+        and the topic's history a prior. Anything short of auto asks the API
+        before giving up: a targeted round lookup, a date-window sweep of every
+        tracked league, then a team-name search. Read-only apart from fixtures.
+        """
         text = item.file_name or item.caption or ""
-        snippet = text[:80]
-        fetched = False
+        sub_id = getattr(item, "subscription_id", None)
         async with self.ctx.session() as s:
-            league_id = await self._league_for_sub(s, sub_id)
-            if league_id is None:
-                return None
-            league = await s.get(RugbyLeague, league_id)
-            league_name = league.name if league else ""
+            hint = await self._league_for_sub(s, sub_id) if sub_id else None
             context = await self._source_context(s, item)
+            prior = await resolve.topic_prior(s, getattr(item, "topic_id", None))
+            fixtures = await self._all_fixtures(s)
 
-            names = {lid: nm for lid, nm in (await s.execute(
-                select(RugbyLeague.id, RugbyLeague.name))).all()}
+        def _match(fx):
+            return matcher.match(text, item.date_posted, fx, context=context,
+                                 hint_leagues={hint} if hint else (),
+                                 prior_league=prior)
 
-            async def _load(ids=None):
-                rows = (await s.execute(
-                    select(RugbyFixture).where(
-                        RugbyFixture.league_id.in_(ids or [league_id]))
-                )).scalars().all()
-                return [{"id": f.id, "home_name": f.home_name,
-                         "away_name": f.away_name, "date": f.date,
-                         "season": f.season, "round": f.round,
-                         "league_id": f.league_id,
-                         "league_name": names.get(f.league_id, league_name)}
-                        for f in rows]
+        best, conf, status = _match(fixtures)
+        fetched = False
+        when = matcher.title_date(text, item.date_posted) or item.date_posted
+        lookups = (lambda: self._ondemand_fetch(text, item.date_posted, context),
+                   lambda: self.resolver.sweep(when),
+                   lambda: self.resolver.search(text))
+        for lookup in lookups:
+            if status == "auto":
+                break
+            if await lookup():
+                fetched = True
+                async with self.ctx.session() as s:
+                    fixtures = await self._all_fixtures(s)
+                best, conf, status = _match(fixtures)
+        return best, conf, status, fetched
 
-            fixtures = await _load()
-            best, conf, status = matcher.match(text, item.date_posted, fixtures,
-                                               context=context)
-            if status == "none":
-                # Incremental: try one targeted lookup, then re-match.
-                if await self._ondemand_fetch(text, item.date_posted, context):
-                    fetched = True
-                    fixtures = await _load()
-                    best, conf, status = matcher.match(
-                        text, item.date_posted, fixtures, context=context)
-            if status == "none":
-                # A subscription binds one league, but a forum topic often mixes
-                # competitions (tour games, friendlies, a cup the topic never
-                # names). Widen to every other tracked league — always landing in
-                # needs_review, so the narrow binding stays the only path that
-                # files anything unattended.
-                others = [lid for lid in (await s.execute(
-                    select(RugbyLeague.id).where(RugbyLeague.tracked.is_(True))
-                )).scalars().all() if lid != league_id]
-                if others:
-                    alt, alt_conf, alt_status = matcher.match(
-                        text, item.date_posted, await _load(others), context=context)
-                    if alt_status != "none":
-                        best, conf, status = alt, alt_conf, "needs_review"
-            if status != "none":
-                rm = (await s.execute(
-                    select(RugbyMatch).where(RugbyMatch.media_id == item.id)
-                )).scalar_one_or_none()
-                if rm is None:
-                    rm = RugbyMatch(media_id=item.id)
-                    s.add(rm)
-                rm.fixture_id = best["id"] if best else None
-                # The fixture's own league, which the fallback above may have
-                # taken from outside the subscription's binding.
-                rm.league_id = (best or {}).get("league_id") or league_id
-                rm.season = best["season"] if best else None
-                rm.round = best["round"] if best else None
-                rm.home_name = best["home_name"] if best else None
-                rm.away_name = best["away_name"] if best else None
-                rm.confidence = conf
-                rm.status = status
-                await s.commit()
+    async def match_item(self, item):
+        """Match an item to a fixture and persist the result (status or None)."""
+        sub_id = getattr(item, "subscription_id", None)
+        if not _is_local(item):
+            if not sub_id:
+                return None
+            async with self.ctx.session() as s:
+                if await s.get(RugbySubscription, sub_id) is None:
+                    return None  # not a rugby subscription
+        best, conf, status, fetched = await self.resolve_item(item)
+        snippet = (item.file_name or item.caption or "")[:80]
+        if status != "none":
+            await self.save_match(item.id, best, conf, status)
         # Activity log — outside the session block so ctx.log's own session
         # never nests inside this one. Every outcome is surfaced to the feed.
         if fetched:
             await self.ctx.log("info", "rugby",
-                               f"On-demand fixture lookup for “{snippet}”",
+                               f"API fixture lookup for “{snippet}”",
                                media_id=item.id)
         if status == "none":
             await self.ctx.log("info", "rugby",
@@ -455,7 +434,7 @@ class RugbyService:
                 return {}
             league = await s.get(RugbyLeague, rm.league_id) if rm.league_id else None
             return _clean({
-                "rugby_league": league.name if league else "Unknown League",
+                "rugby_league": resolve.league_title(league) if league else "Unknown League",
                 "rugby_season": rm.season or "",
                 "rugby_round": rm.round or "0",
                 "home": rm.home_name or "",
@@ -463,26 +442,19 @@ class RugbyService:
                 "rugby_sport": (league.sport if league and league.sport else "rugby"),
             })
 
-    async def path_for(self, media_id: int, ext: str = "") -> str | None:
-        """Relative path (league/season/Home vs Away.ext) for a matched item, so
-        rugby media auto-files into a league/season tree regardless of the
-        subscription's rename_template. None unless the match is auto/confirmed."""
+    async def path_for(self, media_id: int, ext: str = "", item=None) -> str | None:
+        """Relative path for an item: league/Season/Round NN - Home vs Away.ext
+        when matched (auto/confirmed), regardless of the subscription's
+        rename_template. Otherwise, given the item, its topic's learned league
+        folder (raw filename); None falls back to the subscription template."""
         tokens = await self.naming_tokens(media_id)
-        if not tokens:
+        if tokens.get("home") and tokens.get("away"):
+            return resolve.match_path(tokens["rugby_league"], tokens.get("rugby_season"),
+                              tokens.get("rugby_round"), tokens["home"],
+                              tokens["away"], ext)
+        if item is None:
             return None
-        home, away = tokens.get("home"), tokens.get("away")
-        if not home or not away:
-            return None
-        league = tokens.get("rugby_league") or "Rugby"
-        season = tokens.get("rugby_season") or ""
-        rnd = (tokens.get("rugby_round") or "").strip()
-        label = f"Round {int(rnd):02d}" if rnd.isdigit() else (rnd or "Match")
-        fname = f"{label} - {home} vs {away}{ext}"
-        # Always emit a Jellyfin-recognized "Season N" subfolder so the season
-        # groups correctly (a raw "2024-2025" folder is not parsed as a season).
-        parts = [safe_segment(league), _season_dir(season), safe_segment(fname)]
-        return "/".join(parts)
-
+        return await resolve.fallback_path(self, item, ext)
 
     # ---- browse enrichment + wizard preview ----------------------------
     async def _match_context(self, s):
@@ -901,7 +873,7 @@ class RugbyService:
         return bio
 
     # ---- jellyfin (rich NFO + tournament/season artwork) ---------------
-    async def write_jellyfin(self, item, path) -> bool:
+    async def write_jellyfin(self, item, path, refresh: bool = False) -> bool:
         """Write episodedetails/season/tvshow .nfo plus tournament + season art.
         Returns True if the episode .nfo was written, False if skipped/failed.
 
@@ -948,8 +920,9 @@ class RugbyService:
             show_root = p.parent.parent     # league root
             tv = show_root / "tvshow.nfo"
             season_nfo = season_dir / "season.nfo"
-            need_show = show_root.exists() and not tv.exists()
-            need_season = season_dir.exists() and not season_nfo.exists()
+            # refresh: rewrite show/season NFOs too (league renamed, re-filed).
+            need_show = show_root.exists() and (refresh or not tv.exists())
+            need_season = season_dir.exists() and (refresh or not season_nfo.exists())
             if not (need_show or need_season):
                 return True  # episode .nfo written; show/season already present
 
@@ -978,118 +951,39 @@ class RugbyService:
         if url and not dest.exists():
             await scraper.download_logo(url, str(dest))
 
-    # ---- reconcile (re-file matched items + refresh metadata) ----------
-    async def _refile(self, item, storage_base) -> str | None:
-        """Move item.local_path (+ -thumb.jpg sidecar) to path_for's league/
-        Season/round location. Drops the stale .nfo (write_jellyfin rewrites it).
-        Returns the new path if moved, else None. Updates DB + the item."""
-        if not item.local_path:
-            return None
-        cur = Path(item.local_path)
-        ext = cur.suffix or (
-            "." + item.file_name.rsplit(".", 1)[-1]
-            if item.file_name and "." in item.file_name else "")
-        rel = await self.path_for(item.id, ext)
-        if not rel:
-            return None
-        desired = Path(storage_base) / rel
-        if cur == desired or not cur.exists():
-            return None
-        desired.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(shutil.move, str(cur), str(desired))
-        thumb = _sidecar(cur, "-thumb.jpg")
-        if thumb.exists():
-            shutil.move(str(thumb), str(_sidecar(desired, "-thumb.jpg")))
-        cur.with_suffix(".nfo").unlink(missing_ok=True)
-        _sidecar(cur, "-poster.jpg").unlink(missing_ok=True)
-        async with self.ctx.session() as s:
-            it = await s.get(MediaItem, item.id)
-            if it:
-                it.local_path = str(desired)
-                await s.commit()
-        item.local_path = str(desired)
-        try:  # prune the now-empty old dir (skips if art/other files remain)
-            cur.parent.rmdir()
-        except OSError:
-            pass
-        return str(desired)
-
+    # ---- filing (see app.rugby.filing) ---------------------------------
     async def _reconcile_one(self, media_id) -> bool:
-        """Re-file + refresh metadata for one matched item. True if moved."""
+        return await filing.reconcile_one(self, media_id)
+
+    async def reconcile(self, dry_run: bool = False) -> dict:
+        return await filing.reconcile(self, dry_run=dry_run)
+
+    async def rematch(self, dry_run: bool = False, rescore: bool = False) -> dict:
+        return await filing.rematch(self, dry_run=dry_run, rescore=rescore)
+
+    async def import_library(self, root: str | None = None,
+                             dry_run: bool = False) -> dict:
+        return await importer.import_library(self, root, dry_run=dry_run)
+
+    async def save_match(self, media_id, fixture, conf, status) -> None:
+        """Upsert the item's RugbyMatch row from a fixture dict."""
         async with self.ctx.session() as s:
-            m = (await s.execute(
+            row = (await s.execute(
                 select(RugbyMatch).where(RugbyMatch.media_id == media_id)
             )).scalar_one_or_none()
-            if not m or m.status not in ("auto", "confirmed"):
-                return False
-            item = await s.get(MediaItem, media_id)
-            if not item or not item.local_path:
-                return False
-            sub = (await s.get(Subscription, item.subscription_id)
-                   if item.subscription_id else None)
-            storage_base = sub.storage_path if sub else self.ctx.media_root
-        moved = await self._refile(item, storage_base)
-        await self.write_jellyfin(item, Path(item.local_path))
-        return bool(moved)
-
-    async def reconcile(self) -> dict:
-        """Re-file every matched (auto/confirmed) rugby item to its league/
-        Season/round path and rewrite full metadata. Fixes items whose match
-        resolved after download (never moved) and stale metadata from older
-        builds. Idempotent: already-correct items are only refreshed."""
-        async with self.ctx.session() as s:
-            ids = [m.media_id for m in (await s.execute(
-                select(RugbyMatch).where(RugbyMatch.status.in_(("auto", "confirmed")))
-            )).scalars().all()]
-        moved = 0
-        for mid in ids:
-            try:
-                if await self._reconcile_one(mid):
-                    moved += 1
-            except Exception as ex:  # noqa: BLE001 - best-effort per item
-                await self.ctx.log("warning", "rugby", f"reconcile {mid}: {ex}")
-        await self.ctx.log("success", "rugby",
-                           f"Reconcile: {moved} re-filed, {len(ids)} refreshed")
-        return {"total": len(ids), "moved": moved}
-
-    async def rematch(self) -> dict:
-        """Retry fixture matching for media that never matched, then file +
-        write metadata for whatever lands.
-
-        match_item only ever runs at discovery, so fixtures that arrive later
-        (a deep-fetch, a newly tracked league) can never attach on their own —
-        this is the catch-up pass. Items already matched or awaiting review are
-        left alone; only media with no match row at all is retried.
-        """
-        async with self.ctx.session() as s:
-            items = (await s.execute(
-                select(MediaItem)
-                .where(MediaItem.id.not_in(select(RugbyMatch.media_id)))
-                .where(MediaItem.subscription_id.in_(
-                    select(RugbySubscription.subscription_id)))
-            )).scalars().all()
-        matched = review = filed = 0
-        for item in items:
-            try:
-                status = await self.match_item(item)
-            except Exception as ex:  # noqa: BLE001 - best-effort per item
-                await self.ctx.log("warning", "rugby", f"rematch {item.id}: {ex}")
-                continue
-            if status == "needs_review":
-                # Counted separately: a cross-league hit never files itself, it
-                # waits for a decision in the review UI.
-                review += 1
-                continue
-            if status not in ("auto", "confirmed"):
-                continue
-            matched += 1
-            if item.local_path and await self._reconcile_one(item.id):
-                filed += 1
-        await self.ctx.log("success", "rugby",
-                           f"Re-match: {len(items)} unmatched → {matched} matched "
-                           f"({filed} re-filed), {review} awaiting review")
-        return {"scanned": len(items), "matched": matched,
-                "review": review, "filed": filed}
+            if row is None:
+                row = RugbyMatch(media_id=media_id)
+                s.add(row)
+            fx = fixture or {}
+            row.fixture_id = fx.get("id")
+            row.league_id = fx.get("league_id")
+            row.season = fx.get("season")
+            row.round = fx.get("round")
+            row.home_name = fx.get("home_name")
+            row.away_name = fx.get("away_name")
+            row.confidence = conf
+            row.status = status
+            await s.commit()
 
     # ---- jellyfin artwork (legacy poster-only helper) ------------------
     async def write_artwork(self, item, path):
@@ -1219,7 +1113,7 @@ def _build_episode_nfo(match, fixture, league, home_badge, away_badge,
     teams as actors, league as show/studio, played date as premiered/aired."""
     home = match.home_name or ""
     away = match.away_name or ""
-    league_name = league.name if league else ""
+    league_name = resolve.league_title(league) if league else ""
     sport = (league.sport if league and league.sport else "rugby")
     season_int = int(match.season[:4]) if (match.season or "")[:4].isdigit() else 1
     episode_int, label = _episode_number(match, fixture, slot)
@@ -1301,7 +1195,7 @@ def _build_tvshow_nfo(league, meta=None) -> str:
     enriched with SportsDB tournament data (description, formed year, country,
     poster/fanart art)."""
     meta = meta or {}
-    name = league.name if league else "Rugby"
+    name = resolve.league_title(league)
     sport = (league.sport if league and league.sport else "rugby")
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -1357,7 +1251,7 @@ def _build_season_nfo(season, league, meta=None) -> str:
     the episodes' <season>, so Jellyfin groups them together."""
     meta = meta or {}
     num = _season_year(season or "")
-    name = league.name if league else "Rugby"
+    name = resolve.league_title(league)
     pretty = season or str(num)
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -1425,3 +1319,9 @@ def _clean(tokens: dict) -> dict:
     bad = '/\\:*?"<>|'
     return {k: ("".join(c for c in str(v) if c not in bad).strip() if isinstance(v, str) else v)
             for k, v in tokens.items()}
+
+
+
+def _is_local(item) -> bool:
+    """Imported from disk (no Telegram message behind it)."""
+    return (getattr(item, "tg_msg_id", 0) or 0) < 0

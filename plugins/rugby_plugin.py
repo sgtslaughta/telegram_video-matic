@@ -8,6 +8,7 @@ from pathlib import Path
 
 from app.sync.plugins import PluginBase
 from app.rugby import models as rm
+from app.rugby import resolve
 from app.rugby.router import router as rugby_router
 from app.rugby.service import RugbyService
 
@@ -41,6 +42,7 @@ class RugbyPlugin(PluginBase):
     async def on_enable(self):
         if self.service is None:
             return
+        resolve.configure(self.ctx.config)
         # Seed the league catalog if we have none yet (cheap, idempotent).
         leagues = await self.service.list_leagues()
         if not leagues:
@@ -64,14 +66,15 @@ class RugbyPlugin(PluginBase):
 
     # --- path override (host uses first non-None) ---
     async def provide_path(self, item, sub):
-        """Auto-file matched rugby media into league/season folders, overriding
-        the subscription template (so the user need not author rugby tokens)."""
+        """Auto-file rugby media into league/season folders, overriding the
+        subscription template: matched games by fixture, unmatched ones by
+        their topic's learned league. None only when neither is known."""
         if not self.service:
             return None
         ext = ""
         if item.file_name and "." in item.file_name:
             ext = "." + item.file_name.rsplit(".", 1)[-1]
-        return await self.service.path_for(item.id, ext)
+        return await self.service.path_for(item.id, ext, item=item)
 
     # --- provider hook (host merges into naming tokens) ---
     async def provide_naming_tokens(self, item, sub):

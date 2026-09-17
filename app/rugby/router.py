@@ -57,21 +57,40 @@ async def refresh(request: Request, bg: BackgroundTasks):
 
 
 @router.post("/reconcile")
-async def reconcile(request: Request, bg: BackgroundTasks):
-    """Re-file every matched rugby video into its league/Season/round path and
-    rewrite full Jellyfin metadata. Fixes items matched after download and stale
-    metadata from older builds. Runs in the background (may move many files)."""
-    bg.add_task(_service(request).reconcile)
-    return {"scheduled": True}
+async def reconcile(request: Request, bg: BackgroundTasks, dry_run: bool = False):
+    """Move every rugby video to its league/Season folder (matched games by
+    fixture, the rest by topic history) and rewrite Jellyfin metadata. Runs in
+    the background; the result (the move plan on dry_run) lands in /reports."""
+    bg.add_task(_service(request).reconcile, dry_run=dry_run)
+    return {"scheduled": True, "dry_run": dry_run}
 
 
 @router.post("/rematch")
-async def rematch(request: Request, bg: BackgroundTasks):
-    """Retry matching for media that never matched a fixture, then file and
-    write metadata for whatever lands. Use after new fixtures arrive: matching
-    otherwise only runs once, when the item is first discovered."""
-    bg.add_task(_service(request).rematch)
-    return {"scheduled": True}
+async def rematch(request: Request, bg: BackgroundTasks, dry_run: bool = False,
+                  rescore: bool = False):
+    """Retry matching for media with no match (rescore: also re-score `auto`
+    rows, never `confirmed`), asking the API for missing fixtures, then file
+    whatever lands. Result in /reports/rematch."""
+    bg.add_task(_service(request).rematch, dry_run=dry_run, rescore=rescore)
+    return {"scheduled": True, "dry_run": dry_run, "rescore": rescore}
+
+
+@router.post("/import")
+async def import_library(request: Request, bg: BackgroundTasks,
+                         dry_run: bool = False, root: str | None = None):
+    """Adopt video files on disk that no download created (one topic per
+    top-level folder), then match them. Nothing moves; run reconcile after."""
+    bg.add_task(_service(request).import_library, root=root, dry_run=dry_run)
+    return {"scheduled": True, "dry_run": dry_run}
+
+
+@router.get("/reports/{name}")
+async def report(name: str, request: Request):
+    """Last result of import / rematch / reconcile (404 until one has run)."""
+    rep = _service(request).reports.get(name)
+    if rep is None:
+        raise HTTPException(status_code=404, detail="No report yet")
+    return rep
 
 
 @router.post("/rescan")
