@@ -46,6 +46,19 @@ def _sub_due(sub, now) -> bool:
     return elapsed >= _FREQUENCY_SECONDS.get(freq, 300)
 
 
+async def sub_dtos(session, sub) -> Tuple[ChannelDTO, Optional[TopicDTO]]:
+    """Channel/Topic DTOs (Telegram ids) from a subscription's DB rows."""
+    ch = await session.get(Channel, sub.channel_id)
+    chan_dto = ChannelDTO(tg_id=ch.tg_id, title=ch.title, username=ch.username,
+                          is_forum=ch.is_forum, photo_b64=ch.photo_b64, raw={})
+    topic_dto = None
+    if sub.topic_id:
+        tp = await session.get(Topic, sub.topic_id)
+        if tp:
+            topic_dto = TopicDTO(tg_topic_id=tp.tg_topic_id, title=tp.title, channel_tg_id=ch.tg_id, raw={})
+    return chan_dto, topic_dto
+
+
 class _DownloadCanceled(Exception):
     """Raised mid-download when a cancel was requested (discard partial)."""
 
@@ -917,24 +930,7 @@ class SyncEngine:
             pass
 
     async def _sub_dtos(self, session, sub) -> Tuple[ChannelDTO, Optional[TopicDTO]]:
-        """Build Channel/Topic DTOs (with Telegram ids) from a subscription's DB rows.
-
-        iter_media needs tg ids, not the DB FK ids stored on the subscription.
-        """
-        ch = await session.get(Channel, sub.channel_id)
-        chan_dto = ChannelDTO(
-            tg_id=ch.tg_id, title=ch.title, username=ch.username,
-            is_forum=ch.is_forum, photo_b64=ch.photo_b64, raw={},
-        )
-        topic_dto = None
-        if sub.topic_id:
-            tp = await session.get(Topic, sub.topic_id)
-            if tp:
-                topic_dto = TopicDTO(
-                    tg_topic_id=tp.tg_topic_id, title=tp.title,
-                    channel_tg_id=ch.tg_id, raw={},
-                )
-        return chan_dto, topic_dto
+        return await sub_dtos(session, sub)
 
     async def scan_subscription(self, sub_id: int) -> None:
         """Scan a single subscription: one pass of per-subscription poller logic.

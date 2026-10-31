@@ -13,6 +13,8 @@ from . import (
     fs,
     notifications,
     storage,
+    history,
+    rescan,
 )
 
 __all__ = [
@@ -29,4 +31,6 @@ __all__ = [
     "fs",
     "notifications",
     "storage",
+    "history",
+    "rescan",
 ]

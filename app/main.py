@@ -232,7 +232,9 @@ def create_app() -> FastAPI:
     app.include_router(routers.auth.router)
     app.include_router(routers.telegram.router)
     app.include_router(routers.channels.router)
+    app.include_router(routers.rescan.router)  # before subscriptions: static path first
     app.include_router(routers.subscriptions.router)
+    app.include_router(routers.history.router)
     app.include_router(routers.media.router)
     app.include_router(routers.downloads.router)
     app.include_router(routers.events.router)
@@ -252,6 +254,7 @@ def create_app() -> FastAPI:
             name=name, config=config, settings=settings,
             media_root=settings.media_root,
             session_factory=lambda: app.state.async_session(),
+            tg_getter=lambda: getattr(app.state, "tg_service", None),
         )
 
     plugin_host = PluginHost(ctx_factory=_ctx_factory)
