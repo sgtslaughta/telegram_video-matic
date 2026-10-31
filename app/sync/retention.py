@@ -22,6 +22,12 @@ from app.db.models import EventLevel, MediaItem, MediaStatus, Subscription
 from app.db.repositories import events, settings
 
 PRUNE_CAP = 50
+VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".m4v", ".ts", ".m2ts", ".webm", ".mov", ".wmv",
+              ".mpg", ".mpeg", ".flv", ".3gp", ".iso", ".strm", ".vob", ".ogv"}
+# Per-video sidecars (Jellyfin/Kodi naming) and folder-level metadata.
+SIDECAR_SUFFIXES = (".nfo", "-thumb.jpg", "-poster.jpg", "-fanart.jpg")
+FOLDER_META = {"tvshow.nfo", "season.nfo", "poster.jpg", "banner.jpg", "logo.png",
+               "fanart.jpg", "folder.jpg", "folder.webp", "folder.png"}
 
 
 @dataclass
@@ -110,7 +116,10 @@ async def apply(s: AsyncSession, prunes: list[Prune], *, confirmed: bool = False
         return {"pruned": 0, "paused": True}
     for p in prunes:
         if p.item.local_path:
-            Path(p.item.local_path).unlink(missing_ok=True)
+            video = Path(p.item.local_path)
+            video.unlink(missing_ok=True)
+            for suf in SIDECAR_SUFFIXES:
+                video.with_name(video.stem + suf).unlink(missing_ok=True)
         p.item.local_path = None
         p.item.status = MediaStatus.PRUNED
         await events.add(s, level=EventLevel.INFO, kind="prune", media_id=p.item.id,
@@ -129,10 +138,49 @@ def disk(media_root: str) -> tuple[int, int]:
         return 0, 0
 
 
+def _sidecar_base(p: Path) -> Optional[Path]:
+    for suf in SIDECAR_SUFFIXES:
+        if p.name.endswith(suf) and p.name not in FOLDER_META:
+            return p.with_name(p.name[:-len(suf)])
+    return None
+
+
+def sweep_orphans(media_root: str) -> tuple[int, int]:
+    """Delete sidecars whose video is gone, then folders left holding only
+    folder metadata. Unknown files are never touched. Returns (files, dirs)."""
+    root = Path(media_root)
+    if not root.is_dir():
+        return 0, 0
+    paths = [p for p in root.rglob("*") if ".partial" not in p.parts]
+    videos = {p.with_suffix("") for p in paths if p.suffix.lower() in VIDEO_EXTS}
+    files = 0
+    for p in paths:
+        base = _sidecar_base(p) if p.is_file() else None
+        if base is not None and base not in videos:
+            p.unlink(missing_ok=True)
+            files += 1
+    dirs = 0
+    for d in sorted((p for p in paths if p.is_dir()), key=lambda d: len(d.parts), reverse=True):
+        left = list(d.iterdir())
+        if all(f.is_file() and f.name in FOLDER_META for f in left):
+            for f in left:
+                f.unlink()
+            d.rmdir()
+            dirs += 1
+    return files, dirs
+
+
 async def run(s: AsyncSession, media_root: str, *, confirmed: bool = False) -> dict:
     used, total = disk(media_root)
-    return await apply(s, await plan(s, datetime.now(timezone.utc), disk_used=used, disk_total=total),
-                       confirmed=confirmed)
+    result = await apply(s, await plan(s, datetime.now(timezone.utc), disk_used=used,
+                                       disk_total=total), confirmed=confirmed)
+    if not result["paused"]:
+        files, dirs = sweep_orphans(media_root)
+        if files or dirs:
+            await events.add(s, level=EventLevel.INFO, kind="prune",
+                             message=f"Removed {files} leftover metadata file(s) and {dirs} empty folder(s)")
+            await s.commit()
+    return result
 
 
 async def preview(s: AsyncSession, now: datetime, days: int = 7, media_root: str = "") -> dict:

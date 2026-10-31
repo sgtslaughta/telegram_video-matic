@@ -119,3 +119,34 @@ async def test_preview_shows_next_7_days(s, tmp_path):
     later = await _item(s, tmp_path, posted_days=60)
     prev = await retention.preview(s, NOW, days=7)
     assert [i["id"] for i in prev["items"]] == [soon.id] and later.id
+
+
+def test_sweep_orphans_removes_leftover_metadata(tmp_path):
+    """Sidecars of a deleted video, then folders holding only metadata, go;
+    anything beside a surviving video, or any unknown file, stays."""
+    keep = tmp_path / "Prem" / "Season 2026"
+    keep.mkdir(parents=True)
+    for n in ("a.mp4", "a.nfo", "a-thumb.jpg", "season.nfo"):
+        (keep / n).write_bytes(b"x")
+    gone = tmp_path / "Prem" / "Season 25"
+    gone.mkdir()
+    for n in ("b.nfo", "b-thumb.jpg", "season.nfo", "poster.jpg"):
+        (gone / n).write_bytes(b"x")
+    mine = tmp_path / "Notes"
+    mine.mkdir()
+    (mine / "readme.txt").write_bytes(b"x")
+
+    files, dirs = retention.sweep_orphans(str(tmp_path))
+    assert (files, dirs) == (2, 1)
+    assert not gone.exists()
+    assert sorted(p.name for p in keep.iterdir()) == ["a-thumb.jpg", "a.mp4", "a.nfo", "season.nfo"]
+    assert (mine / "readme.txt").exists() and (tmp_path / "Prem").exists()
+
+
+@pytest.mark.asyncio
+async def test_prune_deletes_sidecars(s, tmp_path):
+    it = await _item(s, tmp_path, posted_days=200)
+    for suf in (".nfo", "-thumb.jpg"):
+        (tmp_path / f"{it.local_path.rsplit('/', 1)[1].rsplit('.', 1)[0]}{suf}").write_bytes(b"x")
+    await retention.apply(s, await retention.plan(s, NOW, disk_used=0, disk_total=0))
+    assert list(tmp_path.iterdir()) == []

@@ -77,7 +77,9 @@ export function usePatchMatch() {
     mutationFn: (data: { mediaId: number; status?: string; fixture_id?: number }) =>
       api.rugby.patchMatch(data.mediaId, { status: data.status, fixture_id: data.fixture_id }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: rugbyKeys.matches() })
+      // Prefix key: matches() would end in `undefined`, which never equals 'needs_review'.
+      qc.invalidateQueries({ queryKey: ['rugby', 'matches'] })
+      qc.invalidateQueries({ queryKey: rugbyKeys.status() })
     },
   })
 }
