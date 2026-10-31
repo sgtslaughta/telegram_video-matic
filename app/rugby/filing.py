@@ -10,7 +10,7 @@ from pathlib import Path
 
 from sqlalchemy import or_, select
 
-from app.db.models import MediaItem, Subscription
+from app.db.models import MediaItem, MediaStatus, Subscription
 from app.rugby import resolve
 from app.rugby.models import RugbyLeague, RugbyMatch, RugbySubscription
 
@@ -173,7 +173,9 @@ async def rematch(svc, dry_run: bool = False, rescore: bool = False) -> dict:
     attach on their own — this is the catch-up pass.
     """
     matched_ids = select(RugbyMatch.media_id)
-    q = _rugby_items_query()
+    # Downloaded only: skipped/pruned/failed items have no file to file or
+    # describe, and every lookup costs rate-limited API calls.
+    q = _rugby_items_query().where(MediaItem.status == MediaStatus.DOWNLOADED)
     if rescore:
         q = q.where(or_(MediaItem.id.not_in(matched_ids), MediaItem.id.in_(
             select(RugbyMatch.media_id).where(RugbyMatch.status == "auto"))))

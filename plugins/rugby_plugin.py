@@ -6,6 +6,7 @@ Thin entry point: all logic lives in app.rugby. Rides the Layer-1 platform
 
 from pathlib import Path
 
+from app.db.models import MediaStatus
 from app.sync.plugins import PluginBase
 from app.rugby import models as rm
 from app.rugby import resolve
@@ -66,7 +67,8 @@ class RugbyPlugin(PluginBase):
 
     # --- event hooks ---
     async def on_media_discovered(self, item):
-        if self.service:
+        # Filtered-out items never download: matching them only burns API calls.
+        if self.service and item.status != MediaStatus.SKIPPED:
             await self.service.match_item(item)
 
     async def on_post_download(self, item, path):

@@ -261,3 +261,28 @@ def test_teams_alone_never_auto_file():
           "round": None, "date": None, "league_name": "English Prem Rugby"}
     res, conf, status = match("Sale v Bristol.mp4", None, [fx])
     assert res is not None and status == "needs_review" and conf < 0.8
+
+
+def test_normalize_folds_accents():
+    """Accented letters fold to ASCII instead of splitting the word."""
+    assert normalize("Stade Français") == "stade francais"
+    assert normalize("Union Bordeaux Bègles") == "union bordeaux begles"
+
+
+@pytest.mark.parametrize("title,home,away", [
+    ("Edinburgh v Toulon - Challenge Cup", "Edinburgh", "RC Toulonnais"),
+    ("Gloucester v UBB - Champions Cup", "Gloucester", "Union Bordeaux Bègles"),
+    ("Pau v Leicester - Champions Cup", "Section Paloise", "Leicester Tigers"),
+    ("Toulouse v Exeter - Champions Cup", "Stade Toulousain", "Exeter Chiefs"),
+    ("Bayonne v Cheetahs - Challenge Cup", "Aviron Bayonnais", "Cheetahs"),
+    ("La Rochelle v Lions - Champions Cup", "Stade Rochelais", "Lions"),
+    ("Vodacom Bulls v Stade Francais", "Bulls", "Stade Français Paris"),
+])
+def test_common_short_club_names_match(title, home, away):
+    """Titles use the everyday club name; TheSportsDB uses the formal one."""
+    d = datetime(2026, 10, 17, tzinfo=timezone.utc)
+    fx = {"id": 1, "home_name": home, "away_name": away, "date": d,
+          "league_id": 4550,
+          "league_name": "European Rugby " + ("Challenge" if "Challenge" in title else "Champions") + " Cup"}
+    _f, _c, status = match(f"{title} - 17th October 2026.mp4", d, [fx])
+    assert status == "auto"
