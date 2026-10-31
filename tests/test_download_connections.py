@@ -68,14 +68,13 @@ async def test_resume_uses_parallel_path_from_aligned_offset(tmp_path):
     seen = {}
 
     async def fake_download_file(client, doc, f, progress_callback=None, connections=None, offset=0):
-        seen.update(offset=offset, pos=f.tell(), connections=connections)
-        f.write(b"b" * (doc.size - offset))
+        seen.update(offset=offset, pos=f.tell(), connections=connections, size=f.seek(0, 2))
 
     msg = SimpleNamespace(media=SimpleNamespace(document=SimpleNamespace(size=3600 * MiB)))
     with patch("app.telegram.service.download_file", fake_download_file):
         await svc.download(msg, str(part), offset=3 * MiB + 1234, connections=12)
-    assert seen == {"offset": 3 * MiB, "pos": 3 * MiB, "connections": 12}
-    assert part.stat().st_size == 3600 * MiB
+    # partial tail beyond the last whole part was truncated before refetching
+    assert seen == {"offset": 3 * MiB, "pos": 3 * MiB, "connections": 12, "size": 3 * MiB}
 
 
 @pytest.mark.asyncio
