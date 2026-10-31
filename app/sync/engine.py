@@ -14,6 +14,7 @@ from app.db.repositories import subscriptions, media, events, downloads
 from app.telegram.dtos import ChannelDTO, TopicDTO
 from app.sync.naming import choose_target_path
 from app.hashing import quick_hash
+from app.utils.log import log
 
 
 def _as_utc(dt):
@@ -209,6 +210,40 @@ class SyncEngine:
         self._stop_event = asyncio.Event()
         # media_id -> "cancel" | "pause"; checked cooperatively during download.
         self._control: dict[int, str] = {}
+        # Health: last fully successful poller tick (read by /api/health).
+        self.last_ok_poll_at: Optional[datetime] = None
+        # Reconnect backoff: 30s doubling, capped at 10m; reset on success.
+        self._reconnect_delay = 0
+        self._next_reconnect_at: Optional[datetime] = None
+
+    async def _ensure_connected(self) -> bool:
+        """Reconnect a dropped Telegram client before polling. Telethon's own
+        auto-reconnect gives up after a few retries (e.g. HTTP 429), leaving the
+        client dead forever; this is the outer retry loop."""
+        client = getattr(self.tg_service, "client", None)
+        if client is None:
+            return True  # not logged in; iter_media no-ops
+        if client.is_connected():
+            self._reconnect_delay = 0
+            return True
+        now = datetime.now(timezone.utc)
+        if self._next_reconnect_at and now < self._next_reconnect_at:
+            return False
+        try:
+            await self.tg_service.connect()
+        except Exception as e:
+            self._reconnect_delay = min(max(self._reconnect_delay * 2, 30), 600)
+            self._next_reconnect_at = now + timedelta(seconds=self._reconnect_delay)
+            async with self.session_factory() as session:
+                await events.add(session, level=EventLevel.WARNING, kind="telegram",
+                                 message=f"Telegram reconnect failed: {e}")
+            return False
+        self._reconnect_delay = 0
+        self._next_reconnect_at = None
+        async with self.session_factory() as session:
+            await events.add(session, level=EventLevel.SUCCESS, kind="telegram",
+                             message="Telegram reconnected")
+        return True
 
     def request_cancel(self, media_id: int) -> None:
         """Signal an in-flight download to abort and discard its partial."""
@@ -255,9 +290,12 @@ class SyncEngine:
         realtime subs are skipped here (handled by live events). Each sub is
         polled only when its interval has elapsed since last_checked_at.
         """
+        if not await self._ensure_connected():
+            return
         try:
             subs = await subscriptions.list(session, enabled_only=True)
             now = datetime.now(timezone.utc)
+            ok = True
             for sub in subs:
                 if not _sub_due(sub, now):
                     continue
@@ -266,9 +304,12 @@ class SyncEngine:
                     sub.last_checked_at = now
                     await session.commit()
                 except Exception as e:
+                    ok = False
                     await events.add(session, level=EventLevel.ERROR, kind="sync",
                                      subscription_id=sub.id, message=f"Sync error: {e}")
                     await session.commit()
+            if ok:
+                self.last_ok_poll_at = now
         except Exception as e:
             await events.add(session, level=EventLevel.ERROR, kind="sync",
                              message=f"Poller error: {e}")
@@ -295,8 +336,9 @@ class SyncEngine:
                         await events.add(session, level=EventLevel.ERROR, kind="realtime",
                                          subscription_id=sub.id, message=f"Realtime error: {e}")
                         await session.commit()
-        except Exception:
-            pass  # never let a bad event kill the update loop
+        except Exception as e:
+            # never let a bad event kill the update loop, but don't hide it either
+            log(f"Realtime handler error: {e}", "ERROR")
 
     async def _downloader(self) -> None:
         """Concurrent download manager: keeps up to N downloads running at once
@@ -910,6 +952,8 @@ class SyncEngine:
         Each loop catches exceptions internally to prevent the task from dying.
         """
         self._stop_event.clear()
+        # Grace baseline so /api/health isn't stale before the first tick.
+        self.last_ok_poll_at = datetime.now(timezone.utc)
 
         # Requeue downloads interrupted by a previous shutdown/crash: items left
         # at queued/downloading never resume (the downloader only claims pending).

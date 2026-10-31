@@ -345,7 +345,9 @@ class TelegramService:
             async for message in self.client.iter_messages(
                 entity,
                 min_id=since_msg_id or 0,
-                reverse=False,
+                # Oldest first: items commit in order, so an interrupted poll
+                # (FloodWait, disconnect) never leaves a gap below max(tg_msg_id).
+                reverse=True,
                 **extra
             ):
                 # Filter for video/document media

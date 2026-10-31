@@ -270,7 +270,9 @@ class EventRead(BaseModel):
     subscription_id: Optional[int] = None
     media_id: Optional[int] = None
     message: str
+    count: Optional[int] = 1
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 # ============================================================================

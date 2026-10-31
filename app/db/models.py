@@ -286,6 +286,8 @@ class Event(Base, TimestampMixin):
     subscription_id: Mapped[Optional[int]] = mapped_column(ForeignKey("subscriptions.id"), nullable=True)
     media_id: Mapped[Optional[int]] = mapped_column(ForeignKey("media_items.id"), nullable=True)
     message: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # Repeat count for collapsed warnings/errors (None on legacy rows = 1).
+    count: Mapped[Optional[int]] = mapped_column(Integer, default=1, nullable=True)
 
     subscription = relationship("Subscription", back_populates="events")
     media = relationship("MediaItem", back_populates="events")
