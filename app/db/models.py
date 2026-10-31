@@ -283,6 +283,20 @@ class Plugin(Base, TimestampMixin):
     )
 
 
+class PollStat(Base):
+    """Hourly poll outcome counters per subscription (overview sync pulse)."""
+    __tablename__ = "poll_stats"
+    __table_args__ = (UniqueConstraint("subscription_id", "hour", name="uq_poll_stats_sub_hour"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subscription_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ok: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    down: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    queued: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
 class Event(Base, TimestampMixin):
     """Activity feed + audit log."""
     __tablename__ = "events"

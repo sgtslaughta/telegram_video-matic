@@ -1,6 +1,6 @@
 // Accent presets. Each maps to the shadcn --primary/--ring CSS vars (HSL triples).
 // White foreground works on every colored accent in both light and dark themes.
-export type AccentName = 'telegram' | 'violet' | 'green' | 'rose' | 'orange' | 'amber'
+export type AccentName = 'graphite' | 'telegram' | 'violet' | 'green' | 'rose' | 'orange' | 'amber'
 
 export interface Accent {
   name: AccentName
@@ -10,6 +10,7 @@ export interface Accent {
 }
 
 export const ACCENTS: Accent[] = [
+  { name: 'graphite', label: 'Graphite', swatch: '#18181b', primary: '' },
   { name: 'telegram', label: 'Telegram', swatch: '#229ed9', primary: '201 73% 49%' },
   { name: 'violet', label: 'Violet', swatch: '#7c3aed', primary: '262 83% 58%' },
   { name: 'green', label: 'Green', swatch: '#16a34a', primary: '142 71% 45%' },
@@ -18,11 +19,16 @@ export const ACCENTS: Accent[] = [
   { name: 'amber', label: 'Amber', swatch: '#f59e0b', primary: '38 92% 50%' },
 ]
 
-export const DEFAULT_ACCENT: AccentName = 'telegram'
+export const DEFAULT_ACCENT: AccentName = 'graphite'
 
 export function applyAccent(name: AccentName): void {
   const a = ACCENTS.find((x) => x.name === name) ?? ACCENTS[0]
   const root = document.documentElement
+  if (!a.primary) {
+    // Graphite = the theme's own foreground; let light/dark tokens decide.
+    for (const v of ['--primary', '--primary-foreground', '--ring']) root.style.removeProperty(v)
+    return
+  }
   root.style.setProperty('--primary', a.primary)
   root.style.setProperty('--primary-foreground', '0 0% 100%')
   root.style.setProperty('--ring', a.primary)

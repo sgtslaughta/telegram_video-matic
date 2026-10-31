@@ -297,6 +297,7 @@ class SyncEngine:
                              message=f"{label}: queued {queued} new"
                                      + (f", skipped {skipped} (filtered)" if skipped else ""))
         await session.commit()
+        return queued
 
     async def _poller_once(self, session: AsyncSession) -> None:
         """One poller tick: poll each due subscription per its check_frequency.
@@ -304,7 +305,13 @@ class SyncEngine:
         realtime subs are skipped here (handled by live events). Each sub is
         polled only when its interval has elapsed since last_checked_at.
         """
+        from app.sync import pulse
         if not await self._ensure_connected():
+            try:
+                for sub in await subscriptions.list(session, enabled_only=True):
+                    await pulse.record(session, sub.id, "down")
+            except Exception as e:
+                log(f"Pulse record failed: {e}", "WARN")
             return
         try:
             subs = await subscriptions.list(session, enabled_only=True)
@@ -314,14 +321,16 @@ class SyncEngine:
                 if not _sub_due(sub, now):
                     continue
                 try:
-                    await self._poll_one_sub(session, sub)
+                    queued = await self._poll_one_sub(session, sub)
                     sub.last_checked_at = now
                     await session.commit()
+                    await pulse.record(session, sub.id, "ok", queued=queued or 0)
                 except Exception as e:
                     ok = False
                     await events.add(session, level=EventLevel.ERROR, kind="sync",
                                      subscription_id=sub.id, message=f"Sync error: {e}")
                     await session.commit()
+                    await pulse.record(session, sub.id, "error")
             if ok:
                 self.last_ok_poll_at = now
         except Exception as e:
@@ -792,6 +801,9 @@ class SyncEngine:
                 kind="drift",
                 message=f"Gap reconcile: queued {gap_count} new media item(s)",
             )
+
+        from app.sync import pulse
+        await pulse.prune(session)
 
         # 3. Retention (age from content date, keep pins, mass-delete cap).
         from app.sync import retention

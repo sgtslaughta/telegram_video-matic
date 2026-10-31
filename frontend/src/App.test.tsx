@@ -22,12 +22,12 @@ describe('App', () => {
 
   it('renders the app title', () => {
     render(<App />)
-    expect(screen.getByText('Video-Matic')).toBeTruthy()
+    expect(screen.getByText('Video-matic')).toBeTruthy()
   })
 
   it('renders router', () => {
     render(<App />)
     // The router should render the dashboard by default
-    expect(screen.getByRole('navigation')).toBeTruthy()
+    expect(screen.getAllByRole('navigation')[0]).toBeTruthy()
   })
 })

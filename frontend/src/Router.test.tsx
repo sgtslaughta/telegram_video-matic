@@ -59,7 +59,7 @@ describe('Router', () => {
       </MemoryRouter>
     )
     // Dashboard should have sidebar
-    expect(screen.getByRole('navigation')).toBeTruthy()
+    expect(screen.getAllByRole('navigation')[0]).toBeTruthy()
     // Check for main dashboard content (hero banner or stat cards)
     const mainContent = screen.getByRole('main')
     expect(mainContent.textContent).toContain('Dashboard')
@@ -78,7 +78,7 @@ describe('Router', () => {
         </QueryClientProvider>
       </MemoryRouter>
     )
-    expect(screen.getByRole('navigation')).toBeTruthy()
-    expect(screen.getByRole('heading', { level: 1 })).toBeTruthy()
+    expect(screen.getAllByRole('navigation')[0]).toBeTruthy()
+    expect(screen.getByRole('main')).toBeTruthy()
   })
 })

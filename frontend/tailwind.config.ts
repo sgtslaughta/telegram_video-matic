@@ -43,7 +43,13 @@ export default {
         },
         ring: 'hsl(var(--ring))',
         telegramBlue: '#229ed9',
+        ok: 'hsl(var(--ok))',
+        warn: 'hsl(var(--warn))',
+        err: 'hsl(var(--err))',
+        idle: 'hsl(var(--idle))',
       },
+      transitionTimingFunction: { DEFAULT: 'var(--ease)' },
+      transitionDuration: { DEFAULT: '150ms' },
       borderRadius: {
         lg: 'calc(var(--radius) * 1)',
         md: 'calc(var(--radius) * 0.96)',

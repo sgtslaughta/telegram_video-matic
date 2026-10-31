@@ -54,10 +54,10 @@ describe('Shell', () => {
         </QueryClientProvider>
       </BrowserRouter>
     )
-    expect(screen.getByRole('navigation')).toBeTruthy()
+    expect(screen.getAllByRole('navigation', { name: 'Main' }).length).toBeGreaterThan(0)
   })
 
-  it('renders header', () => {
+  it('renders search entry', () => {
     render(
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
@@ -69,7 +69,6 @@ describe('Shell', () => {
         </QueryClientProvider>
       </BrowserRouter>
     )
-    const header = screen.getByRole('heading', { level: 1 })
-    expect(header).toBeTruthy()
+    expect(screen.getByRole('button', { name: /search/i })).toBeTruthy()
   })
 })

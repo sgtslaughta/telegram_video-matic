@@ -1,85 +1,124 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, BookOpen, Compass, DownloadCloud, ActivitySquare, Settings, Send } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Moon, Sun, LogOut, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Logo from '@/components/Logo'
+import { useTheme } from '@/hooks/useTheme'
 import { useActiveDownloads, useQueuedDownloads } from '@/hooks/useDownloads'
+import * as api from '@/lib/api'
+import { NAV, isActive } from './nav'
 
 export default function Sidebar({
   connected,
   onConnectClick,
+  onSearch,
 }: {
   connected: boolean
   onConnectClick: () => void
+  onSearch: () => void
 }) {
-  const location = useLocation()
-  const { data: activeDownloads } = useActiveDownloads()
-  const { data: queuedDownloads } = useQueuedDownloads()
-  const dlRunning = activeDownloads?.filter((j) => j.status === 'running').length ?? 0
-  const dlCount = (activeDownloads?.length ?? 0) + (queuedDownloads?.length ?? 0)
-  const links = [
-    { label: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { label: 'Subscriptions', href: '/subscriptions', icon: BookOpen },
-    { label: 'Browse', href: '/browse', icon: Compass },
-    { label: 'Downloads', href: '/downloads', icon: DownloadCloud },
-    { label: 'Activity', href: '/activity', icon: ActivitySquare },
-    { label: 'Settings', href: '/settings', icon: Settings },
-  ]
-  const isActive = (href: string) =>
-    href === '/' ? location.pathname === '/' : location.pathname.startsWith(href)
+  const { pathname } = useLocation()
+  const { toggleTheme, effectiveTheme } = useTheme()
+  const { data: active } = useActiveDownloads()
+  const { data: queued } = useQueuedDownloads()
+  const dlCount = (active?.length ?? 0) + (queued?.length ?? 0)
+
+  const logout = async () => {
+    await api.auth.logout().catch(() => {})
+    window.location.href = '/login'
+  }
 
   return (
-    <nav className="flex h-screen w-60 flex-col border-r border-border bg-card">
-      <div className="flex h-16 items-center gap-2 border-b border-border px-6">
-        <Logo className="h-6 w-6" style={{ color: 'var(--accent)' }} />
-        <h1 className="text-lg font-semibold tracking-tight">Video-Matic</h1>
+    <nav
+      aria-label="Main"
+      className="hidden w-56 shrink-0 flex-col border-r border-border bg-card md:flex"
+    >
+      <div className="flex h-12 items-center gap-2 px-4">
+        <Logo className="h-5 w-5 text-foreground" />
+        <span className="text-[13px] font-semibold tracking-tight">Video-matic</span>
       </div>
-      <div className="flex-1 space-y-1 p-3">
-        {links.map((link) => {
-          const active = isActive(link.href)
-          const Icon = link.icon
+
+      <button
+        onClick={onSearch}
+        className="mx-3 mb-2 flex h-8 items-center gap-2 rounded-md border border-border bg-background px-2.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <Search className="h-3.5 w-3.5" />
+        <span className="flex-1 text-left">Search</span>
+        <kbd className="rounded border border-border px-1 text-[11px]">⌘K</kbd>
+      </button>
+
+      <ul className="flex-1 space-y-px px-2">
+        {NAV.map(({ label, href, icon: Icon }) => {
+          const on = isActive(pathname, href)
           return (
-            <Link key={link.href} to={link.href}>
-              <Button
-                variant="ghost"
+            <li key={href}>
+              <Link
+                to={href}
+                aria-current={on ? 'page' : undefined}
                 className={cn(
-                  'w-full justify-start gap-2 font-normal',
-                  active && 'bg-secondary font-medium text-secondary-foreground'
+                  'flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] transition-colors',
+                  on ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                 )}
               >
-                <Icon className="h-4 w-4" />
-                <span className="flex-1 text-left">{link.label}</span>
-                {link.href === '/downloads' && dlCount > 0 && (
-                  <span
-                    className={cn(
-                      'flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium',
-                      dlRunning > 0
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-secondary-foreground'
-                    )}
-                    title={`${dlRunning} downloading, ${dlCount} total active`}
-                  >
-                    {dlCount}
-                  </span>
+                <Icon className="h-4 w-4" strokeWidth={1.75} />
+                <span className="flex-1">{label}</span>
+                {href === '/downloads' && dlCount > 0 && (
+                  <span className="text-[12px] tabular-nums text-muted-foreground">{dlCount}</span>
                 )}
-              </Button>
-            </Link>
+              </Link>
+            </li>
           )
         })}
+      </ul>
+
+      <div className="space-y-px border-t border-border p-2">
+        <button
+          onClick={onConnectClick}
+          className="flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+        >
+          <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-ok' : 'bg-err')} />
+          <span className="flex-1 text-left">{connected ? 'Telegram connected' : 'Telegram offline'}</span>
+        </button>
+        <div className="flex gap-px">
+          <button
+            onClick={toggleTheme}
+            aria-label={effectiveTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            className="flex h-8 flex-1 items-center gap-2.5 rounded-md px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            {effectiveTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            Theme
+          </button>
+          <button
+            onClick={logout}
+            aria-label="Log out"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      <div className="border-t border-border p-3">
-        <Button variant="ghost" className="w-full justify-start gap-2 font-normal" onClick={onConnectClick}>
-          <Send className="h-4 w-4" />
-          <span className="flex-1 text-left">Telegram</span>
-          <span
-            className={cn(
-              'h-2 w-2 rounded-full',
-              connected ? 'bg-green-500' : 'bg-amber-500'
-            )}
-            aria-label={connected ? 'connected' : 'not connected'}
-          />
-        </Button>
-      </div>
+    </nav>
+  )
+}
+
+export function MobileNav() {
+  const { pathname } = useLocation()
+  return (
+    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-card md:hidden">
+      {NAV.slice(0, 5).map(({ label, href, icon: Icon }) => {
+        const on = isActive(pathname, href)
+        return (
+          <Link
+            key={href}
+            to={href}
+            aria-current={on ? 'page' : undefined}
+            className={cn('flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]',
+              on ? 'text-foreground' : 'text-muted-foreground')}
+          >
+            <Icon className="h-5 w-5" strokeWidth={1.75} />
+            {label}
+          </Link>
+        )
+      })}
     </nav>
   )
 }
