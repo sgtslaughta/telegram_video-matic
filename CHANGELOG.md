@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v1.11.1 (2026-10-31)
+
+### Bug Fixes
+
+- **rugby**: Match only downloaded files; fold accents, club aliases
+  ([`7816ecf`](https://github.com/sgtslaughta/telegram_video-matic/commit/7816ecf69be96cdc59d590ac8a296a452deeb00d))
+
+- rematch scans DOWNLOADED items only; discovery skips filtered-out items. Skipped/pruned/failed
+  media cost rate-limited TheSportsDB calls for nothing (prod rematch: 294 items, hours). -
+  normalize() folds accents ("Français" no longer splits to "fran ais"). - Short club names (Toulon,
+  UBB, Pau, Toulouse, Bayonne, La Rochelle) map to TheSportsDB's formal names.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.11.0 (2026-10-31)
 
 ### Bug Fixes
