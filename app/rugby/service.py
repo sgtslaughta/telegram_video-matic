@@ -1077,7 +1077,13 @@ class RugbyService:
                 select(RugbyMatch).where(RugbyMatch.media_id == media_id)
             )).scalar_one_or_none()
             if m is None:
-                return None
+                # Unmatched (title too garbled to score): a hand-picked fixture
+                # creates the row. Status-only edits still need one.
+                if (fixture_id is None or await s.get(RugbyFixture, fixture_id) is None
+                        or await s.get(MediaItem, media_id) is None):
+                    return None
+                m = RugbyMatch(media_id=media_id, confidence=1.0)
+                s.add(m)
             if fixture_id is not None:
                 fx = await s.get(RugbyFixture, fixture_id)
                 if fx:

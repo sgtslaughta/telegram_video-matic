@@ -381,3 +381,29 @@ async def test_rematch_skips_items_without_a_file(ctx, factory):
 
     result = await RugbyService(ctx, api=FakeApi()).rematch()
     assert result["scanned"] == 1
+
+
+@pytest.mark.asyncio
+async def test_update_match_assigns_fixture_to_unmatched_item(ctx, factory):
+    """A title too garbled to score ("18th August" for an October game) has no
+    match row; picking its fixture by hand must still work."""
+    async with factory() as s:
+        s.add(rm.RugbyLeague(id=4550, slug="champions-cup",
+                             name="European Rugby Champions Cup", sport="union"))
+        chan = Channel(tg_id=1, title="Rugby")
+        s.add(chan)
+        await s.flush()
+        item = MediaItem(channel_id=chan.id, tg_msg_id=1, file_name="Pau v Leicester.mp4",
+                         date_posted=datetime(2026, 10, 18, tzinfo=timezone.utc),
+                         status=MediaStatus.DOWNLOADED)
+        s.add(item)
+        s.add(rm.RugbyFixture(id=2550798, league_id=4550, season="2026-2027", round="1",
+                              date=datetime(2026, 10, 18, tzinfo=timezone.utc),
+                              home_name="Section Paloise", away_name="Leicester Tigers"))
+        await s.commit()
+        media_id = item.id
+
+    out = await RugbyService(ctx, api=FakeApi()).update_match(
+        media_id, status="confirmed", fixture_id=2550798)
+    assert out["fixture_id"] == 2550798 and out["status"] == "confirmed"
+    assert out["home_name"] == "Section Paloise"
