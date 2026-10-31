@@ -28,7 +28,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <Logo className="h-10 w-10 text-brand" />
+          <Logo className="h-16 w-16" title="TGVM" />
           <h1 className="text-[20px] font-semibold tracking-tight">Login</h1>
           <p className="text-[13px] text-muted-foreground">Enter the password to open your library.</p>
         </div>

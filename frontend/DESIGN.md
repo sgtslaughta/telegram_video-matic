@@ -1,7 +1,11 @@
 # UI design system (1.8)
 
-Ops dashboard: dense, calm, greyscale surfaces. Violet (`brand`) marks
+Ops dashboard: dense, calm, greyscale surfaces. Telegram blue (`brand`) marks
 interaction and focus; green/amber/red (`ok`/`warn`/`err`) mark status only.
+
+## Logo
+`components/Logo.tsx` = `public/favicon.svg`: plane over TG (Telegram blue #229ED9) + VM (emerald
+#10B981) on a bevelled cream/slate disc. Letters are outlined Inter Black. Don't recolour it.
 
 ## Tokens (Tailwind classes)
 - Surfaces: `bg-background` page, `bg-card` panels, `border-border` lines, `bg-muted` wells.
