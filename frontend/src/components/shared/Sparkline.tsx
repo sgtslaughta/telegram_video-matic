@@ -16,11 +16,19 @@ export function Sparkline<T extends Record<string, unknown>>({
   className?: string
   labelKey?: keyof T & string
 }) {
-  const config = { [dataKey]: { label, color: 'hsl(var(--foreground))' } } satisfies ChartConfig
+  const config = { [dataKey]: { label, color: 'hsl(var(--brand))' } } satisfies ChartConfig
+  const gid = `spark-${dataKey}`
   const rows = data.map((d, i) => ({ ...d, i }))
   return (
-    <ChartContainer config={config} className={cn('aspect-auto h-10 w-full', className)}>
-      <AreaChart data={rows} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+    // `block`: the stock container is flex, which lets recharts overflow narrow grid cells.
+    <ChartContainer config={config} className={cn('block aspect-auto h-10 w-full min-w-0', className)}>
+      <AreaChart data={rows} margin={{ top: 4, right: 1, bottom: 0, left: 1 }}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={`var(--color-${dataKey})`} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={`var(--color-${dataKey})`} stopOpacity={0} />
+          </linearGradient>
+        </defs>
         <XAxis dataKey="i" type="number" domain={[0, Math.max(rows.length - 1, 1)]} hide />
         <YAxis hide domain={[0, (max: number) => Math.max(max, 1) * 1.15]} />
         {bands.map((b) => (
@@ -47,7 +55,7 @@ export function Sparkline<T extends Record<string, unknown>>({
           }
         />
         <Area type="monotone" dataKey={dataKey} stroke={`var(--color-${dataKey})`} strokeWidth={1.5}
-          fill={`var(--color-${dataKey})`} fillOpacity={0.06} isAnimationActive={false} dot={false}
+          fill={`url(#${gid})`} isAnimationActive={false} dot={false}
           activeDot={{ r: 3, strokeWidth: 0 }} />
       </AreaChart>
     </ChartContainer>

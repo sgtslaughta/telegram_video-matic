@@ -33,7 +33,7 @@ function RangeToggle({ value, onChange }: { value: number; onChange: (h: number)
     <div role="radiogroup" aria-label="Range" className="flex rounded-md border border-border p-0.5 text-[12px]">
       {[[24, '24h'], [168, '7d']].map(([h, l]) => (
         <button key={h} role="radio" aria-checked={value === h} onClick={() => onChange(h as number)}
-          className={cn('rounded px-2 py-0.5 transition-colors', value === h ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground')}>
+          className={cn('rounded px-2 py-0.5 transition-colors', value === h ? 'bg-brand/10 font-medium text-brand' : 'text-muted-foreground hover:text-foreground')}>
           {l}
         </button>
       ))}
@@ -113,13 +113,13 @@ export default function Overview() {
           </>
         ) : (
           <p className="py-6 text-[13px] text-muted-foreground">
-            No subscriptions yet. <Link to="/subscriptions" className="text-foreground underline">Add one</Link> to start syncing a channel.
+            No subscriptions yet. <Link to="/subscriptions" className="font-medium text-brand hover:underline">Add one</Link> to start syncing a channel.
           </p>
         )}
       </Section>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Section title="Recent arrivals" aside={<Link to="/downloads?tab=history" className="text-[12px] text-muted-foreground hover:text-foreground">History</Link>}>
+        <Section title="Recent arrivals" aside={<Link to="/downloads?tab=history" className="text-[12px] font-medium text-brand hover:underline">History</Link>}>
           {isLoading || !data ? (
             <div className="space-y-3 py-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
           ) : data.recent.length ? (

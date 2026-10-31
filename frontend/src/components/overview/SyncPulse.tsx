@@ -22,7 +22,7 @@ function Row({ s }: { s: OverviewSub }) {
           {s.live ? 'Live' : s.enabled ? summary(s, spans) : 'Paused'}
         </p>
       </div>
-      <div role="img" aria-label={`${s.name}: ${summary(s, spans)}`} className="order-last col-span-2 min-w-0 overflow-hidden md:order-none md:col-span-1">
+      <div role="img" aria-label={`${s.name}: ${summary(s, spans)}`} className="order-last col-span-2 min-w-0 md:order-none md:col-span-1">
         <Sparkline data={s.pulse} dataKey="queued" label="New videos"
           bands={spans.map((x) => ({ from: x.from, to: x.to, tone: x.kind === 'down' ? 'err' : 'warn' }))} />
       </div>
@@ -40,7 +40,7 @@ export function SyncPulse({ subs }: { subs: OverviewSub[] }) {
 export function PulseLegend() {
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
-      <li className="flex items-center gap-1.5"><span className="h-px w-4 bg-foreground" />New videos per hour</li>
+      <li className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-brand" />New videos per hour</li>
       <li className="flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-err/20" />Telegram offline</li>
       <li className="flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-warn/20" />Failed polls</li>
     </ul>

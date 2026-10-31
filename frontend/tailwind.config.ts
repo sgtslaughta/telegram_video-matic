@@ -43,6 +43,7 @@ export default {
         },
         ring: 'hsl(var(--ring))',
         telegramBlue: '#229ed9',
+        brand: 'hsl(var(--brand))',
         ok: 'hsl(var(--ok))',
         warn: 'hsl(var(--warn))',
         err: 'hsl(var(--err))',
