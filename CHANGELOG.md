@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v1.10.0 (2026-10-31)
+
+### Documentation
+
+- Add TGVM logo to README (light/dark aware)
+  ([`4182548`](https://github.com/sgtslaughta/telegram_video-matic/commit/41825482b7abdc97faac253473345b63b7b68794))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Testing
+
+- Keep resume test from writing a 3.6 GB file
+  ([`d18bf23`](https://github.com/sgtslaughta/telegram_video-matic/commit/d18bf237ee4f49ba3cecc359f7f40cd1ad7c57f2))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.9.0 (2026-10-31)
 
 ### Features
@@ -14,6 +35,31 @@
   accent moves to Telegram blue (#177AAD light, #4FB3E8 dark, AA); violet stays as an option; saved
   accent key bumped so the new default applies - Pages outside the shell (login, connect) now
   inherit theme text colour
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **download**: Connections-per-download setting; concurrent downloads actually configurable
+  ([`1d15029`](https://github.com/sgtslaughta/telegram_video-matic/commit/1d150294305826a3272ba959b59aa1dcd9a68813))
+
+- New setting download_connections (1-32, default 20), read live per download - Remove the
+  TelegramService semaphore fixed at startup (env, 3): it silently capped parallel downloads no
+  matter what Settings said; the engine pool (max_concurrent_downloads, read live) is now the only
+  bound - Settings validation: concurrent downloads 1-10, connections 1-32 - Settings sections send
+  only changed fields (an empty field no longer writes the literal "None")
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Performance Improvements
+
+- **download**: Resumed downloads use the parallel path
+  ([`f01606f`](https://github.com/sgtslaughta/telegram_video-matic/commit/f01606fb6ab1e567c1a3f8e255e1b50761e2ac3e))
+
+After a restart, partial downloads resumed over a single 512 KiB stream (~2 MB/s). Resume now starts
+  at the last whole part and splits the rest across all connections like a fresh download.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
