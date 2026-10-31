@@ -809,7 +809,7 @@ async def test_download_forwards_progress_callback(mock_client, mock_account_rep
     from unittest.mock import patch
 
     with patch("app.telegram.service.download_file", new_callable=AsyncMock) as mock_download:
-        async def mock_download_impl(client, doc, f, progress_callback, connections=None):
+        async def mock_download_impl(client, doc, f, progress_callback, connections=None, offset=0):
             if progress_callback:
                 progress_callback(512000, 1024000)
                 progress_callback(1024000, 1024000)

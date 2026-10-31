@@ -24,7 +24,7 @@ async def test_download_file_passes_connection_count():
         def __init__(self, client, dc_id):
             pass
 
-        async def download(self, location, size, connection_count=None):
+        async def download(self, location, size, connection_count=None, start=0):
             seen["n"] = connection_count
             yield b"x"
 
@@ -43,7 +43,7 @@ async def test_service_has_no_fixed_download_cap(tmp_path):
     svc.client = object()
     running, peak = 0, 0
 
-    async def fake_download_file(client, doc, f, progress_callback=None, connections=None):
+    async def fake_download_file(client, doc, f, progress_callback=None, connections=None, offset=0):
         nonlocal running, peak
         running += 1
         peak = max(peak, running)
@@ -54,3 +54,47 @@ async def test_service_has_no_fixed_download_cap(tmp_path):
     with patch("app.telegram.service.download_file", fake_download_file):
         await asyncio.gather(*[svc.download(msg, str(tmp_path / f"{i}.bin")) for i in range(5)])
     assert peak == 5
+
+
+@pytest.mark.asyncio
+async def test_resume_uses_parallel_path_from_aligned_offset(tmp_path):
+    """Resumed downloads used one 512 KiB stream (~2 MB/s). They must use the
+    parallel path, starting at the last whole part before the partial end."""
+    MiB = 1024 * 1024
+    part = tmp_path / "v.bin"
+    part.write_bytes(b"a" * (3 * MiB + 1234))  # partial file
+    svc = TelegramService(account_repo=object())
+    svc.client = object()
+    seen = {}
+
+    async def fake_download_file(client, doc, f, progress_callback=None, connections=None, offset=0):
+        seen.update(offset=offset, pos=f.tell(), connections=connections)
+        f.write(b"b" * (doc.size - offset))
+
+    msg = SimpleNamespace(media=SimpleNamespace(document=SimpleNamespace(size=3600 * MiB)))
+    with patch("app.telegram.service.download_file", fake_download_file):
+        await svc.download(msg, str(part), offset=3 * MiB + 1234, connections=12)
+    assert seen == {"offset": 3 * MiB, "pos": 3 * MiB, "connections": 12}
+    assert part.stat().st_size == 3600 * MiB
+
+
+@pytest.mark.asyncio
+async def test_parallel_download_starts_at_offset():
+    starts = []
+
+    class S:
+        def __init__(self, off): self.off = off
+        async def next(self): return None
+        async def disconnect(self): pass
+
+    t = fast_telethon.ParallelTransferrer.__new__(fast_telethon.ParallelTransferrer)
+    t.loop = asyncio.get_running_loop()
+
+    async def fake_create(file, index, part_size, stride, part_count, start=0):
+        starts.append(start + index * part_size)
+        return S(start + index * part_size)
+    t._create_download_sender = fake_create
+    t._create_sender = None
+    async for _ in t.download(None, 100 * 1024 * 1024, connection_count=3, start=4 * 1024 * 1024):
+        pass
+    assert sorted(starts) == [4 * 1024 * 1024, 5 * 1024 * 1024, 6 * 1024 * 1024]

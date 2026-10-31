@@ -130,7 +130,7 @@ class ParallelTransferrer:
         return math.ceil((file_size / full_size) * max_count)
 
     async def _init_download(self, connections: int, file: TypeLocation, part_count: int,
-                             part_size: int) -> None:
+                             part_size: int, start: int = 0) -> None:
         minimum, remainder = divmod(part_count, connections)
 
         def get_part_count() -> int:
@@ -144,18 +144,18 @@ class ParallelTransferrer:
         # before creating any other senders.
         self.senders = [
             await self._create_download_sender(file, 0, part_size, connections * part_size,
-                                               get_part_count()),
+                                               get_part_count(), start),
             *await asyncio.gather(
                 *[self._create_download_sender(file, i, part_size, connections * part_size,
-                                               get_part_count())
+                                               get_part_count(), start)
                   for i in range(1, connections)])
         ]
 
     async def _create_download_sender(self, file: TypeLocation, index: int, part_size: int,
                                       stride: int,
-                                      part_count: int) -> DownloadSender:
-        return DownloadSender(self.client, await self._create_sender(), file, index * part_size, part_size,
-                              stride, part_count)
+                                      part_count: int, start: int = 0) -> DownloadSender:
+        return DownloadSender(self.client, await self._create_sender(), file, start + index * part_size,
+                              part_size, stride, part_count)
 
     async def _init_upload(self, connections: int, file_id: int, part_count: int, big: bool
                            ) -> None:
@@ -207,13 +207,20 @@ class ParallelTransferrer:
 
     async def download(self, file: TypeLocation, file_size: int,
                        part_size_kb: Optional[float] = None,
-                       connection_count: Optional[int] = None) -> AsyncGenerator[bytes, None]:
+                       connection_count: Optional[int] = None,
+                       start: int = 0) -> AsyncGenerator[bytes, None]:
+        """Yield file parts in order from byte `start` (must be part-aligned;
+        resumes use this so they get the parallel path too)."""
         connection_count = connection_count or self._get_connection_count(file_size)
         part_size = int(part_size_kb * 1024) if part_size_kb else part_size_for(file_size)
-        part_count = math.ceil(file_size / part_size)
+        part_count = math.ceil((file_size - start) / part_size)
+        connection_count = max(1, min(connection_count, part_count))
         log.debug("Starting parallel download: "
-                  f"{connection_count} {part_size} {part_count} {file!s}")
-        await self._init_download(connection_count, file, part_count, part_size)
+                  f"{connection_count} {part_size} {part_count} from {start} {file!s}")
+        if start:
+            await self._init_download(connection_count, file, part_count, part_size, start)
+        else:
+            await self._init_download(connection_count, file, part_count, part_size)
 
         # Pipelined: each connection runs its own fetch loop into a small queue
         # (prefetch PREFETCH parts), so a slow connection never stalls the
@@ -317,11 +324,14 @@ async def download_file(client: TelegramClient,
                         out: BinaryIO,
                         progress_callback: callable = None,
                         connections: Optional[int] = None,
+                        offset: int = 0,
                         ) -> BinaryIO:
+    """Download `location` into `out` from byte `offset` (part-aligned; the
+    caller positions `out` there)."""
     size = location.size
     dc_id, location = utils.get_input_location(location)
     downloader = ParallelTransferrer(client, dc_id)
-    downloaded = downloader.download(location, size, connection_count=connections)
+    downloaded = downloader.download(location, size, connection_count=connections, start=offset)
     async for x in downloaded:
         out.write(x)
         if progress_callback:
