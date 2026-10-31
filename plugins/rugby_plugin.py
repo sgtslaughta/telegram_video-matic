@@ -30,6 +30,7 @@ class RugbyPlugin(PluginBase):
     def __init__(self, ctx=None):
         super().__init__(ctx)
         self.service = RugbyService(ctx) if ctx else None
+        self._sweep = None  # wanted auto-search task
 
     # --- platform declarations ---
     def models(self):
@@ -43,12 +44,22 @@ class RugbyPlugin(PluginBase):
         if self.service is None:
             return
         resolve.configure(self.ctx.config)
+        await self.service.backfill_content_dates()
+        if self._sweep is None:
+            import asyncio
+            from app.rugby.wanted import auto_search_loop
+            self._sweep = asyncio.create_task(auto_search_loop(self.ctx))
         # Seed the league catalog if we have none yet (cheap, idempotent).
         leagues = await self.service.list_leagues()
         if not leagues:
             await self.service.refresh_catalog()
             await self.ctx.log("info", "rugby",
                                f"Seeded league catalog ({len(await self.service.list_leagues())} leagues)")
+
+    async def on_disable(self):
+        if self._sweep:
+            self._sweep.cancel()
+            self._sweep = None
 
     # --- event hooks ---
     async def on_media_discovered(self, item):

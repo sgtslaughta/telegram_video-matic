@@ -14,8 +14,9 @@ _ERROR_LEVELS = {str(EventLevel.WARNING), str(EventLevel.ERROR)}
 
 class PluginContext:
     def __init__(self, name, config=None, settings=None,
-                 media_root="/downloads", session_factory=None):
+                 media_root="/downloads", session_factory=None, tg_getter=None):
         self.name = name
+        self._tg_getter = tg_getter
         self.config = config if config is not None else {}
         self.settings = settings
         self.media_root = media_root
@@ -28,6 +29,11 @@ class PluginContext:
             raise RuntimeError(f"PluginContext({self.name}) has no session_factory")
         async with self.session_factory() as s:
             yield s
+
+    @property
+    def tg_service(self):
+        """The live TelegramService (or None). Resolved lazily: built after plugins."""
+        return self._tg_getter() if self._tg_getter else None
 
     async def log(self, level, kind, message, *, subscription_id=None, media_id=None):
         """Write an Event and, for warnings/errors, record last_error for the UI."""

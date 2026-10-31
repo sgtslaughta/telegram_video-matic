@@ -965,6 +965,19 @@ class RugbyService:
                              dry_run: bool = False) -> dict:
         return await importer.import_library(self, root, dry_run=dry_run)
 
+    async def backfill_content_dates(self) -> None:
+        """Copy fixture dates onto matched media lacking content_date (idempotent)."""
+        from sqlalchemy import text
+        async with self.ctx.session() as s:
+            await s.execute(text(
+                "UPDATE media_items SET content_date = ("
+                " SELECT f.date FROM rugby_matches m JOIN rugby_fixtures f ON f.id = m.fixture_id"
+                " WHERE m.media_id = media_items.id AND m.status IN ('auto','confirmed'))"
+                " WHERE content_date IS NULL AND id IN ("
+                " SELECT m.media_id FROM rugby_matches m JOIN rugby_fixtures f ON f.id = m.fixture_id"
+                " WHERE m.status IN ('auto','confirmed') AND f.date IS NOT NULL)"))
+            await s.commit()
+
     async def save_match(self, media_id, fixture, conf, status) -> None:
         """Upsert the item's RugbyMatch row from a fixture dict."""
         async with self.ctx.session() as s:
@@ -983,6 +996,10 @@ class RugbyService:
             row.away_name = fx.get("away_name")
             row.confidence = conf
             row.status = status
+            # Retention ages from the match date, not the download date.
+            item = await s.get(MediaItem, media_id)
+            if item is not None and status in ("auto", "confirmed"):
+                item.content_date = _parse_date(fx.get("date")) or item.content_date
             await s.commit()
 
     # ---- jellyfin artwork (legacy poster-only helper) ------------------
@@ -1325,3 +1342,16 @@ def _clean(tokens: dict) -> dict:
 def _is_local(item) -> bool:
     """Imported from disk (no Telegram message behind it)."""
     return (getattr(item, "tg_msg_id", 0) or 0) < 0
+
+
+def _parse_date(v):
+    """Fixture date (datetime or ISO string) → aware datetime, else None."""
+    from datetime import datetime, timezone
+    if isinstance(v, str):
+        try:
+            v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(v, datetime) and v.tzinfo is None:
+        v = v.replace(tzinfo=timezone.utc)
+    return v if isinstance(v, datetime) else None

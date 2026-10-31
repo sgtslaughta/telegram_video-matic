@@ -1,3 +1,4 @@
+from datetime import datetime
 import asyncio
 import base64
 import inspect
@@ -330,9 +331,18 @@ class TelegramService:
         self,
         channel: ChannelDTO,
         topic: Optional[TopicDTO] = None,
-        since_msg_id: Optional[int] = None
+        since_msg_id: Optional[int] = None,
+        *,
+        since_date: Optional[datetime] = None,
+        limit: Optional[int] = None,
+        search: Optional[str] = None,
     ):
-        """Iterate media messages (video/document) in channel/topic, optionally from since_msg_id."""
+        """Iterate media messages (video/document) in channel/topic, optionally from since_msg_id.
+
+        since_date: only messages after this date (oldest first).
+        limit: max messages scanned. With limit and no since_msg_id/since_date the
+        scan is newest-first (latest N, used by filter preview); otherwise oldest-first.
+        """
         if not self.client:
             return
 
@@ -347,7 +357,10 @@ class TelegramService:
                 min_id=since_msg_id or 0,
                 # Oldest first: items commit in order, so an interrupted poll
                 # (FloodWait, disconnect) never leaves a gap below max(tg_msg_id).
-                reverse=True,
+                reverse=not (limit and not since_msg_id and not since_date),
+                **({"offset_date": since_date} if since_date else {}),
+                **({"limit": limit} if limit else {}),
+                **({"search": search} if search else {}),
                 **extra
             ):
                 # Filter for video/document media

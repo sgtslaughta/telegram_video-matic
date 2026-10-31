@@ -25,6 +25,7 @@ _TITLES = {
     "download_complete": ("Downloaded", "Downloaded {n} videos"),
     "download_failed": ("Download failed", "{n} downloads failed"),
     "unmatched": ("Needs review", "{n} videos need review"),
+    "disk_low": ("Cleanup paused", "Cleanup paused"),
 }
 BATCH_WINDOW = timedelta(minutes=2)
 DOWN_GRACE = timedelta(minutes=5)
@@ -42,6 +43,8 @@ def classify_event(ev) -> Optional[str]:
         return "download_failed"
     if kind == "rugby" and (msg.startswith("No fixture match") or msg.startswith("Needs review")):
         return "unmatched"
+    if kind == "prune" and level == "warning":
+        return "disk_low"  # cleanup paused by the mass-delete cap
     return None
 
 

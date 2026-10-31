@@ -46,6 +46,19 @@ def _sub_due(sub, now) -> bool:
     return elapsed >= _FREQUENCY_SECONDS.get(freq, 300)
 
 
+async def sub_dtos(session, sub) -> Tuple[ChannelDTO, Optional[TopicDTO]]:
+    """Channel/Topic DTOs (Telegram ids) from a subscription's DB rows."""
+    ch = await session.get(Channel, sub.channel_id)
+    chan_dto = ChannelDTO(tg_id=ch.tg_id, title=ch.title, username=ch.username,
+                          is_forum=ch.is_forum, photo_b64=ch.photo_b64, raw={})
+    topic_dto = None
+    if sub.topic_id:
+        tp = await session.get(Topic, sub.topic_id)
+        if tp:
+            topic_dto = TopicDTO(tg_topic_id=tp.tg_topic_id, title=tp.title, channel_tg_id=ch.tg_id, raw={})
+    return chan_dto, topic_dto
+
+
 class _DownloadCanceled(Exception):
     """Raised mid-download when a cancel was requested (discard partial)."""
 
@@ -265,6 +278,7 @@ class SyncEngine:
         async for media_dto in self.tg_service.iter_media(chan_dto, topic_dto, since_msg_id=last_msg_id):
             item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
             status, _reason = classify(sub, item)
+            item.skip_reason = _reason if status == "skip" else None
             if status == "skip":
                 await media.set_status(session, item.id, MediaStatus.SKIPPED)
                 skipped += 1
@@ -689,8 +703,7 @@ class SyncEngine:
 
         - Missing-file drift: DOWNLOADED items with missing local_path → PENDING + event
         - Gap drift: full iter_media reconcile finds missing media → insert + classify → PENDING/SKIPPED
-        - Age pruning: DOWNLOADED items older than retention_days → delete file, status=SKIPPED
-        - Disk% pruning: when disk usage >= retention_disk_pct, delete oldest DOWNLOADED files
+        - Retention: see app/sync/retention.py (status=PRUNED)
         - Orphan tolerance: files on disk not in DB are never touched (no directory scan)
         """
         # 1. Missing-file drift: DOWNLOADED items with missing local_path.
@@ -749,6 +762,7 @@ class SyncEngine:
                             raw=media_dto.raw,
                         )
                         status, _reason = classify(sub, item)
+                        item.skip_reason = _reason if status == "skip" else None
 
                         if status == "skip":
                             # Routine filter skip — no per-item event (floods feed).
@@ -779,97 +793,9 @@ class SyncEngine:
                 message=f"Gap reconcile: queued {gap_count} new media item(s)",
             )
 
-        # 3. Age pruning: delete DOWNLOADED items older than retention_days
-        from app.db.repositories import settings
-        retention_days = await settings.get(session, "retention_days", default="90")
-        try:
-            retention_days = int(retention_days) if retention_days else 90
-        except (ValueError, TypeError):
-            retention_days = 90
-
-        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
-        old_items = await media.list_downloaded_before(session, cutoff)
-        for item in old_items:
-            if item.local_path and Path(item.local_path).exists():
-                Path(item.local_path).unlink()
-            await media.set_local_path(session, item.id, None)
-            await media.set_status(session, item.id, MediaStatus.SKIPPED)
-            await events.add(
-                session,
-                level=EventLevel.INFO,
-                kind="prune",
-                media_id=item.id,
-                message=f"Pruned (age > {retention_days} days)",
-            )
-
-        # 4. Disk % pruning: delete oldest DOWNLOADED files until under threshold
-        retention_pct = await settings.get(session, "retention_disk_pct", default="80")
-        try:
-            retention_pct = int(retention_pct) if retention_pct else 80
-        except (ValueError, TypeError):
-            retention_pct = 80
-
-        usage = shutil.disk_usage("/")
-        used_pct = 100 * usage.used / usage.total
-
-        if used_pct >= retention_pct:
-            oldest_items = await media.list_downloaded_oldest_first(session)
-            for item in oldest_items:
-                if item.local_path and Path(item.local_path).exists():
-                    Path(item.local_path).unlink()
-                await media.set_local_path(session, item.id, None)
-                await media.set_status(session, item.id, MediaStatus.SKIPPED)
-                await events.add(
-                    session,
-                    level=EventLevel.INFO,
-                    kind="prune",
-                    media_id=item.id,
-                    message="Pruned (disk usage)",
-                )
-
-                # Re-check disk usage
-                usage = shutil.disk_usage("/")
-                used_pct = 100 * usage.used / usage.total
-                if used_pct < retention_pct:
-                    break
-
-        # 5. Per-subscription pruning: optional retention_days + disk quota.
-        for sub in await subscriptions.list(session):
-            items = await media.list_downloaded_for_sub(session, sub.id)  # oldest first
-            if not items:
-                continue
-
-            def _prune(item, reason):
-                if item.local_path and Path(item.local_path).exists():
-                    Path(item.local_path).unlink()
-
-            # 5a. Per-sub age retention (if enabled for this sub)
-            if sub.retention_days:
-                sub_cutoff = datetime.now(timezone.utc) - timedelta(days=sub.retention_days)
-                for item in list(items):
-                    if item.downloaded_at and _as_utc(item.downloaded_at) < sub_cutoff:
-                        _prune(item, "age")
-                        await media.set_local_path(session, item.id, None)
-                        await media.set_status(session, item.id, MediaStatus.SKIPPED)
-                        await events.add(session, level=EventLevel.INFO, kind="prune",
-                                         media_id=item.id, subscription_id=sub.id,
-                                         message=f"Pruned (sub age > {sub.retention_days}d)")
-                        items.remove(item)
-
-            # 5b. Per-sub disk quota: delete oldest until under max_total_gb
-            if sub.max_total_gb:
-                quota = sub.max_total_gb * 1024 ** 3
-                total = sum((i.size_bytes or 0) for i in items)
-                for item in list(items):
-                    if total <= quota:
-                        break
-                    _prune(item, "quota")
-                    await media.set_local_path(session, item.id, None)
-                    await media.set_status(session, item.id, MediaStatus.SKIPPED)
-                    await events.add(session, level=EventLevel.INFO, kind="prune",
-                                     media_id=item.id, subscription_id=sub.id,
-                                     message=f"Pruned (quota > {sub.max_total_gb}GB)")
-                    total -= (item.size_bytes or 0)
+        # 3. Retention (age from content date, keep pins, mass-delete cap).
+        from app.sync import retention
+        await retention.run(session, self.download_root)
 
         await session.commit()
 
@@ -1004,24 +930,7 @@ class SyncEngine:
             pass
 
     async def _sub_dtos(self, session, sub) -> Tuple[ChannelDTO, Optional[TopicDTO]]:
-        """Build Channel/Topic DTOs (with Telegram ids) from a subscription's DB rows.
-
-        iter_media needs tg ids, not the DB FK ids stored on the subscription.
-        """
-        ch = await session.get(Channel, sub.channel_id)
-        chan_dto = ChannelDTO(
-            tg_id=ch.tg_id, title=ch.title, username=ch.username,
-            is_forum=ch.is_forum, photo_b64=ch.photo_b64, raw={},
-        )
-        topic_dto = None
-        if sub.topic_id:
-            tp = await session.get(Topic, sub.topic_id)
-            if tp:
-                topic_dto = TopicDTO(
-                    tg_topic_id=tp.tg_topic_id, title=tp.title,
-                    channel_tg_id=ch.tg_id, raw={},
-                )
-        return chan_dto, topic_dto
+        return await sub_dtos(session, sub)
 
     async def scan_subscription(self, sub_id: int) -> None:
         """Scan a single subscription: one pass of per-subscription poller logic.
@@ -1059,6 +968,7 @@ class SyncEngine:
 
                     # Classify: keep or skip (skips are silent — see _poll_one_sub)
                     status, _reason = classify(sub, item)
+                    item.skip_reason = _reason if status == "skip" else None
 
                     if status == "skip":
                         await media.set_status(session, item.id, MediaStatus.SKIPPED)

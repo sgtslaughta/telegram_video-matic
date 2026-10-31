@@ -225,3 +225,51 @@ async def set_subscription(sub_id: int, body: SubLeague, request: Request,
         await svc._set_link_only(sub_id, body.league_id)
         bg.add_task(svc.deep_fetch, body.league_id)
     return {"ok": True, "league_id": body.league_id}
+
+
+class GrabRequest(BaseModel):
+    channel_id: int
+    tg_msg_id: int
+
+
+@router.get("/wanted")
+async def wanted_list(request: Request):
+    """List fixtures that need video: played, unmatched, not dismissed."""
+    from app.rugby.wanted import WantedService
+    svc = _service(request)
+    wanted_svc = WantedService(svc.ctx)
+    return await wanted_svc.list_wanted()
+
+
+@router.post("/wanted/{fixture_id}/search")
+async def wanted_search(fixture_id: int, request: Request, subscription_id: int | None = None):
+    """Search Telegram for videos of a fixture."""
+    from app.rugby.wanted import WantedService
+    try:
+        return await WantedService(_service(request).ctx).search_fixture(fixture_id, subscription_id)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+@router.post("/wanted/{fixture_id}/grab")
+async def wanted_grab(fixture_id: int, body: GrabRequest, request: Request):
+    """Queue a candidate message for download."""
+    from app.rugby.wanted import WantedService
+    try:
+        return await WantedService(_service(request).ctx).grab_fixture(fixture_id, body.channel_id, body.tg_msg_id)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+@router.post("/wanted/{fixture_id}/dismiss")
+async def wanted_dismiss(fixture_id: int, request: Request):
+    """Dismiss a fixture from wanted list."""
+    from app.rugby.wanted import WantedService
+    svc = _service(request)
+    wanted_svc = WantedService(svc.ctx)
+    await wanted_svc.dismiss_fixture(fixture_id)
+    return {"ok": True}

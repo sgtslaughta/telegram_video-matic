@@ -94,6 +94,20 @@ class RugbySubscription(Base, TimestampMixin):
     league_id: Mapped[int] = mapped_column(ForeignKey("rugby_leagues.id"), nullable=False)
 
 
+class RugbyWantedState(Base, TimestampMixin):
+    """Track search state and dismissal for a fixture in wanted list."""
+    __tablename__ = "rugby_wanted_state"
+
+    fixture_id: Mapped[int] = mapped_column(
+        ForeignKey("rugby_fixtures.id"), primary_key=True)
+    last_searched_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    gave_up: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    dismissed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
 ALL_MODELS = [
     RugbyLeague, RugbyTeam, RugbyFixture, RugbyMatch, RugbySubscription,
+    RugbyWantedState,
 ]

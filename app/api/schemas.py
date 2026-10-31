@@ -118,6 +118,7 @@ class SubscriptionCreateRequest(BaseModel):
     jellyfin_metadata: bool = False
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
+    keep: Optional[bool] = False
     # filter_regex is validated in the subscriptions router (-> HTTP 400),
     # not here, so a bad pattern returns 400 rather than Pydantic's 422.
 
@@ -141,6 +142,7 @@ class SubscriptionUpdateRequest(BaseModel):
     jellyfin_metadata: Optional[bool] = None
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
+    keep: Optional[bool] = None
     # filter_regex validated in the router (-> HTTP 400), see SubscriptionCreateRequest.
 
 
@@ -169,6 +171,7 @@ class SubscriptionRead(BaseModel):
     jellyfin_metadata: bool = False
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
+    keep: Optional[bool] = False
     created_at: datetime
     updated_at: datetime
 
@@ -199,6 +202,9 @@ class MediaItemRead(BaseModel):
     status: str
     local_path: Optional[str] = None
     downloaded_at: Optional[datetime] = None
+    content_date: Optional[datetime] = None
+    keep: Optional[bool] = False
+    skip_reason: Optional[str] = None
     reactions: Optional[dict] = None
     comments_count: Optional[int] = None
     created_at: datetime
