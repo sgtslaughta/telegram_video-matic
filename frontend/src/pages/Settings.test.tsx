@@ -197,7 +197,7 @@ describe('Settings', () => {
     await user.click(screen.getByRole('button', { name: /save changes/i }))
 
     await waitFor(() => {
-      expect(updateMutate).toHaveBeenCalledWith({ poll_interval_sec: 120, max_concurrent_downloads: 4 })
+      expect(updateMutate).toHaveBeenCalledWith({ poll_interval_sec: 120 }) // only what changed
     })
   })
 })
