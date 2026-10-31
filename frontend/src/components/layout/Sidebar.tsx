@@ -33,7 +33,7 @@ export default function Sidebar({
       className="hidden w-56 shrink-0 flex-col border-r border-border bg-card md:flex"
     >
       <div className="flex h-12 items-center gap-2 px-4">
-        <Logo className="h-5 w-5 text-brand" />
+        <Logo className="h-7 w-7" />
         <span className="text-[13px] font-semibold tracking-tight">Video-matic</span>
       </div>
 

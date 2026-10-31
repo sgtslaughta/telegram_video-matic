@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v1.9.0 (2026-10-31)
+
+### Features
+
+- **brand**: Tgvm logo and Telegram-blue accent
+  ([`05172b5`](https://github.com/sgtslaughta/telegram_video-matic/commit/05172b5f133ee4cc4d6fce62d1cd43d881e2dcce))
+
+- New mark: Telegram-style plane over "TG" (Telegram blue) + "VM" (emerald) on a bevelled
+  cream/slate disc; letters outlined Inter Black - favicon.svg follows the OS colour scheme; PNG app
+  icons; theme-color - Logo component follows the app theme; larger in sidebar and login - Brand
+  accent moves to Telegram blue (#177AAD light, #4FB3E8 dark, AA); violet stays as an option; saved
+  accent key bumped so the new default applies - Pages outside the shell (login, connect) now
+  inherit theme text colour
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.8.1 (2026-10-31)
 
 ### Bug Fixes
