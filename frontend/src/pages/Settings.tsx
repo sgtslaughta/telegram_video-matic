@@ -16,6 +16,7 @@ import { Combobox } from '@/components/ui/combobox'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { AlertCircle, Info, RefreshCw, Clock, PackagePlus, FolderSync, Wand2, HardDriveDownload } from 'lucide-react'
 import { toast } from 'sonner'
+import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
 import type * as T from '@/lib/types'
 
 function InstallPluginCard() {
@@ -241,6 +242,8 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        <NotificationsSettings />
 
         {/* Theme Section */}
         <Card>

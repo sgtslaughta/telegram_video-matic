@@ -210,6 +210,38 @@ export const settings = {
     }),
 }
 
+// Notifications
+export const notifications = {
+  get: () => fetchAPI<T.NotificationsRead>('/notifications'),
+
+  saveTargets: (targets: T.NotificationTargetInput[]) =>
+    fetchAPI<T.NotificationTarget[]>('/notifications/targets', {
+      method: 'PUT',
+      body: JSON.stringify(targets),
+    }),
+
+  saveOptions: (options: T.NotificationOptions) =>
+    fetchAPI<T.NotificationOptions>('/notifications/options', {
+      method: 'PUT',
+      body: JSON.stringify(options),
+    }),
+
+  saveJellyfin: (data: T.NotificationJellyfinInput) =>
+    fetchAPI<T.NotificationJellyfin>('/notifications/jellyfin', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  test: (body: { id: string } | { url: string }) =>
+    fetchAPI<{ ok: boolean }>('/notifications/test', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  testJellyfin: () =>
+    fetchAPI<unknown>('/notifications/jellyfin/test', { method: 'POST' }),
+}
+
 // Events
 export const events = {
   list: (filters?: {
