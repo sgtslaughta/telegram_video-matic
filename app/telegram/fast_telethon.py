@@ -1,6 +1,7 @@
 # copied from https://github.com/tulir/mautrix-telegram/blob/master/mautrix_telegram/util/parallel_file_transfer.py
 # Copyright (C) 2021 Tulir Asokan
 import asyncio
+import copy
 import hashlib
 import inspect
 import logging
@@ -179,10 +180,12 @@ class ParallelTransferrer:
         if not self.auth_key:
             log.debug(f"Exporting auth to DC {self.dc_id}")
             auth = await self.client(ExportAuthorizationRequest(self.dc_id))
-            self.client._init_request.query = ImportAuthorizationRequest(id=auth.id,
-                                                                         bytes=auth.bytes)
-            req = InvokeWithLayerRequest(LAYER, self.client._init_request)
-            await sender.send(req)
+            # Copy, never mutate, the client's shared init request: concurrent
+            # downloads overwrote each other's import here and Telegram rejected
+            # the mismatched bytes ("The provided authorization is invalid").
+            init = copy.copy(self.client._init_request)
+            init.query = ImportAuthorizationRequest(id=auth.id, bytes=auth.bytes)
+            await sender.send(InvokeWithLayerRequest(LAYER, init))
             self.auth_key = sender.auth_key
         return sender
 
@@ -206,27 +209,57 @@ class ParallelTransferrer:
                        part_size_kb: Optional[float] = None,
                        connection_count: Optional[int] = None) -> AsyncGenerator[bytes, None]:
         connection_count = connection_count or self._get_connection_count(file_size)
-        part_size = (part_size_kb or utils.get_appropriated_part_size(file_size)) * 1024
+        part_size = int(part_size_kb * 1024) if part_size_kb else part_size_for(file_size)
         part_count = math.ceil(file_size / part_size)
         log.debug("Starting parallel download: "
                   f"{connection_count} {part_size} {part_count} {file!s}")
         await self._init_download(connection_count, file, part_count, part_size)
 
-        part = 0
-        while part < part_count:
-            tasks = []
-            for sender in self.senders:
-                tasks.append(self.loop.create_task(sender.next()))
-            for task in tasks:
-                data = await task
+        # Pipelined: each connection runs its own fetch loop into a small queue
+        # (prefetch PREFETCH parts), so a slow connection never stalls the
+        # others. Part p belongs to sender p % n; we read queues in file order.
+        # (The old lock-step waves made all 20 connections wait for the slowest
+        # one every round.) Memory bound: n * PREFETCH parts.
+        n = len(self.senders)
+        queues = [asyncio.Queue(maxsize=PREFETCH) for _ in range(n)]
+
+        async def pump(i: int) -> None:
+            try:
+                while True:
+                    data = await self.senders[i].next()
+                    await queues[i].put(data)
+                    if not data:
+                        return
+            except Exception as e:  # surface to the consumer, in order
+                await queues[i].put(e)
+
+        workers = [self.loop.create_task(pump(i)) for i in range(n)]
+        try:
+            for part in range(part_count):
+                data = await queues[part % n].get()
+                if isinstance(data, Exception):
+                    raise data
                 if not data:
                     break
                 yield data
-                part += 1
-                log.debug(f"Part {part} downloaded")
+        finally:
+            for w in workers:
+                w.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            log.debug("Parallel download finished, cleaning up connections")
+            await self._cleanup()
 
-        log.debug("Parallel download finished, cleaning up connections")
-        await self._cleanup()
+
+PREFETCH = 2
+
+
+def part_size_for(file_size: int) -> int:
+    """Request size per GetFile call. Telegram allows up to 1 MiB (offsets must
+    stay 1 MiB aligned, which they are since every offset is a multiple of it).
+    Bigger parts = fewer round trips; small files keep Telethon's sizing."""
+    if file_size >= 64 * 1024 * 1024:
+        return 1024 * 1024
+    return utils.get_appropriated_part_size(file_size) * 1024
 
 
 parallel_transfer_locks: DefaultDict[int, asyncio.Lock] = defaultdict(lambda: asyncio.Lock())
