@@ -3,7 +3,7 @@ docs/superpowers/
 __pycache__/
 *.pyc
 .idea/
-.venv/
+.venv
 data/
 media/
 .env
