@@ -84,6 +84,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log(f"Event flood cleanup failed: {e}", "WARN")
 
+    # 1.7: retention used to mark deleted items SKIPPED; give them PRUNED so
+    # they stop looking like filter skips. Idempotent.
+    try:
+        from sqlalchemy import text
+        async with session_factory() as session:
+            await session.execute(text(
+                "UPDATE media_items SET status = 'pruned' WHERE status = 'skipped' AND id IN "
+                "(SELECT media_id FROM events WHERE kind = 'prune' AND media_id IS NOT NULL)"))
+            await session.commit()
+    except Exception as e:
+        log(f"Pruned-status migration failed: {e}", "WARN")
+
     # Build WebSocket hub
     hub = WSHub()
     app.state.ws_hub = hub
@@ -161,6 +173,7 @@ async def lifespan(app: FastAPI):
 
     # Store session factory on app.state for get_db dependency
     app.state.async_session = session_factory
+    app.state.media_root = settings.media_root
 
     # Notifications (Apprise) + debounced Jellyfin refresh, fed by new events.
     notify_stop = asyncio.Event()
@@ -227,6 +240,7 @@ def create_app() -> FastAPI:
     app.include_router(routers.plugins.router)
     app.include_router(routers.fs.router)
     app.include_router(routers.notifications.router)
+    app.include_router(routers.storage.router)
 
     # Build the plugin host HERE (not in lifespan) so plugin-contributed routers
     # can be mounted at startup — FastAPI can't add routes after startup. The

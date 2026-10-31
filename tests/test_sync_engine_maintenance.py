@@ -159,7 +159,7 @@ async def test_maintenance_age_prune(session_factory, session, channel, subscrip
         mime="video/mp4",
         size_bytes=1024 * 1024,
         duration_sec=60,
-        date_posted=datetime.now(timezone.utc),
+        date_posted=old_date,
         status=MediaStatus.DOWNLOADED,
         local_path=str(file_path),
         downloaded_at=old_date,
@@ -194,7 +194,7 @@ async def test_maintenance_age_prune(session_factory, session, channel, subscrip
     # Verify item status changed to SKIPPED and local_path cleared
     async with session_factory() as check_session:
         updated_item = await media.get(check_session, item.id)
-        assert updated_item.status == MediaStatus.SKIPPED
+        assert updated_item.status == MediaStatus.PRUNED
         assert updated_item.local_path is None
 
     # Verify prune event was logged
@@ -226,7 +226,7 @@ async def test_maintenance_disk_pct_prune(session_factory, session, channel, sub
         mime="video/mp4",
         size_bytes=1024 * 1024,
         duration_sec=60,
-        date_posted=datetime.now(timezone.utc),
+        date_posted=old_date,
         status=MediaStatus.DOWNLOADED,
         local_path=str(file1),
         downloaded_at=old_date,
@@ -241,7 +241,7 @@ async def test_maintenance_disk_pct_prune(session_factory, session, channel, sub
         mime="video/mp4",
         size_bytes=1024 * 1024,
         duration_sec=60,
-        date_posted=datetime.now(timezone.utc),
+        date_posted=new_date,
         status=MediaStatus.DOWNLOADED,
         local_path=str(file2),
         downloaded_at=new_date,
@@ -296,7 +296,7 @@ async def test_maintenance_disk_pct_prune(session_factory, session, channel, sub
     # Verify item1 status is SKIPPED and local_path is None
     async with session_factory() as check_session:
         updated_item1 = await media.get(check_session, item1.id)
-        assert updated_item1.status == MediaStatus.SKIPPED
+        assert updated_item1.status == MediaStatus.PRUNED
         assert updated_item1.local_path is None
 
     # Verify item2 status is still DOWNLOADED
@@ -343,7 +343,7 @@ async def test_maintenance_does_not_touch_pending_queued_failed(session_factory,
         mime="video/mp4",
         size_bytes=1024 * 1024,
         duration_sec=60,
-        date_posted=datetime.now(timezone.utc),
+        date_posted=old_date,
         status=MediaStatus.QUEUED,
         local_path=str(file2),
         downloaded_at=old_date,
@@ -358,7 +358,7 @@ async def test_maintenance_does_not_touch_pending_queued_failed(session_factory,
         mime="video/mp4",
         size_bytes=1024 * 1024,
         duration_sec=60,
-        date_posted=datetime.now(timezone.utc),
+        date_posted=old_date,
         status=MediaStatus.FAILED,
         local_path=str(file3),
         downloaded_at=old_date,
@@ -429,7 +429,7 @@ async def test_maintenance_orphans_untouched(session_factory, session, channel, 
         mime="video/mp4",
         size_bytes=1024 * 1024,
         duration_sec=60,
-        date_posted=datetime.now(timezone.utc),
+        date_posted=old_date,
         status=MediaStatus.DOWNLOADED,
         local_path=str(file1),
         downloaded_at=old_date,

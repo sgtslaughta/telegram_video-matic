@@ -43,6 +43,7 @@ class RugbyPlugin(PluginBase):
         if self.service is None:
             return
         resolve.configure(self.ctx.config)
+        await self.service.backfill_content_dates()
         # Seed the league catalog if we have none yet (cheap, idempotent).
         leagues = await self.service.list_leagues()
         if not leagues:

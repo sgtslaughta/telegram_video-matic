@@ -53,6 +53,7 @@ class MediaStatus(StrEnum):
     FAILED = "failed"
     SKIPPED = "skipped"
     PAUSED = "paused"
+    PRUNED = "pruned"  # deleted by retention; never re-downloaded
 
 
 class JobStatus(StrEnum):
@@ -168,6 +169,7 @@ class Subscription(Base, TimestampMixin):
     jellyfin_metadata: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     retention_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     retention_disk_pct: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    keep: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)  # never prune
 
     channel = relationship("Channel", back_populates="subscriptions")
     topic = relationship("Topic", back_populates="subscriptions")
@@ -199,6 +201,11 @@ class MediaItem(Base, TimestampMixin):
     # Quick content fingerprint (size+head+tail) for dedup / renamed-file relink.
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Date the content represents (e.g. rugby fixture date); retention ages from
+    # this, falling back to date_posted. Set by plugins.
+    content_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    keep: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
+    skip_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     reactions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     comments_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     raw: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

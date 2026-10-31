@@ -1,6 +1,7 @@
 """Media router: list/get/download/requeue/thumb."""
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, require_app_auth
 from app.api.schemas import MediaItemRead
@@ -102,3 +103,18 @@ async def get_thumb(media_id: int, request: Request, db: AsyncSession = Depends(
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=86400"},
     )
+
+
+class KeepIn(BaseModel):
+    keep: bool
+
+
+@router.patch("/{media_id}/keep")
+async def set_keep(media_id: int, body: KeepIn, db: AsyncSession = Depends(get_db)):
+    """Pin (or unpin) an item so retention never deletes it."""
+    item = await media.get(db, media_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Media not found")
+    item.keep = body.keep
+    await db.commit()
+    return {"id": media_id, "keep": body.keep}
