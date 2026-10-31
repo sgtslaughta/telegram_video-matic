@@ -20,7 +20,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 240 6% 90%;
     --input: 240 6% 90%;
-    --brand: 252 89% 62.7%; /* electric violet, AA on white */
+    --brand: 200 77% 38.4%; /* Telegram blue, AA on white (#177AAD) */
     --primary: var(--brand);
     --primary-foreground: 0 0% 100%;
     --secondary: 240 5% 95.9%;
@@ -49,8 +49,8 @@
     --destructive-foreground: 0 0% 100%;
     --border: 220 9% 19%;
     --input: 220 9% 19%;
-    --brand: 250 100% 75.1%; /* lighter violet for text/lines on dark */
-    --primary: 252 89% 62.7%;
+    --brand: 201 77% 61%; /* lighter Telegram blue for text/lines on dark (#4FB3E8) */
+    --primary: 200 77% 38.4%;
     --primary-foreground: 0 0% 100%;
     --secondary: 223 9% 15.5%;
     --secondary-foreground: 240 6% 92.9%;
@@ -71,6 +71,9 @@
   /* Counts, sizes and times line up in columns. */
   body {
     font-feature-settings: 'tnum' 1;
+    /* Pages outside the app shell (login, connect) inherit these too. */
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
   }
 
   code, kbd, .font-mono {

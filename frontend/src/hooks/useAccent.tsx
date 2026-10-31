@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { ACCENTS, DEFAULT_ACCENT, applyAccent, type AccentName } from '@/lib/accent'
 
-const KEY = 'accent'
+// v2: brand moved to Telegram blue; ignore the old saved (violet) choice once.
+const KEY = 'accent.v2'
 
 interface AccentCtx {
   accent: AccentName

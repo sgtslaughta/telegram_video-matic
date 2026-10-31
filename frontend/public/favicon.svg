@@ -1,12 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#c084fc"/>
-      <stop offset="1" stop-color="#aa3bff"/>
-    </linearGradient>
-  </defs>
-  <rect width="48" height="48" rx="11" fill="url(#bg)"/>
-  <!-- paper-plane / play mark: tip right, tail notch at center, two-tone fold -->
-  <path d="M38 24 13 11 21 24Z" fill="#fff"/>
-  <path d="M38 24 21 24 13 37Z" fill="#fff" fill-opacity="0.7"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><style>.bg{fill:#F5F0E6}.pl{fill:#1E293B}.e{stroke:#B3A88F}.h{stop-color:#FFFFFF}.l{stop-color:#C9BFAA}@media (prefers-color-scheme:dark){.bg{fill:#1E293B}.pl{fill:#F5F0E6}.e{stroke:#0B1220}.h{stop-color:#3B4A63}.l{stop-color:#0B1220}}</style>
+<defs><linearGradient id="r" x1=".15" y1="0" x2=".85" y2="1"><stop class="h" offset="0"/><stop class="l" offset="1"/></linearGradient>
+<linearGradient id="i" x1=".85" y1="1" x2=".15" y2="0"><stop class="h" offset="0" stop-opacity=".55"/><stop class="h" offset=".5" stop-opacity="0"/></linearGradient>
+<clipPath id="c"><circle cx="24" cy="24" r="21.8"/></clipPath></defs>
+<circle cx="24" cy="24" r="24" fill="url(#r)"/><circle class="e" cx="24" cy="24" r="23.75" fill="none" stroke-opacity=".5" stroke-width=".5"/>
+<circle class="bg" cx="24" cy="24" r="21.8"/>
+<g clip-path="url(#c)"><path class="pl" transform="translate(6.6 -2.4) scale(0.75)" d="M10.6 23.1 34.9 13.7c1.1-.4 2.1.3 1.8 1.9l-4.1 19.4c-.3 1.4-1.1 1.7-2.3 1.1l-6.3-4.6-3 2.9c-.3.3-.6.6-1.3.6l.5-6.4 11.6-10.5c.5-.5-.1-.7-.8-.3L16.7 26.9l-6.2-1.9c-1.3-.4-1.4-1.3.1-1.9z"/><path fill="#229ED9" d="M-0.16 29.6V26.8H10.96V29.6H7.14V39.6H3.67V29.6ZM16.02 39.77Q14.15 39.77 12.74 38.98Q11.33 38.18 10.54 36.71Q9.75 35.24 9.75 33.22Q9.75 31.11 10.59 29.64Q11.44 28.16 12.86 27.39Q14.27 26.62 16 26.62Q17.51 26.62 18.73 27.19Q19.96 27.75 20.72 28.74Q21.49 29.73 21.62 31.02H18.12Q17.95 30.36 17.42 30.01Q16.89 29.65 16.07 29.65Q14.76 29.65 14.04 30.58Q13.32 31.5 13.32 33.17Q13.32 34.86 14.01 35.8Q14.7 36.75 16.05 36.75Q17.21 36.75 17.81 36.26Q18.4 35.77 18.43 34.92H16.11V32.45H21.78V34.22Q21.78 35.97 21.04 37.22Q20.3 38.46 19 39.11Q17.69 39.77 16.02 39.77Z"/><path fill="#10B981" d="M24.81 39.6 20.52 26.8H24.45L25.94 31.76Q26.3 32.97 26.61 34.19Q26.92 35.41 27.21 36.67Q27.48 35.41 27.77 34.19Q28.07 32.97 28.41 31.76L29.83 26.8H33.72L29.56 39.6ZM32.64 39.6V26.8H38.12L39.27 30.8Q39.41 31.27 39.58 32.03Q39.74 32.79 39.92 33.66Q40.09 34.54 40.23 35.38Q40.38 34.54 40.55 33.66Q40.72 32.79 40.89 32.03Q41.06 31.27 41.19 30.8L42.32 26.8H47.81V39.6H44.31V34.65Q44.31 34.16 44.33 33.31Q44.36 32.47 44.39 31.47Q44.42 30.48 44.44 29.55Q44.23 30.52 43.99 31.5Q43.76 32.48 43.54 33.3Q43.32 34.13 43.16 34.65L41.68 39.6H38.79L37.28 34.65Q37.12 34.15 36.91 33.36Q36.69 32.57 36.46 31.64Q36.23 30.71 36.02 29.76Q36.04 30.67 36.07 31.62Q36.09 32.57 36.12 33.37Q36.14 34.18 36.14 34.65V39.6Z"/></g>
+<circle cx="24" cy="24" r="21.5" fill="none" stroke="url(#i)" stroke-width=".6"/></svg>
