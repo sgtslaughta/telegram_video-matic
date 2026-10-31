@@ -70,6 +70,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log(f"Settings seed failed: {e}", "WARN")
 
+    # ponytail: one-shot cleanup of the 2026-10 disconnect flood (~60k rows,
+    # pre-collapse). Idempotent; delete after 1.7.
+    try:
+        from sqlalchemy import text
+        async with session_factory() as session:
+            await session.execute(text(
+                "DELETE FROM events WHERE message = "
+                "'Sync error: Cannot send requests while disconnected'"
+            ))
+            await session.commit()
+    except Exception as e:
+        log(f"Event flood cleanup failed: {e}", "WARN")
+
     # Build WebSocket hub
     hub = WSHub()
     app.state.ws_hub = hub

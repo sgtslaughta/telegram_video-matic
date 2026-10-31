@@ -17,8 +17,11 @@ from app.api.schemas import LoginRequest, TelegramPhoneRequest, TelegramCodeRequ
 @pytest.mark.asyncio
 async def test_health_get_ok():
     """Test 1: GET /api/health returns 200 with status ok."""
-    result = await health.health()
-    assert result == {"status": "ok"}
+    from types import SimpleNamespace
+    from starlette.responses import Response
+    req = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    result = await health.health(req, Response())
+    assert result["status"] == "ok"
 
 
 # ============================================================================
