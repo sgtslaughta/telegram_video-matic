@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v1.5.1 (2026-10-31)
+
+### Bug Fixes
+
+- **sync**: Self-heal dead Telegram connection and report real health
+  ([`9f53dab`](https://github.com/sgtslaughta/telegram_video-matic/commit/9f53dabe3893fd183f5c0a833a2ec935002796c4))
+
+Telethon's auto-reconnect gave up after an HTTP 429 on 2026-10-20 and the poller failed every 30s
+  for 11 days while /api/health stayed green.
+
+- Poller reconnects before each tick with 30s->10m backoff - /api/health returns 503 when Telegram
+  is down or polling is stale - Repeated warnings/errors collapse into one event with a count -
+  Purge the disconnect error flood on startup - Poll oldest-first so an interrupted poll leaves no
+  gap - Log realtime handler errors instead of swallowing them
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.5.0 (2026-09-17)
 
 ### Features
