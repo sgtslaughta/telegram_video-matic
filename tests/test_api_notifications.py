@@ -43,3 +43,12 @@ def test_jellyfin_key_write_only(test_app):  # noqa: F811
         assert r.json()["api_key_set"] is True
         assert "secret" not in c.get("/api/notifications").text
         assert test_app.state.jellyfin.api_key == "secret"
+
+
+def test_jellyfin_key_dropped_when_origin_changes(test_app):  # noqa: F811
+    with TestClient(test_app) as c:
+        c.put("/api/notifications/jellyfin", json={"url": "http://jf:8096", "api_key": "secret"})
+        r = c.put("/api/notifications/jellyfin", json={"url": "http://jf:8096/", "library_id": "x"})
+        assert r.json()["api_key_set"] is True  # same origin keeps key
+        r = c.put("/api/notifications/jellyfin", json={"url": "http://evil:80"})
+        assert r.json()["api_key_set"] is False

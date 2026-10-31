@@ -2,6 +2,7 @@
 import json
 import uuid
 from typing import Optional
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -103,7 +104,10 @@ async def put_options(body: OptionsIn, request: Request, db: AsyncSession = Depe
 @router.put("/jellyfin")
 async def put_jellyfin(body: JellyfinIn, request: Request, db: AsyncSession = Depends(get_db)):
     prev = json.loads(await settings.get(db, "jellyfin", default="{}") or "{}")
-    key_enc = encrypt(body.api_key) if body.api_key else prev.get("api_key_enc", "")
+    # Keep the stored key only for the same origin: otherwise editing just the
+    # URL would send the saved key to a new host.
+    same_origin = urlsplit(body.url.strip())[:2] == urlsplit(prev.get("url", ""))[:2]
+    key_enc = encrypt(body.api_key) if body.api_key else (prev.get("api_key_enc", "") if same_origin else "")
     await settings.set(db, "jellyfin", json.dumps(
         {"url": body.url.strip(), "library_id": body.library_id.strip(), "api_key_enc": key_enc}))
     await _reload(request)
@@ -134,5 +138,7 @@ async def test_jellyfin(request: Request):
     try:
         await jf.refresh()
     except Exception as e:
-        raise HTTPException(502, f"Jellyfin refresh failed: {e}")
+        code = getattr(getattr(e, "response", None), "status_code", None)
+        raise HTTPException(502, f"Jellyfin refresh failed ({code or type(e).__name__}). "
+                                 "Check the URL and API key.")
     return {"ok": True}
