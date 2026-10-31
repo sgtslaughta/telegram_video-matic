@@ -59,6 +59,19 @@ async def sub_dtos(session, sub) -> Tuple[ChannelDTO, Optional[TopicDTO]]:
     return chan_dto, topic_dto
 
 
+CONNECTIONS_DEFAULT, CONNECTIONS_MAX = 20, 32
+
+
+def connections_setting(raw) -> int:
+    """Parallel Telegram connections per file, clamped to 1..32 (more risks
+    Telegram rate limits; 20 is the tested default)."""
+    try:
+        n = int(raw) if raw not in (None, "") else CONNECTIONS_DEFAULT
+    except (TypeError, ValueError):
+        return CONNECTIONS_DEFAULT
+    return max(1, min(n, CONNECTIONS_MAX))
+
+
 class _DownloadCanceled(Exception):
     """Raised mid-download when a cancel was requested (discard partial)."""
 
@@ -532,12 +545,16 @@ class SyncEngine:
                                         })
 
                                 # Download from Telegram (resolve message by channel+id)
+                                from app.db.repositories import settings as settings_repo
+                                conns = connections_setting(
+                                    await settings_repo.get(session, "download_connections"))
                                 await self.tg_service.download_by_id(
                                     channel.tg_id,
                                     item.tg_msg_id,
                                     temp_file,
                                     on_progress=on_progress,
                                     offset=resume_offset,
+                                    connections=conns,
                                 )
 
                                 # Quick content hash -> dedup: if an identical file

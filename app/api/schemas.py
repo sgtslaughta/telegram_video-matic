@@ -1,5 +1,5 @@
 """Pydantic v2 schemas for API request/response models."""
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import Field, BaseModel, ConfigDict, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -262,7 +262,8 @@ class SettingPatchRequest(BaseModel):
     poll_interval_sec: Optional[int] = None
     retention_days: Optional[int] = None
     retention_disk_pct: Optional[int] = None
-    max_concurrent_downloads: Optional[int] = None
+    max_concurrent_downloads: Optional[int] = Field(None, ge=1, le=10)
+    download_connections: Optional[int] = Field(None, ge=1, le=32)
     theme: Optional[str] = None
 
 

@@ -65,6 +65,7 @@ async def lifespan(app: FastAPI):
             await settings_repo.ensure_defaults(session, {
                 "poll_interval_sec": settings.poll_interval_sec,
                 "max_concurrent_downloads": settings.max_concurrent_downloads,
+                "download_connections": 20,
                 "retention_days": settings.retention_days,
                 "retention_disk_pct": settings.retention_disk_pct,
             })

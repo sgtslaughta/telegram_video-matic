@@ -5,7 +5,7 @@ import { withToast } from '@/lib/toast'
 import type * as T from '@/lib/types'
 import { Field, SettingsSection, inputCls } from './SettingsSection'
 
-type Key = 'poll_interval_sec' | 'max_concurrent_downloads' | 'retention_days' | 'retention_disk_pct'
+type Key = 'poll_interval_sec' | 'max_concurrent_downloads' | 'download_connections' | 'retention_days' | 'retention_disk_pct'
 
 /** Draft of a group of numeric settings; dirty when it differs from the server. */
 function useGroup(keys: Key[], saved: string) {
@@ -16,22 +16,27 @@ function useGroup(keys: Key[], saved: string) {
   const dirty = keys.some((k) => draft[k] !== base[k])
   const save = async () => {
     const patch: T.SettingPatchRequest = {}
-    keys.forEach((k) => { patch[k] = draft[k] === '' ? null : Number(draft[k]) })
+    // Only send what changed; an untouched empty field must not overwrite the server value.
+    keys.filter((k) => draft[k] !== base[k] && draft[k] !== '').forEach((k) => { patch[k] = Number(draft[k]) })
     await withToast(() => update.mutateAsync(patch), { success: saved })
   }
   return { draft, set: (k: Key, v: string) => setDraft((d) => ({ ...d, [k]: v })), dirty, save, saving: update.isPending }
 }
 
 export function GeneralSection() {
-  const g = useGroup(['poll_interval_sec', 'max_concurrent_downloads'], 'General settings saved')
+  const g = useGroup(['poll_interval_sec', 'max_concurrent_downloads', 'download_connections'], 'General settings saved')
   return (
     <SettingsSection id="general" title="General" description="How often the app checks for new videos and how many it downloads at once."
       dirty={g.dirty} saving={g.saving} onSave={g.save}>
       <Field id="poll" label="Poll interval (seconds)" help="How often subscriptions are scanned for new videos.">
         <Input id="poll" type="number" min={1} className={inputCls} value={g.draft.poll_interval_sec} onChange={(e) => g.set('poll_interval_sec', e.target.value)} />
       </Field>
-      <Field id="max-dl" label="Concurrent downloads" help="Higher is faster but uses more bandwidth and CPU.">
-        <Input id="max-dl" type="number" min={1} className={inputCls} value={g.draft.max_concurrent_downloads} onChange={(e) => g.set('max_concurrent_downloads', e.target.value)} />
+      <Field id="max-dl" label="Concurrent downloads" help="How many videos download at the same time (1–10). Takes effect on the next download.">
+        <Input id="max-dl" type="number" min={1} max={10} className={inputCls} value={g.draft.max_concurrent_downloads} onChange={(e) => g.set('max_concurrent_downloads', e.target.value)} />
+      </Field>
+      <Field id="dl-conns" label="Connections per download"
+        help="Parallel Telegram connections used for each video (1–32, default 20). More can be faster; too many can trigger Telegram rate limits.">
+        <Input id="dl-conns" type="number" min={1} max={32} placeholder="20" className={inputCls} value={g.draft.download_connections} onChange={(e) => g.set('download_connections', e.target.value)} />
       </Field>
     </SettingsSection>
   )

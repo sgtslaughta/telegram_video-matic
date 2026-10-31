@@ -1,7 +1,6 @@
 from datetime import datetime
 import asyncio
 import base64
-import inspect
 import pathlib
 from collections import OrderedDict
 from typing import Callable, Optional
@@ -579,7 +578,8 @@ class TelegramService:
     # Task 6: Download with semaphore and progress callback
     # ========================================================================
 
-    async def download_by_id(self, channel_tg_id: int, msg_id: int, dest_path: str, on_progress=None, offset: int = 0) -> str:
+    async def download_by_id(self, channel_tg_id: int, msg_id: int, dest_path: str, on_progress=None,
+                             offset: int = 0, connections: Optional[int] = None) -> str:
         """Resolve a message by (channel, id) then download it. The downloader
         stores ids, but download() needs the Telethon message object."""
         if not self.client:
@@ -588,7 +588,7 @@ class TelegramService:
         msg = await self.client.get_messages(entity, ids=msg_id)
         if not msg:
             raise ValueError(f"Message {msg_id} not found")
-        return await self.download(msg, dest_path, on_progress=on_progress, offset=offset)
+        return await self.download(msg, dest_path, on_progress=on_progress, offset=offset, connections=connections)
 
     async def download(
         self,
@@ -596,6 +596,7 @@ class TelegramService:
         dest_path: str,
         on_progress=None,
         offset: int = 0,
+        connections: Optional[int] = None,
     ) -> str:
         """
         Download media from message to dest_path using fast_telethon.
@@ -617,25 +618,22 @@ class TelegramService:
         dest_path_obj = pathlib.Path(dest_path)
         dest_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-        # Resume offset must be 4096-aligned for iter_download; drop the unaligned
-        # tail of the partial file so we re-fetch from a clean boundary.
-        offset = (offset // 4096) * 4096
-
-        async with self.download_semaphore:
-            if offset <= 0:
-                # Fresh download: parallel fast path.
-                with open(dest_path, "wb") as f:
-                    await download_file(self.client, doc, f, progress_callback=on_progress)
-            else:
-                # Resume: single-stream from the byte offset, append into the partial.
-                with open(dest_path, "r+b") as f:
-                    f.seek(offset)
-                    f.truncate()
-                    async for chunk in self.client.iter_download(doc, offset=offset, request_size=512 * 1024):
-                        f.write(chunk)
-                        if on_progress:
-                            r = on_progress(f.tell(), doc.size)
-                            if inspect.isawaitable(r):
-                                await r
+        # Resume from the last whole part (parts are 1 MiB for big files) so a
+        # resumed download uses the same parallel path as a fresh one; drop the
+        # partial part's tail and re-fetch it. (It used to fall back to a single
+        # 512 KiB stream, ~2 MB/s, after every restart.)
+        from app.telegram.fast_telethon import part_size_for
+        part = part_size_for(doc.size)
+        offset = (max(offset, 0) // part) * part
+        mode = "r+b" if offset > 0 and dest_path_obj.exists() else "wb"
+        if mode == "wb":
+            offset = 0
+        # No semaphore here: the sync engine's pool (max_concurrent_downloads,
+        # read live from settings) is the one bound on parallel downloads.
+        with open(dest_path, mode) as f:
+            f.seek(offset)
+            f.truncate()
+            await download_file(self.client, doc, f, progress_callback=on_progress,
+                                connections=connections, offset=offset)
 
         return dest_path

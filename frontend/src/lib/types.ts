@@ -251,6 +251,7 @@ export interface SettingRead {
 }
 
 export interface SettingPatchRequest {
+  download_connections?: number | null;
   poll_interval_sec?: number | null;
   retention_days?: number | null;
   retention_disk_pct?: number | null;
