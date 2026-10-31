@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import Settings from './Settings'
 import * as settingsHooks from '@/hooks/useSettings'
@@ -13,9 +14,11 @@ const createWrapper = () => {
   const queryClient = new QueryClient()
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        {children}
-      </TooltipProvider>
+      <MemoryRouter>
+        <TooltipProvider>
+          {children}
+        </TooltipProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   )
 }
@@ -109,7 +112,8 @@ describe('Settings', () => {
 
     render(<Settings />, { wrapper: createWrapper() })
 
-    expect(screen.getByText('Theme')).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: 'Accent color' })).toBeTruthy()
   })
 
   it('renders plugins section with toggle', async () => {
@@ -146,7 +150,7 @@ describe('Settings', () => {
   })
 
   it('calls updateSettings when save button is clicked', async () => {
-    const updateMutate = vi.fn()
+    const updateMutate = vi.fn().mockResolvedValue([])
     vi.spyOn(settingsHooks, 'useSettings').mockReturnValue({
       data: mockSettings,
       isLoading: false,
@@ -158,7 +162,7 @@ describe('Settings', () => {
     } as any)
 
     vi.spyOn(settingsHooks, 'useUpdateSettings').mockReturnValue({
-      mutate: updateMutate,
+      mutateAsync: updateMutate,
       isPending: false,
       isError: false,
       error: null,
@@ -185,11 +189,15 @@ describe('Settings', () => {
     const user = userEvent.setup()
     render(<Settings />, { wrapper: createWrapper() })
 
-    const saveButton = screen.getByRole('button', { name: /save/i })
-    await user.click(saveButton)
+    // Save buttons only appear once a section is dirty.
+    expect(screen.queryByRole('button', { name: /save changes/i })).toBeNull()
+    const poll = screen.getByLabelText(/poll interval/i)
+    await user.clear(poll)
+    await user.type(poll, '120')
+    await user.click(screen.getByRole('button', { name: /save changes/i }))
 
     await waitFor(() => {
-      expect(updateMutate).toHaveBeenCalled()
+      expect(updateMutate).toHaveBeenCalledWith({ poll_interval_sec: 120, max_concurrent_downloads: 4 })
     })
   })
 })

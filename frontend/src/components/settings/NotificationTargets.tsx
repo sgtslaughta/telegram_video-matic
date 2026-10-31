@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import type * as T from '@/lib/types'
 
-export const TRIGGER_LABELS: Record<string, string> = {
+const TRIGGER_LABELS: Record<string, string> = {
   download_complete: 'Download finished',
   download_failed: 'Download failed',
   telegram: 'Telegram connection lost / restored',
@@ -39,7 +39,7 @@ function TriggerBoxes({ idPrefix, all, value, onChange }: {
               onChange(c === true ? [...value, t] : value.filter((x) => x !== t))
             }
           />
-          <Label htmlFor={`${idPrefix}-${t}`} className="text-sm font-normal">
+          <Label htmlFor={`${idPrefix}-${t}`} className="text-[13px] font-normal">
             {TRIGGER_LABELS[t] ?? t}
           </Label>
         </div>
@@ -90,16 +90,16 @@ export function NotificationTargets({ triggers, targets }: {
 
   return (
     <div className="space-y-4">
-      <h3 className="font-medium">Targets</h3>
+      <h3 className="text-[13px] font-semibold">Targets</h3>
       {targets.length === 0 && (
-        <p className="text-sm text-muted-foreground">No targets yet.</p>
+        <p className="text-[13px] text-muted-foreground">No targets yet. Add one below to get alerts.</p>
       )}
       {targets.map((t) => (
-        <div key={t.id} className="space-y-2 rounded-md border p-3">
+        <div key={t.id} className="space-y-3 rounded-lg border border-border p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="font-medium">{t.name}</p>
-              <p className="text-xs text-muted-foreground">{t.url_masked}</p>
+              <p className="text-[13px] font-medium">{t.name}</p>
+              <p className="font-mono text-[12px] text-muted-foreground">{t.url_masked}</p>
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => test.mutate({ id: t.id })}>
@@ -124,6 +124,7 @@ export function NotificationTargets({ triggers, targets }: {
             <div className="flex-1 space-y-1">
               <Label htmlFor={`replace-${t.id}`}>Replace URL</Label>
               <Input
+                className="h-9 text-[13px]"
                 id={`replace-${t.id}`}
                 value={replace[t.id] ?? ''}
                 placeholder="Optional new Apprise URL"
@@ -144,15 +145,16 @@ export function NotificationTargets({ triggers, targets }: {
         </div>
       ))}
 
-      <div className="space-y-3 rounded-md border border-dashed p-3">
-        <h4 className="text-sm font-medium">Add target</h4>
-        <div className="space-y-1">
+      <div className="space-y-3 rounded-lg border border-dashed border-border p-3">
+        <h4 className="text-[13px] font-medium">Add target</h4>
+        <div className="space-y-1.5">
           <Label htmlFor="new-target-name">Name</Label>
-          <Input id="new-target-name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id="new-target-name" className="h-9 max-w-md text-[13px]" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <Label htmlFor="new-target-url">Apprise URL</Label>
           <Input
+            className="h-9 max-w-md text-[13px]"
             id="new-target-url"
             value={url}
             placeholder="discord://webhook_id/webhook_token"
@@ -162,7 +164,7 @@ export function NotificationTargets({ triggers, targets }: {
             href="https://github.com/caronc/apprise/wiki"
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-primary underline"
+            className="text-[12px] font-medium text-brand hover:underline"
           >
             Apprise URL formats
           </a>

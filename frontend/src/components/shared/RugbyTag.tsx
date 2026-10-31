@@ -16,12 +16,12 @@ export function RugbyTag({ rugby, className = '' }: { rugby?: RugbyEnrichment | 
       )}
       <span className="truncate">{rugby.home} vs {rugby.away}</span>
       {rugby.round && (
-        <span className="whitespace-nowrap rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+        <span className="whitespace-nowrap rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand">
           R{rugby.round}
         </span>
       )}
       {rugby.venue && (
-        <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+        <span className="inline-flex items-center gap-0.5 whitespace-nowrap rounded bg-ok/10 px-1.5 py-0.5 text-[10px] font-medium text-ok">
           <MapPin className="h-2.5 w-2.5" /> {rugby.venue}
         </span>
       )}

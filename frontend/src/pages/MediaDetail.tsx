@@ -1,201 +1,136 @@
-import { useParams, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { useMediaDetail, useDownloadMedia, useRequeueMedia } from '@/hooks/useMedia'
-import { useActiveDownloads } from '@/hooks/useDownloads'
-import { MediaThumb } from '@/components/shared/MediaThumb'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ChevronLeft } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Page } from '@/components/shared/PageHeader'
+import { RugbyTag } from '@/components/shared/RugbyTag'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { StatusBadge } from '@/components/shared/StatusBadge'
-import { ProgressBar } from '@/components/shared/ProgressBar'
-import * as api from '@/lib/api'
-import { MediaStatus } from '@/lib/types'
+import { MediaPlayer } from '@/components/media/MediaPlayer'
+import { HistoryTimeline } from '@/components/media/HistoryTimeline'
+import { useDownloadMedia, useRequeueMedia } from '@/hooks/useMedia'
+import { useActiveDownloads } from '@/hooks/useDownloads'
+import { useRugbyEnrichmentByMedia } from '@/hooks/useRugby'
+import { useMediaFull, useMediaHistory, useSetKeep } from '@/hooks/useMediaTools'
+import { absTime, formatBytes, formatDuration } from '@/lib/format'
+import { withToast } from '@/lib/toast'
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border bg-card">
+      <h2 className="flex h-11 items-center border-b px-4 text-[13px] font-semibold">{title}</h2>
+      {children}
+    </section>
+  )
+}
+
+function Loading() {
+  return (
+    <Page>
+      <Skeleton className="mb-4 h-4 w-16" />
+      <Skeleton className="aspect-video w-full rounded-lg" />
+      <Skeleton className="mt-5 h-7 w-1/2" />
+      <Skeleton className="mt-2 h-4 w-2/3" />
+    </Page>
+  )
+}
 
 export default function MediaDetail() {
-  const { id: idParam } = useParams<{ id: string }>()
+  const id = parseInt(useParams<{ id: string }>().id || '0', 10)
   const navigate = useNavigate()
-  const mediaId = parseInt(idParam || '0', 10)
-
-  const media = useMediaDetail(mediaId)
+  const qc = useQueryClient()
+  const media = useMediaFull(id)
+  const history = useMediaHistory(id)
   const downloads = useActiveDownloads()
-  const downloadMutation = useDownloadMedia(mediaId)
-  const requeueMutation = useRequeueMedia(mediaId)
+  const download = useDownloadMedia(id)
+  const requeue = useRequeueMedia(id)
+  const setKeep = useSetKeep(id)
+  const rugby = useRugbyEnrichmentByMedia(id > 0 ? [id] : []).data?.[String(id)]
 
-  const activeDownload = downloads.data?.find((d) => d.media_id === mediaId)
-  const isDownloading = activeDownload?.status === 'downloading'
-
-  if (media.isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center p-6">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
-    )
-  }
-
+  if (media.isLoading) return <Loading />
   if (media.error || !media.data) {
     return (
-      <div className="flex h-screen items-center justify-center p-6">
-        <div className="text-red-600 dark:text-red-400">
-          Failed to load media
+      <Page>
+        <div className="rounded-lg bg-err/10 p-4 text-[13px] text-err">
+          Could not load this video. <Link to="/browse" className="underline">Back to browse</Link>
         </div>
-      </div>
+      </Page>
     )
   }
 
   const item = media.data
-  const reactions = item.reactions as Record<string, number> | undefined
+  const live = downloads.data?.find((d) => d.media_id === id)
+  const title = rugby ? `${rugby.home} vs ${rugby.away}` : item.caption?.split('\n')[0] || item.file_name || `Video ${id}`
+  const matchDate = item.content_date ?? item.date_posted
+  const reactions = Object.entries((item.reactions ?? {}) as Record<string, number>)
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['media'] })
+    qc.invalidateQueries({ queryKey: ['events'] })
+  }
+  const toggleKeep = (keep: boolean) =>
+    withToast(() => setKeep.mutateAsync(keep), {
+      success: keep ? 'Keeping this video forever' : 'Video can be cleaned up again',
+      undo: () => setKeep.mutateAsync(!keep),
+    })
+
+  const meta = [
+    rugby?.league, rugby?.round && `Round ${rugby.round}`,
+    matchDate && <span key="d" title={absTime(matchDate)}>{new Date(matchDate).toLocaleDateString()}</span>,
+    item.size_bytes ? formatBytes(item.size_bytes) : null,
+    formatDuration(item.duration_sec),
+  ].filter(Boolean)
 
   return (
-    <motion.div
-      className="space-y-6 p-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-    >
-      {/* Back Button */}
+    <Page>
       <button
-        onClick={() => navigate('/browse')}
-        className="mb-4 flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80"
+        onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/browse'))}
+        className="mb-4 inline-flex items-center gap-1 text-[13px] text-brand hover:underline"
       >
-        <svg
-          className="h-4 w-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15 19l-7-7 7-7"
-          />
-        </svg>
-        Back
+        <ChevronLeft className="h-4 w-4" />Back
       </button>
 
-      {/* Main Card */}
-      <div className="rounded-lg border border-border bg-card p-6">
-        <div className="grid gap-8 md:grid-cols-2">
-          {/* Left: Preview */}
-          <div className="flex flex-col gap-4">
-            <MediaThumb
-              src={api.media.thumbUrl(mediaId)}
-              alt={item.file_name || 'Media preview'}
-              size="lg"
-              className="w-full"
-            />
+      <MediaPlayer
+        item={item}
+        progress={live}
+        busy={download.isPending || requeue.isPending}
+        onDownload={() => withToast(() => download.mutateAsync(), { success: 'Download queued' }).then(refresh)}
+        onRetry={() => withToast(() => requeue.mutateAsync(), { success: 'Download queued again' }).then(refresh)}
+      />
 
-            {/* Status & Progress */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-foreground">
-                  Status
-                </span>
-                <StatusBadge status={item.status} />
-              </div>
-
-              {isDownloading && activeDownload && (
-                <div className="space-y-1">
-                  <ProgressBar
-                    progress={(activeDownload.progress || 0) * 100}
-                    animated
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    {activeDownload.bytes_done && activeDownload.bytes_total
-                      ? `${(activeDownload.bytes_done / 1024 / 1024).toFixed(1)}MB / ${(activeDownload.bytes_total / 1024 / 1024).toFixed(1)}MB`
-                      : '—'}
-                  </div>
-                </div>
-              )}
-            </div>
+      <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="break-words text-[20px] font-semibold leading-7 tracking-tight">{title}</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
+            <StatusBadge status={item.status} />
+            {meta.map((m, i) => <span key={i} className="flex items-center gap-2">{i > 0 && <span aria-hidden>·</span>}{m}</span>)}
           </div>
-
-          {/* Right: Details */}
-          <div className="space-y-4">
-            {/* Caption */}
-            {item.caption && (
-              <div>
-                <h3 className="text-sm font-medium text-foreground">
-                  Caption
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {item.caption}
-                </p>
-              </div>
-            )}
-
-            {/* Telegram Data */}
-            <div className="space-y-3 border-t border-border pt-4">
-              {/* Reactions */}
-              {reactions && Object.keys(reactions).length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-foreground">
-                    Reactions
-                  </h4>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {Object.entries(reactions).map(([emoji, count]) => (
-                      <span
-                        key={emoji}
-                        className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs"
-                      >
-                        <span>{emoji}</span>
-                        <span className="text-muted-foreground">
-                          {count}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Comments */}
-              {item.comments_count !== undefined && item.comments_count > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-foreground">
-                    Comments
-                  </h4>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {item.comments_count} comment{item.comments_count !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Tags */}
-            {item.file_name && (
-              <div>
-                <h4 className="text-sm font-medium text-foreground">
-                  File
-                </h4>
-                <p className="mt-1 break-all text-xs text-muted-foreground">
-                  {item.file_name}
-                </p>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex gap-2 border-t border-border pt-4">
-              {item.status !== MediaStatus.DOWNLOADED &&
-                item.status !== MediaStatus.DOWNLOADING && (
-                  <button
-                    onClick={() => downloadMutation.mutate()}
-                    disabled={downloadMutation.isPending}
-                    className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {downloadMutation.isPending ? 'Downloading...' : 'Download'}
-                  </button>
-                )}
-
-              {item.status === MediaStatus.FAILED && (
-                <button
-                  onClick={() => requeueMutation.mutate()}
-                  disabled={requeueMutation.isPending}
-                  className="flex-1 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                >
-                  {requeueMutation.isPending ? 'Requeuing...' : 'Requeue'}
-                </button>
-              )}
-            </div>
-          </div>
+          {rugby && <RugbyTag rugby={rugby} className="mt-2 text-[12px] text-muted-foreground" />}
         </div>
+        <label className="flex items-center gap-2 text-[13px]">
+          <Switch checked={!!item.keep} onCheckedChange={toggleKeep} disabled={setKeep.isPending} aria-label="Keep forever" />
+          Keep forever
+        </label>
       </div>
-    </motion.div>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          {item.caption && (
+            <Panel title="Caption"><p className="whitespace-pre-wrap p-4 text-[13px]">{item.caption}</p></Panel>
+          )}
+          <Panel title="Details">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 p-4 text-[13px]">
+              {item.file_name && (<><dt className="text-muted-foreground">File</dt><dd className="break-all">{item.file_name}</dd></>)}
+              {item.local_path && (<><dt className="text-muted-foreground">Saved to</dt><dd className="break-all">{item.local_path}</dd></>)}
+              {item.mime && (<><dt className="text-muted-foreground">Type</dt><dd>{item.mime}</dd></>)}
+              <dt className="text-muted-foreground">Posted</dt><dd title={absTime(item.date_posted)}>{new Date(item.date_posted).toLocaleDateString()}</dd>
+              {reactions.length > 0 && (<><dt className="text-muted-foreground">Reactions</dt>
+                <dd className="flex flex-wrap gap-1.5">{reactions.map(([e, n]) => <span key={e} className="rounded-full bg-muted px-2 text-[12px]">{e} {n}</span>)}</dd></>)}
+              {!!item.comments_count && (<><dt className="text-muted-foreground">Comments</dt><dd>{item.comments_count}</dd></>)}
+            </dl>
+          </Panel>
+        </div>
+        <Panel title="History"><HistoryTimeline entries={history.data} loading={history.isLoading} /></Panel>
+      </div>
+    </Page>
   )
 }

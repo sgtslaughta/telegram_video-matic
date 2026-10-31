@@ -4,26 +4,14 @@ import { Drawer, DrawerContent, DrawerTitle, DrawerClose } from '@/components/ui
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { RugbyMatchup } from '@/components/shared/RugbyMatchup'
+import { Link } from 'react-router-dom'
+import { formatBytes, formatDuration } from '@/lib/format'
 import type { RugbyEnrichment } from '@/lib/types'
+import type { BrowseMsg } from '@/components/media/BrowseItem'
 import * as api from '@/lib/api'
 
-function fmtBytes(n?: number | null): string {
-  if (!n || n <= 0) return '—'
-  const u = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), u.length - 1)
-  return `${(n / 1024 ** i).toFixed(1)} ${u[i]}`
-}
-
-function fmtDuration(sec?: number | null): string {
-  if (!sec || sec <= 0) return '—'
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = Math.floor(sec % 60)
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`
-}
-
 interface Props {
-  item: any | null
+  item: BrowseMsg | null
   channelId: number | null
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -63,44 +51,48 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={item.status} />
                   {item.subscription_label && (
-                    <span className="truncate text-xs text-muted-foreground">↳ {item.subscription_label}</span>
+                    <span className="truncate text-[12px] text-muted-foreground">↳ {item.subscription_label}</span>
                   )}
                 </div>
               </div>
 
+              {item.media_id && (
+                <Link to={`/media/${item.media_id}`} className="block text-[13px] text-brand hover:underline">Open video page</Link>
+              )}
+
               <Button onClick={onDownload} disabled={downloadPending} className="w-full">
                 <Download className="mr-2 h-4 w-4" />
-                {downloadPending ? 'Queuing…' : 'Download'}
+                {downloadPending ? 'Queuing…' : item.status === 'downloaded' ? 'Download again' : 'Download'}
               </Button>
 
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
                 <Meta label="Posted" value={item.date_posted ? new Date(item.date_posted).toLocaleString() : '—'} />
-                <Meta label="Size" value={fmtBytes(item.size_bytes)} />
-                <Meta label="Duration" value={fmtDuration(detail.data?.duration_sec ?? item.duration_sec)} />
+                <Meta label="Size" value={item.size_bytes ? formatBytes(item.size_bytes) : '—'} />
+                <Meta label="Duration" value={formatDuration(detail.data?.duration_sec ?? item.duration_sec) || '—'} />
                 <Meta label="Type" value={item.mime || detail.data?.mime || '—'} />
                 {item.file_name && <Meta label="Filename" value={item.file_name} span />}
               </dl>
 
               {item.caption && (
                 <div className="space-y-1">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Caption</p>
-                  <p className="whitespace-pre-wrap text-sm">{item.caption}</p>
+                  <p className="text-[12px] font-semibold text-muted-foreground">Caption</p>
+                  <p className="whitespace-pre-wrap text-[13px]">{item.caption}</p>
                 </div>
               )}
 
               {/* Rugby */}
               {rugby && (
                 <div className="space-y-3">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Rugby</p>
+                  <p className="text-[12px] font-semibold text-muted-foreground">Rugby</p>
                   <div className="rounded-lg border bg-muted/30 p-3">
                     <RugbyMatchup rugby={rugby} size="lg" showScore />
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="rounded bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">{rugby.league}</span>
-                    {rugby.season && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{rugby.season}</span>}
-                    {rugby.round && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">R{rugby.round}</span>}
+                    <span className="rounded bg-secondary px-1.5 py-0.5 text-[12px] font-medium text-secondary-foreground">{rugby.league}</span>
+                    {rugby.season && <span className="rounded bg-muted px-1.5 py-0.5 text-[12px] text-muted-foreground">{rugby.season}</span>}
+                    {rugby.round && <span className="rounded bg-brand/10 px-1.5 py-0.5 text-[12px] font-medium text-brand">R{rugby.round}</span>}
                     {rugby.venue && (
-                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                      <span className="inline-flex items-center gap-1 rounded bg-ok/10 px-1.5 py-0.5 text-[12px] font-medium text-ok">
                         <MapPin className="h-3 w-3" /> {rugby.venue}
                       </span>
                     )}
@@ -110,46 +102,46 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
 
               {/* Reactions */}
               <div className="space-y-2">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Reactions</p>
+                <p className="text-[12px] font-semibold text-muted-foreground">Reactions</p>
                 {detail.isLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading…</p>
+                  <p className="text-[13px] text-muted-foreground">Loading…</p>
                 ) : detail.data?.reactions.length ? (
                   <div className="flex flex-wrap gap-2">
                     {detail.data.reactions.map((r) => (
-                      <span key={r.emoji} className="rounded-full border px-2.5 py-1 text-sm">
+                      <span key={r.emoji} className="rounded-full border px-2.5 py-1 text-[13px]">
                         {r.emoji} {r.count}
                       </span>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No reactions</p>
+                  <p className="text-[13px] text-muted-foreground">No reactions</p>
                 )}
               </div>
 
               {/* Comments */}
               <div className="space-y-2">
-                <p className="flex items-center gap-1.5 text-xs font-medium uppercase text-muted-foreground">
+                <p className="flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
                   <MessageSquare className="h-3.5 w-3.5" /> Comments
                   {detail.data?.comments.length ? ` (${detail.data.comments.length})` : ''}
                 </p>
                 {detail.isLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading…</p>
+                  <p className="text-[13px] text-muted-foreground">Loading…</p>
                 ) : detail.data?.comments.length ? (
                   <ul className="space-y-3">
                     {detail.data.comments.map((c) => (
                       <li key={c.id} className="rounded-md border p-3">
                         <div className="mb-1 flex items-center justify-between">
-                          <span className="text-sm font-medium">{c.author}</span>
+                          <span className="text-[13px] font-medium">{c.author}</span>
                           {c.date && (
-                            <span className="text-xs text-muted-foreground">{new Date(c.date).toLocaleDateString()}</span>
+                            <span className="text-[12px] text-muted-foreground">{new Date(c.date).toLocaleDateString()}</span>
                           )}
                         </div>
-                        <p className="whitespace-pre-wrap text-sm text-muted-foreground">{c.text}</p>
+                        <p className="whitespace-pre-wrap text-[13px] text-muted-foreground">{c.text}</p>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No comments</p>
+                  <p className="text-[13px] text-muted-foreground">No comments</p>
                 )}
               </div>
             </div>
@@ -163,7 +155,7 @@ export default function MediaDrawer({ item, channelId, open, onOpenChange, onDow
 function Meta({ label, value, span }: { label: string; value: string; span?: boolean }) {
   return (
     <div className={span ? 'col-span-2' : ''}>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dt className="text-[12px] text-muted-foreground">{label}</dt>
       <dd className="truncate">{value}</dd>
     </div>
   )

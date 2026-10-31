@@ -1,220 +1,104 @@
-import { useState } from 'react'
-import { usePersistedState } from '@/hooks/usePersistedState'
-import { motion } from 'framer-motion'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useEvents } from '@/hooks/useEvents'
-import { StatusBadge } from '@/components/shared/StatusBadge'
+import { useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Search } from 'lucide-react'
+import { Page, PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Combobox } from '@/components/ui/combobox'
-import type * as T from '@/lib/types'
+import { Input } from '@/components/ui/input'
+import { EventRow } from '@/components/activity/EventRow'
+import { useEventsFeed } from '@/components/activity/useEventsFeed'
+import { useListNav } from '@/hooks/useMediaTools'
 
-const LIMIT = 10
-const EVENT_LEVELS = [
-  { value: '', label: 'All Levels' },
-  { value: 'debug', label: 'Debug' },
-  { value: 'info', label: 'Info' },
-  { value: 'warning', label: 'Warning' },
-  { value: 'error', label: 'Error' },
+const LEVELS = [
+  { value: '', label: 'All' }, { value: 'info', label: 'Info' }, { value: 'success', label: 'Success' },
+  { value: 'warning', label: 'Warnings' }, { value: 'error', label: 'Errors' },
 ]
-
-const EVENT_KINDS = [
-  { value: '', label: 'All Kinds' },
-  { value: 'subscription', label: 'Subscription' },
-  { value: 'download', label: 'Download' },
-  { value: 'job', label: 'Job' },
-]
-
-const LEVEL_COLORS: Record<string, string> = {
-  debug: 'bg-muted text-foreground',
-  info: 'bg-primary/10 text-primary',
-  success: 'bg-green-100 text-green-800',
-  warning: 'bg-amber-100 text-amber-800',
-  error: 'bg-red-100 text-red-800',
-}
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.05,
-    },
-  },
-}
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.2 },
-  },
-}
+const BASE_KINDS = ['subscription', 'download', 'job', 'sync', 'telegram', 'notify']
 
 export default function Activity() {
-  const [levelFilter, setLevelFilter] = usePersistedState('activity.level', '')
-  const [kindFilter, setKindFilter] = usePersistedState('activity.kind', '')
-  const [offset, setOffset] = useState(0)
+  const [params, setParams] = useSearchParams()
+  const level = params.get('level') ?? ''
+  const kind = params.get('kind') ?? ''
+  const q = params.get('q') ?? ''
+  const set = (k: string, v: string) =>
+    setParams((p) => { const n = new URLSearchParams(p); if (v) n.set(k, v); else n.delete(k); return n }, { replace: true })
 
-  const filters: Parameters<typeof useEvents>[0] = {
-    limit: LIMIT,
-    offset,
-    ...(levelFilter && { level: levelFilter }),
-    ...(kindFilter && { kind: kindFilter }),
-  }
+  const feed = useEventsFeed({ level, kind })
+  const all = useMemo(() => feed.data?.pages.flat() ?? [], [feed.data])
+  const events = useMemo(() => {
+    const s = q.toLowerCase()
+    return s ? all.filter((e) => `${e.message} ${e.kind}`.toLowerCase().includes(s)) : all
+  }, [all, q])
+  const kinds = useMemo(() => [...new Set([...BASE_KINDS, ...all.map((e) => e.kind), ...(kind ? [kind] : [])])].sort(), [all, kind])
 
-  const events = useEvents(filters)
-
-  const handlePrevious = () => {
-    if (offset >= LIMIT) {
-      setOffset(offset - LIMIT)
-    }
-  }
-
-  const handleNext = () => {
-    if (events.data && events.data.length === LIMIT) {
-      setOffset(offset + LIMIT)
-    }
-  }
-
-  const canGoPrevious = offset >= LIMIT
-  const canGoNext = events.data && events.data.length === LIMIT
+  const { active, setActive, searchRef } = useListNav(events.length, () => {})
 
   return (
-    <motion.div
-      className="space-y-6 p-6"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-    >
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Activity</h1>
-        <p className="mt-2 text-muted-foreground">View and filter system events</p>
+    <Page>
+      <PageHeader title="Activity" description="Everything the app has done, newest first." />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div role="group" aria-label="Level" className="flex flex-wrap gap-1">
+          {LEVELS.map((l) => (
+            <button
+              key={l.value}
+              aria-pressed={level === l.value}
+              onClick={() => set('level', l.value)}
+              className={`h-8 rounded-md px-3 text-[13px] transition-colors ${level === l.value ? 'bg-brand/10 font-medium text-brand' : 'text-muted-foreground hover:bg-accent/60'}`}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+        <select
+          aria-label="Kind"
+          value={kind}
+          onChange={(e) => set('kind', e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-[13px] focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <option value="">All kinds</option>
+          {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+        <div className="relative ml-auto w-full sm:w-64">
+          <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            value={q}
+            onChange={(e) => set('q', e.target.value)}
+            placeholder="Search events (/)"
+            aria-label="Search events"
+            className="h-8 pl-8 text-[13px]"
+          />
+        </div>
       </div>
 
-      {/* Filters */}
-      <motion.div
-        initial={{ scale: 0.95 }}
-        animate={{ scale: 1 }}
-        transition={{ duration: 0.3 }}
-      >
-        <Card>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Level</Label>
-                <Combobox
-                  value={levelFilter}
-                  onChange={(v) => { setLevelFilter(v); setOffset(0) }}
-                  placeholder="All Levels"
-                  options={EVENT_LEVELS.map((level) => ({ value: level.value, label: level.label }))}
-                />
+      <section className="rounded-lg border bg-card">
+        {feed.isLoading ? (
+          <div className="divide-y divide-border" aria-busy="true">
+            {Array.from({ length: 10 }, (_, i) => (
+              <div key={i} className="flex h-10 items-center gap-3 px-4">
+                <Skeleton className="h-2 w-2 rounded-full" />
+                <Skeleton className="h-3.5 flex-1" style={{ maxWidth: `${40 + ((i * 17) % 45)}%` }} />
+                <Skeleton className="ml-auto h-3.5 w-16" />
               </div>
+            ))}
+          </div>
+        ) : events.length === 0 ? (
+          <EmptyState title="No events" message={q || level || kind ? 'Nothing matches these filters. Clear them to see everything.' : 'Events will appear here as the app syncs and downloads.'} />
+        ) : (
+          <ul className="divide-y divide-border">
+            {events.map((e, i) => <EventRow key={e.id} e={e} index={i} active={i === active} onHover={setActive} />)}
+          </ul>
+        )}
+      </section>
 
-              <div className="space-y-2">
-                <Label>Kind</Label>
-                <Combobox
-                  value={kindFilter}
-                  onChange={(v) => { setKindFilter(v); setOffset(0) }}
-                  placeholder="All Kinds"
-                  options={EVENT_KINDS.map((kind) => ({ value: kind.value, label: kind.label }))}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      {/* Events Table */}
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle>Events</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {events.isLoading ? (
-              <div className="py-8 text-center text-muted-foreground">
-                Loading...
-              </div>
-            ) : events.data && events.data.length > 0 ? (
-              <>
-                <motion.div
-                  className="space-y-3 mb-4"
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  {events.data.map((event) => (
-                    <motion.div
-                      key={event.id}
-                      variants={itemVariants}
-                      className="flex items-start gap-3 p-3 rounded-lg border border-border transition-colors hover:bg-muted/50"
-                    >
-                      {/* Level Badge */}
-                      <div className="flex-shrink-0 pt-0.5">
-                        <Badge className={LEVEL_COLORS[event.level as T.EventLevel] || LEVEL_COLORS['debug']}>
-                          {event.level}
-                        </Badge>
-                      </div>
-
-                      {/* Message and Details */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm">{event.message}</p>
-                        <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
-                          <span>{event.kind}</span>
-                          <span>
-                            {new Date(event.created_at).toLocaleDateString()} at{' '}
-                            {new Date(event.created_at).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </motion.div>
-
-                {/* Pagination */}
-                <div className="flex items-center justify-between pt-4 border-t border-border">
-                  <Button
-                    onClick={handlePrevious}
-                    disabled={!canGoPrevious}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-
-                  <span className="text-sm text-muted-foreground">
-                    Offset: {offset}
-                  </span>
-
-                  <Button
-                    onClick={handleNext}
-                    disabled={!canGoNext}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <EmptyState
-                title="No events"
-                message="Events will appear here as system activity occurs."
-              />
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
-    </motion.div>
+      {feed.hasNextPage && (
+        <div className="flex justify-center pt-4">
+          <Button variant="outline" onClick={() => feed.fetchNextPage()} disabled={feed.isFetchingNextPage}>
+            {feed.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
+      )}
+    </Page>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 
 const DEFAULTS: SubscriptionEditorState = {
   channelId: null,
@@ -20,6 +20,7 @@ const DEFAULTS: SubscriptionEditorState = {
   retentionDays: null,
   seasonDetection: false,
   jellyfinMetadata: false,
+  keep: false,
 }
 
 export interface SubscriptionEditorState {
@@ -42,6 +43,7 @@ export interface SubscriptionEditorState {
   retentionDays: number | null
   seasonDetection: boolean
   jellyfinMetadata: boolean
+  keep: boolean  // never auto-delete (overrides retention)
 }
 
 export function useSubscriptionEditor(
@@ -49,13 +51,19 @@ export function useSubscriptionEditor(
   resetKey?: string | number,
 ) {
   const [state, setState] = useState<SubscriptionEditorState>({ ...DEFAULTS, ...initialState })
+  const [base, setBase] = useState<SubscriptionEditorState>(state)
 
   // The edit form mounts before the query resolves, so the first init uses
   // defaults. Re-seed from initialState once the loaded sub (resetKey) changes.
-  useEffect(() => {
-    if (initialState) setState({ ...DEFAULTS, ...initialState })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetKey])
+  const [seenKey, setSeenKey] = useState(resetKey)
+  if (seenKey !== resetKey) {
+    setSeenKey(resetKey)
+    if (initialState) {
+      const seeded = { ...DEFAULTS, ...initialState }
+      setState(seeded)
+      setBase(seeded)
+    }
+  }
 
   // Live regex validation
   const regexStatus = useMemo(() => {
@@ -68,7 +76,7 @@ export function useSubscriptionEditor(
     }
   }, [state.filterRegex])
 
-  const update = (key: keyof SubscriptionEditorState, value: any) => {
+  const update = <K extends keyof SubscriptionEditorState>(key: K, value: SubscriptionEditorState[K]) => {
     setState((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -81,8 +89,13 @@ export function useSubscriptionEditor(
     }))
   }
 
+  const dirty = useMemo(() => JSON.stringify(state) !== JSON.stringify(base), [state, base])
+
   return {
     state,
+    dirty,
+    discard: () => setState(base),
+    markSaved: () => setBase(state),
     update,
     toggleScheduleDay,
     regexValid: regexStatus?.valid ?? true,

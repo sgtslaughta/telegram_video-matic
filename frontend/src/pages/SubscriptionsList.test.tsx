@@ -1,107 +1,78 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import SubscriptionsList from './SubscriptionsList'
 import * as subsHook from '@/hooks/useSubscriptions'
+import * as channelsHook from '@/hooks/useChannels'
+import * as overviewHook from '@/hooks/useOverview'
 import type { SubscriptionRead } from '@/lib/types'
 
-const createWrapper = () => {
-  const queryClient = new QueryClient()
-  return ({ children }: { children: React.ReactNode }) => (
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
+const sub = (over: Partial<SubscriptionRead>): SubscriptionRead => ({
+  id: 1, channel_id: 100, enabled: true, mode: 'auto', filter_mode: 'include', storage_path: '/tmp',
+  rename_template: '{title}', season_detection: false, check_frequency: '15m',
+  created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z', ...over,
+})
+
+const Where = () => <p data-testid="loc">{useLocation().pathname}</p>
+const mutation = (mutateAsync = vi.fn().mockResolvedValue({})) =>
+  ({ mutate: vi.fn(), mutateAsync, isPending: false } as never)
+
+function setup(subs: SubscriptionRead[], update = vi.fn().mockResolvedValue({})) {
+  vi.spyOn(subsHook, 'useSubscriptions').mockReturnValue({ data: subs, isLoading: false } as never)
+  vi.spyOn(subsHook, 'useUpdateSubscription').mockReturnValue(mutation(update))
+  vi.spyOn(subsHook, 'useDeleteSubscription').mockReturnValue(mutation())
+  vi.spyOn(subsHook, 'useScanSubscription').mockReturnValue(mutation())
+  vi.spyOn(channelsHook, 'useChannels').mockReturnValue({ data: [{ id: 100, title: 'Rugby HQ' }] } as never)
+  vi.spyOn(overviewHook, 'useOverview').mockReturnValue({ data: { subscriptions: [] } } as never)
+  render(
+    <MemoryRouter>
+      <QueryClientProvider client={new QueryClient()}>
         <TooltipProvider>
-          {children}
+          <Routes><Route path="*" element={<><SubscriptionsList /><Where /></>} /></Routes>
         </TooltipProvider>
       </QueryClientProvider>
-    </BrowserRouter>
+    </MemoryRouter>,
   )
-}
-
-const mockSub: SubscriptionRead = {
-  id: 1,
-  channel_id: 100,
-  enabled: true,
-  mode: 'auto',
-  filter_mode: 'include',
-  storage_path: '/tmp',
-  rename_template: '{title}',
-  season_detection: false,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
+  return update
 }
 
 describe('SubscriptionsList', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
+  beforeEach(() => vi.restoreAllMocks())
+
+  it('shows name, channel, frequency and filter summary', () => {
+    setup([sub({ name: 'Matches', filter_regex: 'final' })])
+    expect(screen.getByText('Matches')).toBeTruthy()
+    expect(screen.getByText('Rugby HQ')).toBeTruthy()
+    expect(screen.getByText('Every 15 min')).toBeTruthy()
+    expect(screen.getByText('Only final')).toBeTruthy()
   })
 
-  it('renders subscriptions list', () => {
-    vi.spyOn(subsHook, 'useSubscriptions').mockReturnValue({
-      data: [mockSub],
-      isLoading: false,
-      isError: false,
-      error: null,
-      status: 'success',
-      refetch: vi.fn(),
-      isPending: false,
-    } as any)
-
-    render(<SubscriptionsList />, { wrapper: createWrapper() })
-
-    expect(screen.getByText('Subscriptions')).toBeTruthy()
-    expect(screen.getByText('Channel 100')).toBeTruthy()
+  it('shows an empty-state sentence with no subscriptions', () => {
+    setup([])
+    expect(screen.getByText(/No subscriptions yet/)).toBeTruthy()
   })
 
-  it('toggle calls useUpdateSubscription with enabled: false', () => {
-    const mockMutate = vi.fn()
-    vi.spyOn(subsHook, 'useSubscriptions').mockReturnValue({
-      data: [mockSub],
-      isLoading: false,
-      isError: false,
-      error: null,
-      status: 'success',
-      refetch: vi.fn(),
-      isPending: false,
-    } as any)
-    vi.spyOn(subsHook, 'useUpdateSubscription').mockReturnValue({
-      mutate: mockMutate,
-      mutateAsync: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      status: 'idle',
-      reset: vi.fn(),
-    } as any)
-    vi.spyOn(subsHook, 'useDeleteSubscription').mockReturnValue({
-      mutate: vi.fn(),
-      mutateAsync: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      status: 'idle',
-      reset: vi.fn(),
-    } as any)
-    vi.spyOn(subsHook, 'useScanSubscription').mockReturnValue({
-      mutate: vi.fn(),
-      mutateAsync: vi.fn(),
-      isPending: false,
-      isError: false,
-      error: null,
-      status: 'idle',
-      reset: vi.fn(),
-    } as any)
+  it('switch pauses the subscription', async () => {
+    const update = setup([sub({ name: 'Matches' })])
+    fireEvent.click(screen.getByRole('switch', { name: /pause matches/i }))
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ enabled: false }))
+  })
 
-    render(<SubscriptionsList />, { wrapper: createWrapper() })
+  it('row click opens the editor', () => {
+    setup([sub({ id: 7, name: 'Matches' })])
+    fireEvent.click(screen.getByText('Matches'))
+    expect(screen.getByTestId('loc').textContent).toBe('/subscriptions/7')
+  })
 
-    // Find the power button (first icon button in the card actions)
-    const buttons = screen.getAllByRole('button')
-    const powerBtn = buttons.find(btn => btn.querySelector('svg[class*="lucide-power"]'))
-
-    if (powerBtn) fireEvent.click(powerBtn)
-
-    expect(mockMutate).toHaveBeenCalledWith({ enabled: false })
+  it('j moves focus and e edits the focused row', async () => {
+    setup([sub({ id: 1, name: 'First' }), sub({ id: 2, name: 'Second' })])
+    const user = userEvent.setup()
+    await user.keyboard('j')
+    expect(document.activeElement?.getAttribute('data-sub-id')).toBe('2')
+    await user.keyboard('e')
+    expect(screen.getByTestId('loc').textContent).toBe('/subscriptions/2')
   })
 })

@@ -1,81 +1,32 @@
-import { MediaStatus, AccountStatus, JobStatus } from '@/lib/types'
 import { clsx } from 'clsx'
 
-interface StatusBadgeProps {
-  status: string
+type Tone = 'ok' | 'warn' | 'err' | 'muted'
+
+// Status → tone + human label. Colour is reserved for status (see DESIGN.md).
+const STATUS: Record<string, [Tone, string]> = {
+  ready: ['ok', 'Ready'], downloaded: ['ok', 'Downloaded'], completed: ['ok', 'Completed'], done: ['ok', 'Done'],
+  connected: ['ok', 'Connected'],
+  pending: ['warn', 'Pending'], queued: ['warn', 'Queued'], downloading: ['warn', 'Downloading'],
+  running: ['warn', 'Downloading'], processing: ['warn', 'Processing'], paused: ['muted', 'Paused'],
+  waiting_phone: ['warn', 'Waiting for phone'], waiting_code: ['warn', 'Waiting for code'],
+  waiting_password: ['warn', 'Waiting for password'], awaiting_code: ['warn', 'Waiting for code'],
+  awaiting_password: ['warn', 'Waiting for password'],
+  failed: ['err', 'Failed'], error: ['err', 'Failed'],
+  skipped: ['muted', 'Skipped'], pruned: ['muted', 'Deleted'], disconnected: ['muted', 'Disconnected'],
+  canceled: ['muted', 'Canceled'],
 }
 
-const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  // MediaStatus
-  [MediaStatus.READY]: { bg: 'bg-green-100', text: 'text-green-800', label: 'Ready' },
-  [MediaStatus.DOWNLOADED]: {
-    bg: 'bg-green-100',
-    text: 'text-green-800',
-    label: 'Downloaded',
-  },
-  [MediaStatus.PENDING]: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Pending' },
-  [MediaStatus.DOWNLOADING]: {
-    bg: 'bg-amber-100',
-    text: 'text-amber-800',
-    label: 'Downloading',
-  },
-  [MediaStatus.PROCESSING]: {
-    bg: 'bg-amber-100',
-    text: 'text-amber-800',
-    label: 'Processing',
-  },
-  [MediaStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-800', label: 'Failed' },
-
-  // AccountStatus
-  [AccountStatus.CONNECTED]: { bg: 'bg-green-100', text: 'text-green-800', label: 'Connected' },
-  [AccountStatus.DISCONNECTED]: {
-    bg: 'bg-muted',
-    text: 'text-foreground',
-    label: 'Disconnected',
-  },
-  [AccountStatus.WAITING_PHONE]: {
-    bg: 'bg-amber-100',
-    text: 'text-amber-800',
-    label: 'Waiting Phone',
-  },
-  [AccountStatus.WAITING_CODE]: {
-    bg: 'bg-amber-100',
-    text: 'text-amber-800',
-    label: 'Waiting Code',
-  },
-  [AccountStatus.WAITING_PASSWORD]: {
-    bg: 'bg-amber-100',
-    text: 'text-amber-800',
-    label: 'Waiting Password',
-  },
-
-  // JobStatus
-  [JobStatus.PENDING]: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Pending' },
-  [JobStatus.DOWNLOADING]: {
-    bg: 'bg-amber-100',
-    text: 'text-amber-800',
-    label: 'Downloading',
-  },
-  [JobStatus.COMPLETED]: { bg: 'bg-green-100', text: 'text-green-800', label: 'Completed' },
-  [JobStatus.FAILED]: { bg: 'bg-red-100', text: 'text-red-800', label: 'Failed' },
+const TONE: Record<Tone, string> = {
+  ok: 'bg-ok/12 text-ok', warn: 'bg-warn/12 text-warn', err: 'bg-err/12 text-err', muted: 'bg-muted text-muted-foreground',
 }
+const DOT: Record<Tone, string> = { ok: 'bg-ok', warn: 'bg-warn', err: 'bg-err', muted: 'bg-muted-foreground/60' }
 
-export function StatusBadge({ status }: StatusBadgeProps) {
-  const config = STATUS_COLORS[status] || {
-    bg: 'bg-muted',
-    text: 'text-foreground',
-    label: status,
-  }
-
+export function StatusBadge({ status }: { status: string }) {
+  const [tone, label] = STATUS[status] ?? ['muted', status]
   return (
-    <span
-      className={clsx(
-        'inline-flex items-center rounded-full px-3 py-1 text-sm font-medium',
-        config.bg,
-        config.text
-      )}
-    >
-      {config.label}
+    <span data-tone={tone} className={clsx('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium', TONE[tone])}>
+      <span className={clsx('h-1.5 w-1.5 rounded-full', DOT[tone])} />
+      {label}
     </span>
   )
 }

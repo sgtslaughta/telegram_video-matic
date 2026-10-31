@@ -24,6 +24,11 @@ async def _enrich(db: AsyncSession, sub) -> SubscriptionRead:
     if sub.topic_id:
         topic = await db.get(Topic, sub.topic_id)
         read.topic_title = topic.title if topic else None
+    from sqlalchemy import func, select
+    from app.db.models import MediaItem, MediaStatus
+    n, b = (await db.execute(select(func.count(), func.coalesce(func.sum(MediaItem.size_bytes), 0)).where(
+        MediaItem.subscription_id == sub.id, MediaItem.status == MediaStatus.DOWNLOADED))).one()
+    read.downloaded_count, read.downloaded_bytes = n, b
     return read
 
 
