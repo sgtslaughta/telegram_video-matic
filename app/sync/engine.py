@@ -258,6 +258,14 @@ class SyncEngine:
                              message="Telegram reconnected")
         return True
 
+    async def _announce(self, job_id: int, media_id: int, status: str) -> None:
+        """Tell live clients a download finished or finally failed (toasts)."""
+        try:
+            await self.broadcast({"kind": "download_progress", "job_id": job_id, "media_id": media_id,
+                                  "status": status, "progress": 1 if status == "done" else 0})
+        except Exception:  # nosec B110 — UI notification is best-effort
+            pass
+
     def request_cancel(self, media_id: int) -> None:
         """Signal an in-flight download to abort and discard its partial."""
         self._control[media_id] = "cancel"
@@ -600,6 +608,7 @@ class SyncEngine:
                                     subscription_id=item.subscription_id, media_id=item.id,
                                     message=f"Downloaded {item.file_name or target_full.name}",
                                 )
+                                await self._announce(job.id, item.id, "done")
 
                                 # Dispatch plugin hook
                                 try:
@@ -659,6 +668,7 @@ class SyncEngine:
                                             media_id=item.id,
                                             message=f"Download failed after {max_attempts} attempts: {e}",
                                         )
+                                        await self._announce(job.id, item.id, "error")
                                     else:
                                         # Non-final failure: set media back to PENDING for next cycle
                                         # ponytail: retries deferred to next poller cycle, backoff gated by elapsed-time check

@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import Sidebar, { MobileNav } from './Sidebar'
 import CommandPalette from './CommandPalette'
+import WelcomeSplash from './WelcomeSplash'
 import { NAV } from './nav'
 import TelegramLoginDialog from '@/components/telegram/TelegramLoginDialog'
 import { useTgStatus } from '@/hooks/useTgStatus'
 import { useHealth } from '@/hooks/useHealth'
 import { AccountStatus } from '@/lib/types'
 import { relTime } from '@/lib/format'
+import { toast } from 'sonner'
 
 function useGoShortcuts() {
   const navigate = useNavigate()
@@ -33,6 +35,12 @@ function useGoShortcuts() {
 
 function Banner() {
   const { data: health, error } = useHealth()
+  const prev = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const now = health?.status
+    if (prev.current && prev.current !== 'ok' && now === 'ok') toast.success('Sync is back to normal')
+    prev.current = now
+  }, [health?.status])
   let msg: string | null = null
   if (error) msg = 'Can’t reach the server. Retrying every 30 seconds.'
   else if (health?.status === 'down') msg = 'Telegram is disconnected. Sync is paused and reconnecting automatically.'
@@ -69,6 +77,7 @@ export default function Shell() {
       </div>
       <MobileNav />
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
+      <WelcomeSplash />
       <TelegramLoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
     </div>
   )
