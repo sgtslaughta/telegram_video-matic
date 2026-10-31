@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v1.8.1 (2026-10-31)
+
+### Bug Fixes
+
+- **download**: Stop concurrent downloads clobbering each other's DC auth
+  ([`717ea59`](https://github.com/sgtslaughta/telegram_video-matic/commit/717ea596c9c6df1a80bbcbdabda5deb7ac10fbcc))
+
+fast_telethon wrote ImportAuthorization into the client's shared _init_request, then awaited before
+  sending. Two downloads to the same foreign DC overwrote each other's exported bytes and Telegram
+  rejected the import ("The provided authorization is invalid"). Each sender now sends its own copy
+  of the init request.
+
+Also fix Wanted returning 500 when a fixture has several matched videos.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Performance Improvements
+
+- **download**: Pipeline parallel connections and use 1 MiB requests
+  ([`24a489b`](https://github.com/sgtslaughta/telegram_video-matic/commit/24a489b0a33ffc50517421ef6efd647f21d09e78))
+
+Each file downloaded over 20 connections in lock-step waves: every round waited for the slowest
+  connection before any could request again. Each connection now runs its own fetch loop with a
+  2-part prefetch queue, and parts are still yielded in file order. Large files request 1 MiB per
+  call (Telegram's max) instead of 512 KiB, halving round trips.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.8.0 (2026-10-31)
 
 
