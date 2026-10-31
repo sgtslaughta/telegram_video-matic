@@ -1,6 +1,42 @@
 # CHANGELOG
 
 
+## v1.11.0 (2026-10-31)
+
+### Bug Fixes
+
+- **download**: Ride out Telegram GetFile flood waits with a shared back-off
+  ([`cd81bb5`](https://github.com/sgtslaughta/telegram_video-matic/commit/cd81bb579ea7798785fde67036b224bbb924b049))
+
+Prod downloads failed with "Request was unsuccessful 6 time(s)": Telegram rate-limits GetFile with
+  1-3 s flood waits (~220 in 30 s at 20 connections), and Telethon's _call sleeps through each and
+  gives up after 6 tries, failing the whole file. Download connections now send GetFile directly,
+  and a flood wait on any connection pauses all of that client's connections for that long, keeping
+  the account at Telegram's allowed rate instead of overshooting it. Verified against prod: no
+  failures over 120 MB with 20 connections.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Features
+
+- Multi-league subscriptions, Downloading now panel, real sync lines, thumbnails
+  ([`0217b6d`](https://github.com/sgtslaughta/telegram_video-matic/commit/0217b6d6577c162c2c5da1a39d45c4bcb595c4a9))
+
+- A subscription can link several rugby leagues (e.g. Champions Cup + Challenge Cup on one topic);
+  link table keyed (subscription, league) with an in-place SQLite migration; editor picks leagues as
+  chips; turning rugby off now actually unlinks - Sync / subscription sparklines count real new
+  videos per hour from media items (any path: poll, gap check, rescan, grab), not only the poller's
+  counter - Overview "Downloading now": live progress, speed, ETA, total throughput - Thumbnails:
+  always requested (fetched + cached on demand) with a fallback, and cached when a download finishes
+  - Welcome splash no longer sets state inside an effect
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.10.0 (2026-10-31)
 
 ### Documentation
