@@ -1,0 +1,6 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Input } from '@/components/ui/input';
+import { Field, Section, ToggleRow } from './Section';
+export function RetentionSection({ s, update }) {
+    return (_jsxs(Section, { title: "Retention", description: "When old downloads are cleaned up.", children: [_jsx(ToggleRow, { id: "keep", label: "Keep forever", hint: "Never delete this subscription's files automatically.", checked: s.keep, onChange: (c) => update('keep', c) }), _jsxs("div", { className: "grid gap-4 sm:grid-cols-2", children: [_jsx(Field, { label: "Delete after (days)", htmlFor: "retention", hint: "Leave empty to use the global setting", children: _jsx(Input, { id: "retention", type: "number", min: 1, disabled: s.keep, value: s.retentionDays ?? '', placeholder: "Global setting", onChange: (e) => update('retentionDays', e.target.value ? Math.max(1, parseInt(e.target.value)) : null) }) }), _jsx(Field, { label: "Size cap (GB)", htmlFor: "maxGb", hint: "Oldest files are deleted past this. Empty means unlimited.", children: _jsx(Input, { id: "maxGb", type: "number", min: 1, value: s.maxTotalGb ?? '', placeholder: "Unlimited", onChange: (e) => update('maxTotalGb', e.target.value ? Math.max(1, parseInt(e.target.value)) : null) }) })] })] }));
+}
