@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
-import { ChevronRight, Film } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Page, PageHeader } from '@/components/shared/PageHeader'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SyncPulse, PulseLegend } from '@/components/overview/SyncPulse'
 import { StatTile } from '@/components/shared/Sparkline'
+import { DownloadingNow } from '@/components/overview/DownloadingNow'
+import { Thumb } from '@/components/shared/Thumb'
 import { useOverview, type Overview as O, type Arrival } from '@/hooks/useOverview'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { absTime, formatBytes, formatDuration, relTime } from '@/lib/format'
@@ -45,11 +47,7 @@ function ArrivalRow({ a }: { a: Arrival }) {
   return (
     <li>
       <Link to={`/media/${a.id}`} className="-mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/60">
-        <div className="flex h-9 w-16 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
-          {a.has_thumb
-            ? <img src={`/api/media/${a.id}/thumb`} alt="" loading="lazy" className="h-full w-full object-cover" />
-            : <Film className="h-4 w-4 text-muted-foreground/60" strokeWidth={1.5} />}
-        </div>
+        <Thumb id={a.id} className="h-9 w-16 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium">{a.title}</p>
           <p className="truncate text-[12px] text-muted-foreground">
@@ -99,6 +97,8 @@ export default function Overview() {
   return (
     <Page>
       <PageHeader title="Overview" description={data ? healthLine(data) : <Skeleton className="h-4 w-64" />} />
+
+      <DownloadingNow />
 
       <Section title="Sync" aside={<RangeToggle value={hours} onChange={setHours} />}>
         {isLoading || !data ? (

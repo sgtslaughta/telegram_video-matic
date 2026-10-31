@@ -93,10 +93,11 @@ export function useSubscriptionLeague(subId: number | null) {
 export function useSetSubscriptionLeague() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { subId: number; leagueId: number | null }) =>
-      api.rugby.setSubscriptionLeague(data.subId, data.leagueId),
-    onSuccess: () => {
+    mutationFn: (data: { subId: number; leagueIds: number[] }) =>
+      api.rugby.setSubscriptionLeagues(data.subId, data.leagueIds),
+    onSuccess: (_d, v) => {
       qc.invalidateQueries({ queryKey: rugbyKeys.leagues() })
+      qc.invalidateQueries({ queryKey: ['rugby', 'sub-league', v.subId] })
     },
   })
 }

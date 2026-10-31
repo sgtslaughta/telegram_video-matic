@@ -41,6 +41,15 @@ async def series(s: AsyncSession, sub_ids: list[int], hours: int = 24,
     for r in rows:
         h = r.hour if r.hour.tzinfo else r.hour.replace(tzinfo=timezone.utc)
         by[(r.subscription_id, h)] = r
+    # "New videos" counts real arrivals per hour (any path: poll, hourly gap
+    # check, rescan, grab), not just the poller's counter. Filter skips excluded.
+    from app.db.models import MediaItem, MediaStatus
+    arrivals: dict = {}
+    for sid, created in (await s.execute(select(MediaItem.subscription_id, MediaItem.created_at).where(
+            MediaItem.subscription_id.in_(sub_ids), MediaItem.created_at >= start,
+            MediaItem.status != MediaStatus.SKIPPED))).all():
+        k = (sid, _hour(created))
+        arrivals[k] = arrivals.get(k, 0) + 1
     out = {}
     for sid in sub_ids:
         cells = []
@@ -48,7 +57,7 @@ async def series(s: AsyncSession, sub_ids: list[int], hours: int = 24,
             h = start + timedelta(hours=i)
             r = by.get((sid, h))
             cells.append({"t": h.isoformat(), "ok": r.ok if r else 0, "error": r.error if r else 0,
-                          "down": r.down if r else 0, "queued": r.queued if r else 0})
+                          "down": r.down if r else 0, "queued": arrivals.get((sid, h), 0)})
         out[sid] = cells
     return out
 

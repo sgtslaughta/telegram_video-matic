@@ -292,35 +292,45 @@ class RugbyService:
             await s.commit()
 
     # ---- subscription link ---------------------------------------------
-    async def _set_link_only(self, sub_id: int, league_id: int | None):
-        """Persist (or clear) the sub→league link without fetching."""
+    async def set_links(self, sub_id: int, league_ids: list[int]) -> None:
+        """Replace the leagues this subscription carries (empty = not rugby)."""
+        from sqlalchemy import delete
         async with self.ctx.session() as s:
-            link = await s.get(RugbySubscription, sub_id)
-            if league_id is None:
-                if link:
-                    await s.delete(link)
-                    await s.commit()
-                return
-            if link is None:
-                s.add(RugbySubscription(subscription_id=sub_id, league_id=league_id))
-            else:
-                link.league_id = league_id
+            await s.execute(delete(RugbySubscription).where(RugbySubscription.subscription_id == sub_id))
+            for lid in dict.fromkeys(league_ids):
+                s.add(RugbySubscription(subscription_id=sub_id, league_id=lid))
             await s.commit()
+
+    async def _set_link_only(self, sub_id: int, league_id: int | None):
+        """Single-league form kept for older callers."""
+        await self.set_links(sub_id, [] if league_id is None else [league_id])
 
     async def set_subscription_league(self, sub_id: int, league_id: int | None):
         await self._set_link_only(sub_id, league_id)
         if league_id is not None:
             await self.deep_fetch(league_id)
 
+    async def _leagues_for_sub(self, s, sub_id) -> list[int]:
+        rows = await s.execute(select(RugbySubscription.league_id)
+                               .where(RugbySubscription.subscription_id == sub_id))
+        return list(rows.scalars())
+
     async def _league_for_sub(self, s, sub_id):
-        link = await s.get(RugbySubscription, sub_id)
-        return link.league_id if link else None
+        leagues = await self._leagues_for_sub(s, sub_id)
+        return leagues[0] if leagues else None
+
+    async def get_subscription_leagues(self, sub_id: int) -> list[int]:
+        async with self.ctx.session() as s:
+            return await self._leagues_for_sub(s, sub_id)
 
     async def get_subscription_league(self, sub_id: int):
-        """The league_id linked to a subscription (None if unset). For the editor
-        to show the saved value when reopening a subscription."""
+        """First linked league (single-league callers)."""
         async with self.ctx.session() as s:
             return await self._league_for_sub(s, sub_id)
+
+    async def is_rugby_subscription(self, sub_id: int) -> bool:
+        async with self.ctx.session() as s:
+            return bool(await self._leagues_for_sub(s, sub_id))
 
     @staticmethod
     async def _source_context(s, item) -> str:
@@ -362,14 +372,14 @@ class RugbyService:
         text = item.file_name or item.caption or ""
         sub_id = getattr(item, "subscription_id", None)
         async with self.ctx.session() as s:
-            hint = await self._league_for_sub(s, sub_id) if sub_id else None
+            hints = set(await self._leagues_for_sub(s, sub_id)) if sub_id else set()
             context = await self._source_context(s, item)
             prior = await resolve.topic_prior(s, getattr(item, "topic_id", None))
             fixtures = await self._all_fixtures(s)
 
         def _match(fx):
             return matcher.match(text, item.date_posted, fx, context=context,
-                                 hint_leagues={hint} if hint else (),
+                                 hint_leagues=hints,
                                  prior_league=prior)
 
         best, conf, status = _match(fixtures)
@@ -394,9 +404,8 @@ class RugbyService:
         if not _is_local(item):
             if not sub_id:
                 return None
-            async with self.ctx.session() as s:
-                if await s.get(RugbySubscription, sub_id) is None:
-                    return None  # not a rugby subscription
+            if not await self.is_rugby_subscription(sub_id):
+                return None  # not a rugby subscription
         best, conf, status, fetched = await self.resolve_item(item)
         snippet = (item.file_name or item.caption or "")[:80]
         if status != "none":

@@ -2,6 +2,7 @@
 # Copyright (C) 2021 Tulir Asokan
 import asyncio
 import copy
+import time
 import hashlib
 import inspect
 import logging
@@ -10,7 +11,7 @@ import os
 from collections import defaultdict
 from typing import Optional, List, AsyncGenerator, Union, Awaitable, DefaultDict, Tuple, BinaryIO
 
-from telethon import utils, helpers, TelegramClient
+from telethon import errors, utils, helpers, TelegramClient
 from telethon.crypto import AuthKey
 from telethon.network import MTProtoSender
 from telethon.tl.alltlobjects import LAYER
@@ -33,6 +34,24 @@ TypeLocation = Union[Document, InputDocumentFileLocation, InputPeerPhotoFileLoca
                      InputFileLocation, InputPhotoFileLocation]
 
 
+# Shared back-off per client: a flood wait on one connection pauses them all.
+# ponytail: one global pause per account; per-DC buckets if that ever matters.
+_pause_until: dict[int, float] = {}
+FLOOD_RETRIES = 50
+FLOOD_SLEEP_SCALE = 1.0  # tests shrink waits
+
+
+def _pause(client, seconds: int) -> None:
+    until = time.monotonic() + max(seconds, 1) * FLOOD_SLEEP_SCALE
+    _pause_until[id(client)] = max(_pause_until.get(id(client), 0.0), until)
+
+
+async def _wait_for_pause(client) -> None:
+    delay = _pause_until.get(id(client), 0.0) - time.monotonic()
+    if delay > 0:
+        await asyncio.sleep(delay)
+
+
 class DownloadSender:
     client: TelegramClient
     sender: MTProtoSender
@@ -51,7 +70,20 @@ class DownloadSender:
     async def next(self) -> Optional[bytes]:
         if not self.remaining:
             return None
-        result = await self.client._call(self.sender, self.request)
+        for _ in range(FLOOD_RETRIES):
+            await _wait_for_pause(self.client)
+            try:
+                # Send on our own connection, not client._call: _call sleeps
+                # through flood waits itself (its threshold arg is ignored in
+                # the retry loop) and gives up after 6 tries. We want the
+                # error, so ALL connections back off together and the account
+                # stays under Telegram's GetFile rate.
+                result = await self.sender.send(self.request)
+                break
+            except (errors.FloodWaitError, errors.FloodPremiumWaitError) as e:
+                _pause(self.client, e.seconds)
+        else:
+            raise RuntimeError(f"Telegram kept rate-limiting this download ({FLOOD_RETRIES} flood waits)")
         self.remaining -= 1
         self.request.offset += self.stride
         return result.bytes

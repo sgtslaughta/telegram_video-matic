@@ -55,6 +55,11 @@ class PluginBase:
         """SQLAlchemy model classes (on the shared Base) the host create_all's."""
         return []
 
+    def migrations(self) -> list:
+        """Sync callables (sync_conn) -> None run before create_all, for schema
+        changes create_all can't make (e.g. a new primary key)."""
+        return []
+
     def routers(self) -> list:
         """FastAPI APIRouters the host mounts under /api/plugins/{name}."""
         return []

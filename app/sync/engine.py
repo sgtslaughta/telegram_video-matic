@@ -633,6 +633,16 @@ class SyncEngine:
                                     message=f"Downloaded {item.file_name or target_full.name}",
                                 )
                                 await self._announce(job.id, item.id, "done")
+                                # Cache the thumbnail now so lists show it without a
+                                # visit to the video page first.
+                                if not item.thumb_b64:
+                                    try:
+                                        b64 = await self.tg_service.thumb_b64_for(channel.tg_id, item.tg_msg_id)
+                                        if b64:
+                                            item.thumb_b64 = b64
+                                            await session.commit()
+                                    except Exception as e:  # thumbnail is optional
+                                        log(f"Thumbnail cache failed for {item.id}: {e}", "WARN")
 
                                 # Dispatch plugin hook
                                 try:

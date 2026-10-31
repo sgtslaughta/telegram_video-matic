@@ -56,7 +56,8 @@ class MatchPatch(BaseModel):
 
 
 class SubLeague(BaseModel):
-    league_id: int | None = None
+    league_id: int | None = None          # legacy single-league form
+    league_ids: list[int] | None = None   # one topic can carry several leagues
 
 
 class PreviewRequest(BaseModel):
@@ -209,22 +210,25 @@ async def patch_match(media_id: int, body: MatchPatch, request: Request):
 
 @router.get("/subscriptions/{sub_id}")
 async def get_subscription(sub_id: int, request: Request):
-    """Return the league linked to this subscription (for the editor to preselect)."""
-    svc = _service(request)
-    return {"league_id": await svc.get_subscription_league(sub_id)}
+    """Leagues linked to this subscription (editor preselect). `league_id` is
+    the first one, for older clients."""
+    ids = await _service(request).get_subscription_leagues(sub_id)
+    return {"league_id": ids[0] if ids else None, "league_ids": ids}
 
 
 @router.put("/subscriptions/{sub_id}")
 async def set_subscription(sub_id: int, body: SubLeague, request: Request,
                            bg: BackgroundTasks):
-    # Deep fetch can be slow; run it in the background after the link is saved.
     svc = _service(request)
-    if body.league_id is None:
-        await svc.set_subscription_league(sub_id, None)
-    else:
-        await svc._set_link_only(sub_id, body.league_id)
-        bg.add_task(svc.deep_fetch, body.league_id)
-    return {"ok": True, "league_id": body.league_id}
+    ids = body.league_ids if body.league_ids is not None else (
+        [body.league_id] if body.league_id is not None else [])
+    before = set(await svc.get_subscription_leagues(sub_id))
+    await svc.set_links(sub_id, ids)
+    # Deep fetch can be slow; fetch newly linked leagues in the background.
+    for lid in ids:
+        if lid not in before:
+            bg.add_task(svc.deep_fetch, lid)
+    return {"ok": True, "league_id": ids[0] if ids else None, "league_ids": ids}
 
 
 class GrabRequest(BaseModel):
