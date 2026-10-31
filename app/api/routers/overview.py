@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import func, select, text
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_app_auth
@@ -29,11 +29,12 @@ async def _rugby_titles(db, ids: list[int]) -> dict[int, tuple[str, str]]:
     if not ids:
         return {}
     try:
-        rows = (await db.execute(text(
+        stmt = text(
             "SELECT m.media_id, m.home_name, m.away_name, m.round, l.name FROM rugby_matches m "
             "LEFT JOIN rugby_leagues l ON l.id = m.league_id "
-            f"WHERE m.status IN ('auto','confirmed') AND m.media_id IN ({','.join(str(int(i)) for i in ids)})"
-        ))).all()
+            "WHERE m.status IN ('auto','confirmed') AND m.media_id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True))
+        rows = (await db.execute(stmt, {"ids": [int(i) for i in ids]})).all()
     except Exception:
         await db.rollback()
         return {}

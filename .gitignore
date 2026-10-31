@@ -4,8 +4,8 @@ __pycache__/
 *.pyc
 .idea/
 .venv
-data/
-media/
+/data/
+/media/
 .env
 node_modules/
 frontend/dist/
