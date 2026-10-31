@@ -57,4 +57,15 @@ def test_stream_supports_range(test_app, tmp_path):  # noqa: F811
         asyncio.run(seed())
         r = c.get("/api/media/1/stream", headers={"Range": "bytes=2-5"})
         assert r.status_code == 206 and r.content == b"2345"
+        assert r.headers["x-content-type-options"] == "nosniff"
         assert c.get("/api/media/2/stream").status_code == 404
+
+        async def evil():
+            async with test_app.state.async_session() as s:
+                s.add(MediaItem(id=3, channel_id=1, tg_msg_id=3, date_posted=datetime.now(timezone.utc),
+                                status="downloaded", local_path=str(f), mime="text/html"))
+                await s.commit()
+        asyncio.run(evil())
+        r = c.get("/api/media/3/stream")
+        assert r.headers["content-type"] == "application/octet-stream"
+        assert r.headers["content-disposition"].startswith("attachment")
