@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v1.6.0 (2026-10-31)
+
+### Bug Fixes
+
+- **notify**: Drop saved Jellyfin key when its origin changes
+  ([`b0da1a8`](https://github.com/sgtslaughta/telegram_video-matic/commit/b0da1a810feb40bdfa5c8b194afc6238ef93a65a))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Features
+
+- **notify**: Apprise notifications with spam control and Jellyfin refresh
+  ([`7b6601f`](https://github.com/sgtslaughta/telegram_video-matic/commit/7b6601f51bb49de291cadb624e3dcf71bf4f0acc))
+
+- Notifier fed by new events: download finished/failed, rugby needs review - State alerts: Telegram
+  down (after 5 min) / reconnected, disk low - 2-min batching, reminders at 1h/6h/24h, 10/h
+  per-target cap with +N fold, optional quiet hours holding arrivals for a morning digest - Size,
+  duration, link (PUBLIC_URL) and thumbnail attachment - Debounced Jellyfin library refresh after
+  imports and prunes - /api/notifications: encrypted, write-only target URLs and API key; test send
+  - Hide secret-bearing settings from the generic settings list
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **notify**: Notifications settings UI
+  ([`3a7e21a`](https://github.com/sgtslaughta/telegram_video-matic/commit/3a7e21a9840330b80688ef02a9eeebdc025fd6a5))
+
+Targets with trigger checkboxes, send test, replace URL; quiet hours, disk threshold, public URL;
+  Jellyfin URL/library/API key with test refresh.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.5.1 (2026-10-31)
 
 ### Bug Fixes
