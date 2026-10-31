@@ -284,6 +284,13 @@ class SyncEngine:
         chan_dto, topic_dto = await self._sub_dtos(session, sub)
         queued = skipped = 0
         async for media_dto in self.tg_service.iter_media(chan_dto, topic_dto, since_msg_id=last_msg_id):
+            # A one-off Browse download of this message already exists: adopt it
+            # into the subscription, never re-classify (would re-queue the file).
+            adhoc = await media.get_by_tg_msg_id(session, sub.channel_id, media_dto.tg_msg_id)
+            if adhoc is not None and adhoc.subscription_id is None:
+                adhoc.subscription_id, adhoc.topic_id = sub.id, sub.topic_id
+                await session.commit()
+                continue
             item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
             status, _reason = classify(sub, item)
             item.skip_reason = _reason if status == "skip" else None

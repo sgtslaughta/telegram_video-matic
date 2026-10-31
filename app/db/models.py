@@ -225,6 +225,8 @@ class MediaItem(Base, TimestampMixin):
     content_date: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
     keep: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
     skip_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # Download order: higher first (set by drag-to-reorder); ties by id.
+    priority: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
     reactions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     comments_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     raw: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

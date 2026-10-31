@@ -1,4 +1,5 @@
 """Downloads router — list active jobs; cancel/pause/resume."""
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, require_app_auth
@@ -33,11 +34,29 @@ async def queued_downloads(db: AsyncSession = Depends(get_db)):
     """GET /api/downloads/queued — media captured + waiting for a download slot
     (PENDING, no job yet). Lets the UI show the backlog behind active downloads."""
     from app.db.models import MediaStatus
-    items = await media.list_by_status(db, MediaStatus.PENDING)
+    items = sorted(await media.list_by_status(db, MediaStatus.PENDING),
+                   key=lambda m: (-(m.priority or 0), m.id))
     return [
         {"media_id": m.id, "file_name": m.file_name or m.caption, "size_bytes": m.size_bytes}
         for m in items
     ]
+
+
+class ReorderIn(BaseModel):
+    media_ids: list[int]
+
+
+@router.post("/reorder")
+async def reorder(body: ReorderIn, db: AsyncSession = Depends(get_db)):
+    """Set download order for waiting items: first id downloads first."""
+    from app.db.models import MediaItem
+    n = len(body.media_ids)
+    for rank, mid in enumerate(body.media_ids):
+        item = await db.get(MediaItem, mid)
+        if item is not None:
+            item.priority = n - rank
+    await db.commit()
+    return {"ok": True}
 
 
 async def _job_or_404(db: AsyncSession, job_id: int):

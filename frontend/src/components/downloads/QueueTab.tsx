@@ -9,6 +9,7 @@ import { withToast } from '@/lib/toast'
 import { post } from './data'
 import { Bar, Dot, Empty, Row, RowSkeleton, Section } from './rows'
 import { useRowNav } from '@/hooks/useRowNav'
+import { QueuedRows } from './QueuedRows'
 
 const GRID = 'grid-cols-[20px_minmax(0,1fr)_auto] md:grid-cols-[20px_minmax(0,1fr)_160px_80px_64px_72px_88px_84px]'
 
@@ -89,16 +90,7 @@ export function QueueTab() {
               </Row>
             )
           })}
-          {waiting.map((q) => (
-            <Row key={`q${q.media_id}`} to={`/media/${q.media_id}`} className={`h-10 ${GRID}`}>
-              <span />
-              <p className="truncate" title={q.file_name ?? undefined}>{q.file_name || `Media #${q.media_id}`}</p>
-              <span className="hidden md:block" /><span className="hidden md:block" /><span className="hidden md:block" />
-              <span className="hidden text-right tabular-nums text-muted-foreground md:block">{formatBytes(q.size_bytes)}</span>
-              <span className="flex items-center gap-1.5 text-muted-foreground"><Dot tone="muted" />Queued</span>
-              <span className="hidden md:block" />
-            </Row>
-          ))}
+          <QueuedRows items={waiting} grid={GRID} />
         </div>
       </Section>
     </div>

@@ -44,3 +44,11 @@ export const useFailed = () => useQuery({
 
 export const post = <R = unknown>(path: string, body?: unknown) =>
   fetchAPI<R>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+
+/** Return a copy of `list` with the item at `from` moved to `to`. */
+export function moveItem<T>(list: T[], from: number, to: number): T[] {
+  const next = list.slice()
+  const [it] = next.splice(from, 1)
+  next.splice(to, 0, it)
+  return next
+}
