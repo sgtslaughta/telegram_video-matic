@@ -1,6 +1,45 @@
 # CHANGELOG
 
 
+## v1.11.2 (2026-10-31)
+
+### Bug Fixes
+
+- **retention**: Delete sidecars with pruned videos; sweep orphans
+  ([`d37cb88`](https://github.com/sgtslaughta/telegram_video-matic/commit/d37cb8803e02d910d465a20525527a98c0eec407))
+
+Retention unlinked only the video, leaving .nfo/-thumb.jpg and whole season folders behind (prod:
+  374 orphan files, 31 video-less folders that show up as ghost seasons in Jellyfin). Prune now
+  removes the video's sidecars, and each maintenance pass deletes sidecars whose video is gone plus
+  folders left holding only folder metadata. Unknown files are never touched.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **rugby**: Allow assigning a fixture to an unmatched video
+  ([`86a61c2`](https://github.com/sgtslaughta/telegram_video-matic/commit/86a61c2af8ba53d5ec45e66138ec16e13a465bc2))
+
+PATCH /matches/{id} only edited existing rows, so a title too garbled to score (e.g. "18th August"
+  for an October game) could never be matched by hand. A hand-picked fixture now creates the row;
+  status-only edits on an unmatched item still return 404.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **ui**: Refresh rugby review list after confirming a match
+  ([`8801586`](https://github.com/sgtslaughta/telegram_video-matic/commit/88015868909e39d62c333caf84894225fb36ccc9))
+
+invalidateQueries used rugbyKeys.matches() -> ['rugby','matches',undefined]; the undefined segment
+  never prefix-matches 'needs_review', so the list stayed stale until a page reload. Invalidate the
+  ['rugby','matches'] prefix and the status count instead.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.11.1 (2026-10-31)
 
 ### Bug Fixes
