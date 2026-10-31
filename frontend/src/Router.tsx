@@ -10,6 +10,7 @@ import Downloads from '@/pages/Downloads'
 import MediaDetail from '@/pages/MediaDetail'
 import Activity from '@/pages/Activity'
 import Settings from '@/pages/Settings'
+import Storage from '@/pages/Storage'
 
 export default function Router() {
   return (
@@ -24,6 +25,7 @@ export default function Router() {
         <Route path="/downloads" element={<Downloads />} />
         <Route path="/media/:id" element={<MediaDetail />} />
         <Route path="/activity" element={<Activity />} />
+        <Route path="/storage" element={<Storage />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>

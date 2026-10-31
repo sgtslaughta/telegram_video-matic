@@ -39,3 +39,22 @@ def test_confirm_with_nothing_pending(test_app, tmp_path):  # noqa: F811
         test_app.state.media_root = str(tmp_path)
         r = c.post("/api/storage/prune/confirm")
         assert r.status_code == 200 and r.json()["pruned"] == 0
+
+
+def test_stream_supports_range(test_app, tmp_path):  # noqa: F811
+    import asyncio
+    from datetime import datetime, timezone
+    from app.db.models import Channel, MediaItem
+    f = tmp_path / "v.mp4"
+    f.write_bytes(b"0123456789")
+    with TestClient(test_app) as c:
+        async def seed():
+            async with test_app.state.async_session() as s:
+                s.add(Channel(id=1, tg_id=1, title="c"))
+                s.add(MediaItem(id=1, channel_id=1, tg_msg_id=1, date_posted=datetime.now(timezone.utc),
+                                status="downloaded", local_path=str(f), mime="video/mp4"))
+                await s.commit()
+        asyncio.run(seed())
+        r = c.get("/api/media/1/stream", headers={"Range": "bytes=2-5"})
+        assert r.status_code == 206 and r.content == b"2345"
+        assert c.get("/api/media/2/stream").status_code == 404
