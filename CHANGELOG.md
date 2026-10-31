@@ -1,6 +1,105 @@
 # CHANGELOG
 
 
+## v1.7.0 (2026-10-31)
+
+### Chores
+
+- Untrack local .venv symlink and ignore it
+  ([`81f4d8a`](https://github.com/sgtslaughta/telegram_video-matic/commit/81f4d8a7f37a530f06d5975f5fc5c86b67ba0b94))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Features
+
+- **library**: Retention ages from match date, keep pins, cleanup safety
+  ([`8ce5ec1`](https://github.com/sgtslaughta/telegram_video-matic/commit/8ce5ec106f08c1f90b204f1d7945350d7b35aebf))
+
+- Retention module: age from content_date (rugby fixture date) or post date, per-subscription
+  override, keep pins on items and subscriptions - Deleted items get a new PRUNED status (migrated
+  from SKIPPED) - Mass-delete cap: >50 deletions pause and notify until confirmed - Disk-pressure
+  rule measures the media disk, not / - Storage API: disk usage by folder, 7-day deletion preview,
+  untracked files listed (never auto-deleted) with safe manual delete - Store filter skip reasons on
+  media items
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **library**: Wanted, history, rescan and filter preview
+  ([`e3fd7d7`](https://github.com/sgtslaughta/telegram_video-matic/commit/e3fd7d7dbf35ab10833d236782105149e57b264c))
+
+- Rugby Wanted: played fixtures in followed leagues with no video, per-fixture search (normalized
+  team names), grab, dismiss - Auto-search sweep every 6h; auto-grabs "auto"-grade matches, gives up
+  after 7 days - Plugins can reach the live Telegram service via ctx.tg_service - History feed
+  (downloads, failures, deletions, matches, skips with reason) - Failed downloads list, rescan last
+  N days, filter preview (no DB writes)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
+## v1.6.0 (2026-10-31)
+
+### Bug Fixes
+
+- **notify**: Drop saved Jellyfin key when its origin changes
+  ([`b0da1a8`](https://github.com/sgtslaughta/telegram_video-matic/commit/b0da1a810feb40bdfa5c8b194afc6238ef93a65a))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Features
+
+- **notify**: Apprise notifications with spam control and Jellyfin refresh
+  ([`7b6601f`](https://github.com/sgtslaughta/telegram_video-matic/commit/7b6601f51bb49de291cadb624e3dcf71bf4f0acc))
+
+- Notifier fed by new events: download finished/failed, rugby needs review - State alerts: Telegram
+  down (after 5 min) / reconnected, disk low - 2-min batching, reminders at 1h/6h/24h, 10/h
+  per-target cap with +N fold, optional quiet hours holding arrivals for a morning digest - Size,
+  duration, link (PUBLIC_URL) and thumbnail attachment - Debounced Jellyfin library refresh after
+  imports and prunes - /api/notifications: encrypted, write-only target URLs and API key; test send
+  - Hide secret-bearing settings from the generic settings list
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **notify**: Notifications settings UI
+  ([`3a7e21a`](https://github.com/sgtslaughta/telegram_video-matic/commit/3a7e21a9840330b80688ef02a9eeebdc025fd6a5))
+
+Targets with trigger checkboxes, send test, replace URL; quiet hours, disk threshold, public URL;
+  Jellyfin URL/library/API key with test refresh.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
+## v1.5.1 (2026-10-31)
+
+### Bug Fixes
+
+- **sync**: Self-heal dead Telegram connection and report real health
+  ([`9f53dab`](https://github.com/sgtslaughta/telegram_video-matic/commit/9f53dabe3893fd183f5c0a833a2ec935002796c4))
+
+Telethon's auto-reconnect gave up after an HTTP 429 on 2026-10-20 and the poller failed every 30s
+  for 11 days while /api/health stayed green.
+
+- Poller reconnects before each tick with 30s->10m backoff - /api/health returns 503 when Telegram
+  is down or polling is stale - Repeated warnings/errors collapse into one event with a count -
+  Purge the disconnect error flood on startup - Poll oldest-first so an interrupted poll leaves no
+  gap - Log realtime handler errors instead of swallowing them
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.5.0 (2026-09-17)
 
 ### Features
