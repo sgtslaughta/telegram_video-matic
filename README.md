@@ -1,4 +1,11 @@
-# Telegram Video-Matic
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="frontend/public/logo-dark.svg">
+    <img src="frontend/public/logo-light.svg" alt="TGVM logo" width="128" height="128">
+  </picture>
+</p>
+
+<h1 align="center">TGVM · Telegram Video-matic</h1>
 
 Self-hosted Telegram media downloader with automatic channel/topic monitoring,
 smart naming for Jellyfin/Plex, retry logic, and disk pruning. **One container,
