@@ -86,12 +86,36 @@ class RugbyMatch(Base, TimestampMixin):
 
 
 class RugbySubscription(Base, TimestampMixin):
-    """Maps a core Subscription to a rugby league (the deep-fetch trigger)."""
+    """Links a core Subscription to the rugby league(s) it carries (the
+    deep-fetch trigger and a match hint). One topic can carry several
+    competitions, e.g. Champions Cup + Challenge Cup."""
     __tablename__ = "rugby_subscriptions"
 
     subscription_id: Mapped[int] = mapped_column(
         ForeignKey("subscriptions.id"), primary_key=True)
-    league_id: Mapped[int] = mapped_column(ForeignKey("rugby_leagues.id"), nullable=False)
+    league_id: Mapped[int] = mapped_column(ForeignKey("rugby_leagues.id"), primary_key=True)
+
+
+def migrate_subscription_links(conn) -> None:
+    """Pre-1.10 the table keyed on subscription_id alone (one league per
+    subscription). Rebuild it with a (subscription_id, league_id) key, keeping
+    rows. SQLite can't alter a primary key in place. Idempotent."""
+    from sqlalchemy import text
+    cols = conn.execute(text("PRAGMA table_info(rugby_subscriptions)")).all()
+    if not cols:
+        return  # fresh install: create_all builds the new shape
+    pk = [c[1] for c in cols if c[5]]
+    if pk != ["subscription_id"]:
+        return
+    conn.execute(text("ALTER TABLE rugby_subscriptions RENAME TO rugby_subscriptions_old"))
+    conn.execute(text(
+        "CREATE TABLE rugby_subscriptions (subscription_id INTEGER NOT NULL REFERENCES subscriptions(id),"
+        " league_id INTEGER NOT NULL REFERENCES rugby_leagues(id), created_at DATETIME, updated_at DATETIME,"
+        " PRIMARY KEY (subscription_id, league_id))"))
+    conn.execute(text(
+        "INSERT INTO rugby_subscriptions (subscription_id, league_id, created_at, updated_at)"
+        " SELECT subscription_id, league_id, created_at, updated_at FROM rugby_subscriptions_old"))
+    conn.execute(text("DROP TABLE rugby_subscriptions_old"))
 
 
 class RugbyWantedState(Base, TimestampMixin):

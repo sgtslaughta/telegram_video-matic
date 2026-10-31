@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { MediaThumb } from '@/components/shared/MediaThumb'
@@ -8,15 +9,17 @@ import { Field, Section, ToggleRow } from './Section'
 import { DEFAULT_TEMPLATE, renderTemplate } from './template'
 
 interface Props {
-  leagues: RugbyLeague[]
+  allLeagues: RugbyLeague[]
   on: boolean
   setOn: (v: boolean) => void
-  league: number | null
-  setLeague: (v: number | null) => void
+  leagues: number[]
+  setLeagues: (v: number[]) => void
   template: string
 }
 
-export function RugbySection({ leagues, on, setOn, league, setLeague, template }: Props) {
+export function RugbySection({ allLeagues, on, setOn, leagues, setLeagues, template }: Props) {
+  const league = leagues[0] ?? null  // preview tests against the first league
+  const name = (id: number) => allLeagues.find((l) => l.id === id)?.name ?? `League ${id}`
   const [filename, setFilename] = useState('Sale Sharks v Gloucester.mp4')
   const preview = useRugbyPreview()
   const r = preview.data
@@ -26,9 +29,21 @@ export function RugbySection({ leagues, on, setOn, league, setLeague, template }
         checked={on} onChange={setOn} />
       {on && (
         <>
-          <Field label="League">
-            <Combobox value={league?.toString() || ''} onChange={(v) => setLeague(v ? parseInt(v) : null)} placeholder="None"
-              options={[{ value: '', label: 'None' }, ...leagues.map((l) => ({ value: l.id.toString(), label: l.name }))]} />
+          <Field label="Leagues" hint="Add every competition this topic posts, e.g. Champions Cup and Challenge Cup.">
+            {leagues.length > 0 && (
+              <ul className="mb-2 flex flex-wrap gap-1.5">
+                {leagues.map((id) => (
+                  <li key={id} className="flex items-center gap-1 rounded-full bg-brand/10 py-0.5 pl-2.5 pr-1 text-[12px] font-medium text-brand">
+                    {name(id)}
+                    <button type="button" aria-label={`Remove ${name(id)}`} onClick={() => setLeagues(leagues.filter((x) => x !== id))}
+                      className="rounded-full p-0.5 hover:bg-brand/20"><X className="h-3 w-3" /></button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Combobox value="" onChange={(v) => { if (v) setLeagues([...leagues, parseInt(v)]) }}
+              placeholder={leagues.length ? 'Add another league' : 'Add a league'}
+              options={allLeagues.filter((l) => !leagues.includes(l.id)).map((l) => ({ value: l.id.toString(), label: l.name }))} />
           </Field>
           {league && (
             <div className="space-y-3 rounded-md border border-border bg-muted/40 p-3">

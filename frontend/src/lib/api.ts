@@ -292,12 +292,13 @@ export const rugby = {
     }),
 
   getSubscriptionLeague: (subId: number) =>
-    fetchAPI<{ league_id: number | null }>(`/plugins/rugby/subscriptions/${subId}`),
+    fetchAPI<{ league_id: number | null; league_ids: number[] }>(`/plugins/rugby/subscriptions/${subId}`),
 
-  setSubscriptionLeague: (subId: number, leagueId: number | null) =>
+  // One topic can carry several leagues; [] unlinks (not a rugby subscription).
+  setSubscriptionLeagues: (subId: number, leagueIds: number[]) =>
     fetchAPI<void>(`/plugins/rugby/subscriptions/${subId}`, {
       method: 'PUT',
-      body: JSON.stringify({ league_id: leagueId }),
+      body: JSON.stringify({ league_ids: leagueIds }),
     }),
 
   enrichment: (channelId: number) =>

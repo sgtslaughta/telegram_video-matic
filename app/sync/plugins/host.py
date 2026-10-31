@@ -147,13 +147,16 @@ class PluginHost:
         """create_all the tables declared by every plugin's models()."""
         from app.db.models import Base
 
-        tables = []
+        tables, migrations = [], []
         for e in self.entries:
             for model in e.instance.models():
                 tables.append(model.__table__)
+            migrations.extend(getattr(e.instance, "migrations", lambda: [])())
         if not tables:
             return
         async with engine.begin() as conn:
+            for m in migrations:
+                await conn.run_sync(m)
             await conn.run_sync(
                 lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables)
             )

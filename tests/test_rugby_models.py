@@ -71,7 +71,7 @@ async def test_match_and_subscription_link_to_core(session):
     ))
     await session.commit()
 
-    rs = await session.get(rm.RugbySubscription, sub.id)
+    rs = await session.get(rm.RugbySubscription, (sub.id, 4414))
     assert rs.league_id == 4414
     rmatch = (await session.execute(
         rm.RugbyMatch.__table__.select().where(rm.RugbyMatch.media_id == item.id)

@@ -82,19 +82,20 @@ export default function SubscriptionEditor() {
   const { data: plugins } = usePlugins()
   const rugbyEnabled = plugins?.find((p) => p.name === 'rugby')?.enabled ?? false
   const { data: rugbyLeagues } = useRugbyLeagues()
-  const [league, setLeague] = useState<number | null>(null)
-  const [leagueBase, setLeagueBase] = useState<number | null>(null)
+  const [leagues, setLeagues] = useState<number[]>([])
+  const [leaguesBase, setLeaguesBase] = useState<number[]>([])
   const [rugbyOn, setRugbyOn] = useState(true)
   const setSubscriptionLeague = useSetSubscriptionLeague()
   const { data: savedLeague } = useSubscriptionLeague(isNew ? null : subId)
   const [seenLeague, setSeenLeague] = useState(savedLeague)
   if (seenLeague !== savedLeague) {
     setSeenLeague(savedLeague)
-    if (savedLeague?.league_id != null) { setLeague(savedLeague.league_id); setLeagueBase(savedLeague.league_id) }
+    const ids = savedLeague?.league_ids ?? (savedLeague?.league_id != null ? [savedLeague.league_id] : [])
+    setLeagues(ids); setLeaguesBase(ids)
   }
-  const toggleRugby = (on: boolean) => { setRugbyOn(on); if (!on) setLeague(null) }
+  const toggleRugby = (on: boolean) => { setRugbyOn(on); if (!on) setLeagues([]) }
 
-  const leagueDirty = league !== leagueBase
+  const leagueDirty = leagues.slice().sort().join() !== leaguesBase.slice().sort().join()
   const dirty = editor.dirty || (rugbyEnabled && leagueDirty)
 
   const save = async () => {
@@ -113,9 +114,9 @@ export default function SubscriptionEditor() {
       } else {
         await updateMutation.mutateAsync(common as T.SubscriptionUpdateRequest)
       }
-      if (rugbyEnabled && league !== null) await setSubscriptionLeague.mutateAsync({ subId: savedId, leagueId: league })
+      if (rugbyEnabled && (leagueDirty || isNew)) await setSubscriptionLeague.mutateAsync({ subId: savedId, leagueIds: leagues })
       editor.markSaved()
-      setLeagueBase(league)
+      setLeaguesBase(leagues)
       toast.success(isNew ? 'Subscription created' : 'Changes saved')
       if (isNew) navigate('/subscriptions')
     } catch (e) {
@@ -126,7 +127,7 @@ export default function SubscriptionEditor() {
   const discard = () => {
     if (isNew) return navigate('/subscriptions')
     editor.discard()
-    setLeague(leagueBase)
+    setLeagues(leaguesBase)
   }
 
   const saveRef = useRef(save)
@@ -159,7 +160,7 @@ export default function SubscriptionEditor() {
         <WhatToDownload s={s} update={update} regexValid={editor.regexValid} regexError={editor.regexError} toggleDay={editor.toggleScheduleDay} />
         <StorageSection s={s} update={update} />
         {rugbyEnabled && rugbyLeagues && (
-          <RugbySection leagues={rugbyLeagues} on={rugbyOn} setOn={toggleRugby} league={league} setLeague={setLeague} template={s.renameTemplate} />
+          <RugbySection allLeagues={rugbyLeagues} on={rugbyOn} setOn={toggleRugby} leagues={leagues} setLeagues={setLeagues} template={s.renameTemplate} />
         )}
         <RetentionSection s={s} update={update} />
         {!isNew && <ToolsSection id={subId} />}

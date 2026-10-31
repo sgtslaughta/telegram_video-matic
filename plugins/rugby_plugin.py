@@ -36,6 +36,9 @@ class RugbyPlugin(PluginBase):
     def models(self):
         return rm.ALL_MODELS
 
+    def migrations(self):
+        return [rm.migrate_subscription_links]
+
     def routers(self):
         return [rugby_router]
 

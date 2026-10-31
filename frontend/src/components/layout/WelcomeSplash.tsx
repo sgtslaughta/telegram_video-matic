@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Play } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Thumb } from '@/components/shared/Thumb'
 import { useSummary, markSeen, type Incident } from '@/hooks/useSummary'
 import { absTime, formatBytes, relTime } from '@/lib/format'
 
@@ -16,17 +17,18 @@ function incidentText(i: Incident) {
 /** "Since your last visit" — shown once when you return after 6h+ and something happened. */
 export default function WelcomeSplash() {
   const { data } = useSummary()
-  const [open, setOpen] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const open = !!data?.show && !dismissed
 
+  // Nothing to show: still record the visit (no state change, so no re-render loop).
   useEffect(() => {
-    if (!data) return
-    if (data.show) setOpen(true)
-    else void markSeen().catch(() => {})
+    if (data && !data.show) void markSeen().catch(() => {})
   }, [data])
 
   const close = (o: boolean) => {
-    setOpen(o)
-    if (!o) void markSeen().catch(() => {})
+    if (o) return
+    setDismissed(true)
+    void markSeen().catch(() => {})
   }
   if (!data?.show) return null
   const a = data.attention
@@ -68,7 +70,7 @@ export default function WelcomeSplash() {
                 <li key={it.id}>
                   <Link to={`/media/${it.id}`} onClick={() => close(false)} className="group block">
                     <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-md bg-muted">
-                      {it.has_thumb && <img src={`/api/media/${it.id}/thumb`} alt="" className="h-full w-full object-cover" />}
+                      <Thumb id={it.id} className="absolute inset-0 rounded-none" />
                       <span className="absolute flex h-8 w-8 items-center justify-center rounded-full bg-brand text-primary-foreground opacity-90 transition-transform group-hover:scale-105">
                         <Play className="ml-0.5 h-4 w-4" fill="currentColor" />
                       </span>
