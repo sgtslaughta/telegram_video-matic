@@ -1,6 +1,47 @@
 # CHANGELOG
 
 
+## v1.7.0 (2026-10-31)
+
+### Chores
+
+- Untrack local .venv symlink and ignore it
+  ([`81f4d8a`](https://github.com/sgtslaughta/telegram_video-matic/commit/81f4d8a7f37a530f06d5975f5fc5c86b67ba0b94))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Features
+
+- **library**: Retention ages from match date, keep pins, cleanup safety
+  ([`8ce5ec1`](https://github.com/sgtslaughta/telegram_video-matic/commit/8ce5ec106f08c1f90b204f1d7945350d7b35aebf))
+
+- Retention module: age from content_date (rugby fixture date) or post date, per-subscription
+  override, keep pins on items and subscriptions - Deleted items get a new PRUNED status (migrated
+  from SKIPPED) - Mass-delete cap: >50 deletions pause and notify until confirmed - Disk-pressure
+  rule measures the media disk, not / - Storage API: disk usage by folder, 7-day deletion preview,
+  untracked files listed (never auto-deleted) with safe manual delete - Store filter skip reasons on
+  media items
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **library**: Wanted, history, rescan and filter preview
+  ([`e3fd7d7`](https://github.com/sgtslaughta/telegram_video-matic/commit/e3fd7d7dbf35ab10833d236782105149e57b264c))
+
+- Rugby Wanted: played fixtures in followed leagues with no video, per-fixture search (normalized
+  team names), grab, dismiss - Auto-search sweep every 6h; auto-grabs "auto"-grade matches, gives up
+  after 7 days - Plugins can reach the live Telegram service via ctx.tg_service - History feed
+  (downloads, failures, deletions, matches, skips with reason) - Failed downloads list, rescan last
+  N days, filter preview (no DB writes)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+
 ## v1.6.0 (2026-10-31)
 
 ### Bug Fixes
