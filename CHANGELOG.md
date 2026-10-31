@@ -1,6 +1,9 @@
 # CHANGELOG
 
 
+## v1.8.0 (2026-10-31)
+
+
 ## v1.7.0 (2026-10-31)
 
 ### Chores
@@ -12,7 +15,82 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
 
+
+## v1.6.0 (2026-10-31)
+
+
+## v1.5.1 (2026-10-31)
+
+### Bug Fixes
+
+- Commit media components hidden by a broad ignore rule; bind SQL params
+  ([`f79cf1c`](https://github.com/sgtslaughta/telegram_video-matic/commit/f79cf1cbf707dbd339b1b4fe4b1d488376baa736))
+
+The media/ and data/ ignore rules matched any folder with that name, including
+  frontend/src/components/media. Anchor them to the repo root.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **media**: Serve only video mime types inline from the stream endpoint
+  ([`02b7575`](https://github.com/sgtslaughta/telegram_video-matic/commit/02b7575aba5f5d966ab2663d6c6bf771d3d9ca74))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **notify**: Drop saved Jellyfin key when its origin changes
+  ([`b0da1a8`](https://github.com/sgtslaughta/telegram_video-matic/commit/b0da1a810feb40bdfa5c8b194afc6238ef93a65a))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **sync**: Self-heal dead Telegram connection and report real health
+  ([`9f53dab`](https://github.com/sgtslaughta/telegram_video-matic/commit/9f53dabe3893fd183f5c0a833a2ec935002796c4))
+
+Telethon's auto-reconnect gave up after an HTTP 429 on 2026-10-20 and the poller failed every 30s
+  for 11 days while /api/health stayed green.
+
+- Poller reconnects before each tick with 30s->10m backoff - /api/health returns 503 when Telegram
+  is down or polling is stale - Repeated warnings/errors collapse into one event with a count -
+  Purge the disconnect error flood on startup - Poll oldest-first so an interrupted poll leaves no
+  gap - Log realtime handler errors instead of swallowing them
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **ui**: Paginate cleanup preview, clearer downloaded column
+  ([`bb95b70`](https://github.com/sgtslaughta/telegram_video-matic/commit/bb95b708eb986579ee2c524991230599c6dfa71a))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+### Chores
+
+- Untrack local .venv symlink and ignore it
+  ([`1f29ade`](https://github.com/sgtslaughta/telegram_video-matic/commit/1f29adeca55e45cf093c0fe00edd065c4316b18e))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
 ### Features
+
+- **downloads**: Drag to reorder the queue; Browse downloads no longer hide new posts
+  ([`763a60d`](https://github.com/sgtslaughta/telegram_video-matic/commit/763a60dc702bbdf1956636d95dab8e4211344407))
+
+- MediaItem.priority; claim_pending downloads highest priority first - POST /api/downloads/reorder;
+  queued list returned in download order - Queue tab: drag rows or Alt+Up/Down, optimistic with undo
+  - One-off Browse downloads are excluded from the subscription cursor, so posts older than them are
+  still picked up; the poller adopts such items into the subscription without re-queueing them
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
 
 - **library**: Retention ages from match date, keep pins, cleanup safety
   ([`8ce5ec1`](https://github.com/sgtslaughta/telegram_video-matic/commit/8ce5ec106f08c1f90b204f1d7945350d7b35aebf))
@@ -41,20 +119,6 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
 
-
-## v1.6.0 (2026-10-31)
-
-### Bug Fixes
-
-- **notify**: Drop saved Jellyfin key when its origin changes
-  ([`b0da1a8`](https://github.com/sgtslaughta/telegram_video-matic/commit/b0da1a810feb40bdfa5c8b194afc6238ef93a65a))
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-
-Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
-
-### Features
-
 - **notify**: Apprise notifications with spam control and Jellyfin refresh
   ([`7b6601f`](https://github.com/sgtslaughta/telegram_video-matic/commit/7b6601f51bb49de291cadb624e3dcf71bf4f0acc))
 
@@ -79,21 +143,77 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
 
+- **ui**: Design tokens, new app shell, command palette, sync pulse data
+  ([`b68824e`](https://github.com/sgtslaughta/telegram_video-matic/commit/b68824ea608e60e0bbf58e3521f30eeb5f041800))
 
-## v1.5.1 (2026-10-31)
+- Greyscale tokens with status-only colour, IBM Plex Sans/Mono self-hosted, graphite default accent,
+  focus rings, reduced-motion support - Drop the global colour transition that made every
+  interaction lag - Compact sidebar with search, Telegram state, theme; mobile bottom nav - Cmd+K
+  palette (pages, subscriptions, actions) and G-key page shortcuts - Health banner driven by
+  /api/health (down / stale / unreachable) - Hourly poll stats per subscription for the overview
+  sync pulse - Shared formatters (relative time, bytes, duration)
 
-### Bug Fixes
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
-- **sync**: Self-heal dead Telegram connection and report real health
-  ([`9f53dab`](https://github.com/sgtslaughta/telegram_video-matic/commit/9f53dabe3893fd183f5c0a833a2ec935002796c4))
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
 
-Telethon's auto-reconnect gave up after an HTTP 429 on 2026-10-20 and the poller failed every 30s
-  for 11 days while /api/health stayed green.
+- **ui**: Electric violet brand accent across shell, charts and overview
+  ([`0fc4545`](https://github.com/sgtslaughta/telegram_video-matic/commit/0fc454573a8ff7bd1dcd01fc360fcffd1bd29925))
 
-- Poller reconnects before each tick with 30s->10m backoff - /api/health returns 503 when Telegram
-  is down or polling is stale - Repeated warnings/errors collapse into one event with a count -
-  Purge the disconnect error flood on startup - Poll oldest-first so an interrupted poll leaves no
-  gap - Log realtime handler errors instead of swallowing them
+AA-checked variants per theme (#6E4BF5 light, #9580FF dark text/lines). Drop accent presets that
+  collided with status colours. Chart container is block (not flex) so sparklines size to narrow
+  grid cells.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **ui**: Overview page with sync pulse, overview and since-last-visit APIs
+  ([`4a7a333`](https://github.com/sgtslaughta/telegram_video-matic/commit/4a7a333c6709f1758fd43f75951fb0b30d3b3a1a))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **ui**: Rebuild every page on the new design system
+  ([`b031ac4`](https://github.com/sgtslaughta/telegram_video-matic/commit/b031ac4d1da1813f16a1d1de34e913fe9bb3ca36))
+
+- Downloads: Radarr-style Queue / Wanted / History / Review tabs, wanted search + grab dialog,
+  failed list with bulk retry, history timeline - Subscriptions: table with 24h sparklines and
+  inline enable; editor split into sections with live filter preview, rescan tool, keep-forever,
+  sticky save bar and Cmd+S - Activity log with level/kind/search filters in the URL and repeat
+  counts - Media detail with in-browser player, keep pin and per-item history - Browse grid/list
+  restyle; Storage page (disk, cleanup preview, paused cleanup confirm, untracked files); Settings
+  with section nav - Status badges and rugby tags use status/brand tokens - Subscription API returns
+  downloaded count and size
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **ui**: Shadcn chart sparklines for sync activity and 24h stats; UTC-aware datetimes
+  ([`4c3b93c`](https://github.com/sgtslaughta/telegram_video-matic/commit/4c3b93c7ea81fc1d883070c2c382a6c6d09f0263))
+
+Replace the tick strip with an activity line per subscription and shaded outage spans. Store/return
+  all datetimes as UTC so browsers stop showing times hours in the future.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **ui**: Storage route, media streaming endpoint, toast helpers, design guide
+  ([`71f3c20`](https://github.com/sgtslaughta/telegram_video-matic/commit/71f3c2037379bb65367be1c0e98898befc13df40))
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_011K7jrUh6kT65kgzsyqmaDz
+
+- **ui**: Welcome splash, grouped live toasts, sync-restored toast
+  ([`f5115ff`](https://github.com/sgtslaughta/telegram_video-matic/commit/f5115ff614c55b973a2a6935aadb1e0647be36d7))
+
+Splash shows once after 6h+ away when something happened: outages first, new arrivals grouped by
+  league/round, then what needs attention. Live download toasts only on finish/final failure, bursts
+  collapse into one.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
