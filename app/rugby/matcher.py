@@ -20,6 +20,7 @@ competitions a year, so round, date or league must corroborate before auto-filin
 """
 
 import re
+import unicodedata
 from datetime import datetime, timezone
 
 # Words dropped during team-name normalization (generic rugby noise).
@@ -79,9 +80,25 @@ def grades(text: str) -> frozenset[str]:
 
 
 def normalize(name: str) -> str:
-    """Lowercase, strip punctuation, drop filler words, collapse whitespace."""
-    s = re.sub(r"[^a-z0-9\s]", " ", name.lower())
+    """Lowercase, fold accents, strip punctuation, drop filler words."""
+    folded = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    s = re.sub(r"[^a-z0-9\s]", " ", folded.lower())
     return " ".join(t for t in s.split() if t not in FILLER_WORDS)
+
+
+# Everyday club names (as uploaders write them) -> a token of TheSportsDB's
+# formal name. Appended to the title so team_coverage finds the club.
+# ponytail: static list, grow it as new misses show up in needs_review.
+CLUB_ALIASES = {
+    "toulon": "toulonnais", "ubb": "bordeaux begles", "pau": "paloise",
+    "toulouse": "toulousain", "bayonne": "bayonnais", "la rochelle": "rochelais",
+}
+
+
+def expand_aliases(text_norm: str) -> str:
+    padded = f" {text_norm} "
+    extra = [v for k, v in CLUB_ALIASES.items() if f" {k} " in padded]
+    return " ".join([text_norm, *extra])
 
 
 def team_tokens(name: str) -> list[str]:
@@ -204,7 +221,7 @@ def score_fixture(text: str, upload_date: datetime | None, fixture: dict,
             f"{fixture.get('away_name') or ''}"):
         return 0.0
 
-    tnorm = normalize(text)
+    tnorm = expand_aliases(normalize(text))
     home_present, home_cov = team_coverage(fixture["home_name"] or "", tnorm)
     away_present, away_cov = team_coverage(fixture["away_name"] or "", tnorm)
     if not (home_present and away_present):

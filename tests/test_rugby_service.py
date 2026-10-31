@@ -353,3 +353,31 @@ async def test_deep_fetch_scans_round_zero(ctx, factory):
         fx = (await s.execute(select(rm.RugbyFixture))).scalars().all()
     assert [(f.home_name, f.away_name, f.round) for f in fx] == [
         ("Australia Rugby", "Japan Rugby", "0")]
+
+
+@pytest.mark.asyncio
+async def test_rematch_skips_items_without_a_file(ctx, factory):
+    """Only files on disk are worth API lookups: skipped/pruned/failed items
+    have nothing to file or describe."""
+    async with factory() as s:
+        s.add(rm.RugbyLeague(id=4414, slug="english-prem-rugby",
+                             name="English Prem Rugby", sport="union"))
+        chan = Channel(tg_id=1, title="Rugby")
+        s.add(chan)
+        await s.flush()
+        sub = Subscription(channel_id=chan.id, storage_path="/d",
+                           rename_template="{title}{ext}")
+        s.add(sub)
+        await s.flush()
+        when = datetime(2025, 9, 25, tzinfo=timezone.utc)
+        s.add_all([
+            MediaItem(channel_id=chan.id, tg_msg_id=n, subscription_id=sub.id,
+                      file_name=f"Sale v Bath {n}.mp4", date_posted=when, status=st,
+                      local_path="/d/x.mp4" if st == MediaStatus.DOWNLOADED else None)
+            for n, st in enumerate([MediaStatus.DOWNLOADED, MediaStatus.SKIPPED,
+                                    MediaStatus.PRUNED, MediaStatus.FAILED], start=1)])
+        s.add(rm.RugbySubscription(subscription_id=sub.id, league_id=4414))
+        await s.commit()
+
+    result = await RugbyService(ctx, api=FakeApi()).rematch()
+    assert result["scanned"] == 1
