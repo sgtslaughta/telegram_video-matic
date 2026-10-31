@@ -18,7 +18,7 @@ export interface Overview {
   subscriptions: OverviewSub[]
   recent: Arrival[]
   attention: Attention
-  last_24h: { downloaded: number; bytes: number }
+  last_24h: { downloaded: number; bytes: number; series: { t: string; count: number; bytes: number }[] }
 }
 
 async function get<T>(url: string): Promise<T> {

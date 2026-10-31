@@ -61,13 +61,26 @@ async def _arrivals(db, since: datetime, limit: int) -> list[dict]:
     } for i in items]
 
 
-async def _attention(db) -> dict:
+async def _wanted_count(request) -> int:
+    """Real Wanted count from the rugby plugin (0 if it's not loaded)."""
+    try:
+        from app.rugby.wanted import WantedService
+        host = getattr(request.app.state, "plugin_host", None)
+        entry = next((e for e in getattr(host, "entries", []) if e.name == "rugby" and e.enabled), None)
+        if entry is None:
+            return 0
+        return sum(1 for w in await WantedService(entry.instance.ctx).list_wanted() if w["state"] != "not_found")
+    except Exception:
+        return 0
+
+
+async def _attention(db, request=None) -> dict:
     failed = (await db.execute(select(func.count()).where(MediaItem.status == MediaStatus.FAILED))).scalar() or 0
     paused = await settings.get(db, "prune_paused", default="")
     return {
         "failed": failed,
         "needs_review": await _scalar(db, "SELECT count(*) FROM rugby_matches WHERE status = 'needs_review'"),
-        "wanted": await _scalar(db, "SELECT count(*) FROM rugby_wanted_state WHERE NOT dismissed AND NOT gave_up"),
+        "wanted": await _wanted_count(request) if request is not None else 0,
         "cleanup_paused": json.loads(paused) if paused else None,
     }
 
@@ -76,6 +89,21 @@ async def _totals(db, since: datetime) -> dict:
     n, b = (await db.execute(select(func.count(), func.coalesce(func.sum(MediaItem.size_bytes), 0)).where(
         MediaItem.status == MediaStatus.DOWNLOADED, MediaItem.downloaded_at >= since))).one()
     return {"downloaded": n, "bytes": b}
+
+
+async def _hourly_downloads(db, hours: int = 24) -> list[dict]:
+    """Downloads + bytes per hour (oldest first) for the stat sparklines."""
+    end = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    start = end - timedelta(hours=hours - 1)
+    rows = (await db.execute(select(MediaItem.downloaded_at, MediaItem.size_bytes).where(
+        MediaItem.status.in_((MediaStatus.DOWNLOADED, MediaStatus.PRUNED)), MediaItem.downloaded_at >= start))).all()
+    cells = [{"t": (start + timedelta(hours=i)).isoformat(), "count": 0, "bytes": 0} for i in range(hours)]
+    for at, size in rows:
+        i = int((at - start).total_seconds() // 3600)
+        if 0 <= i < hours:
+            cells[i]["count"] += 1
+            cells[i]["bytes"] += size or 0
+    return cells
 
 
 def _tg_status(request: Request) -> tuple[str, str | None]:
@@ -105,8 +133,8 @@ async def overview(request: Request, hours: int = Query(24, ge=1, le=192), db: A
             "pulse": series[s.id],
         } for s in subs],
         "recent": await _arrivals(db, now - timedelta(days=30), 8),
-        "attention": await _attention(db),
-        "last_24h": await _totals(db, now - timedelta(hours=24)),
+        "attention": await _attention(db, request),
+        "last_24h": {**await _totals(db, now - timedelta(hours=24)), "series": await _hourly_downloads(db)},
     }
 
 
@@ -142,7 +170,7 @@ async def summary(request: Request, db: AsyncSession = Depends(get_db)):
         groups.setdefault(a["subtitle"] or "Other videos", []).append(a)
     rows = (await db.execute(select(PollStat).where(PollStat.hour >= since - timedelta(hours=1)))).scalars().all()
     incidents = _incidents(rows, now)
-    attention = await _attention(db)
+    attention = await _attention(db, request)
     eventful = bool(arrivals or incidents or attention["failed"] or attention["cleanup_paused"])
     return {
         "since": since.isoformat(),

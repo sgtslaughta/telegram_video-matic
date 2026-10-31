@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Film } from 'lucide-react'
 import { Page, PageHeader } from '@/components/shared/PageHeader'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SyncPulse, PulseLegend } from '@/components/overview/SyncPulse'
+import { StatTile } from '@/components/shared/Sparkline'
 import { useOverview, type Overview as O, type Arrival } from '@/hooks/useOverview'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { absTime, formatBytes, formatDuration, relTime } from '@/lib/format'
@@ -17,7 +18,7 @@ function healthLine(o: O): string {
 
 function Section({ title, aside, children, className }: { title: string; aside?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className={cn('rounded-lg border border-border bg-card', className)}>
+    <section className={cn('min-w-0 rounded-lg border border-border bg-card', className)}>
       <div className="flex h-11 items-center justify-between border-b border-border px-4">
         <h2 className="text-[13px] font-semibold">{title}</h2>
         {aside}
@@ -44,8 +45,10 @@ function ArrivalRow({ a }: { a: Arrival }) {
   return (
     <li>
       <Link to={`/media/${a.id}`} className="-mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent/60">
-        <div className="h-9 w-16 shrink-0 overflow-hidden rounded bg-muted">
-          {a.has_thumb && <img src={`/api/media/${a.id}/thumb`} alt="" loading="lazy" className="h-full w-full object-cover" />}
+        <div className="flex h-9 w-16 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+          {a.has_thumb
+            ? <img src={`/api/media/${a.id}/thumb`} alt="" loading="lazy" className="h-full w-full object-cover" />
+            : <Film className="h-4 w-4 text-muted-foreground/60" strokeWidth={1.5} />}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium">{a.title}</p>
@@ -105,7 +108,7 @@ export default function Overview() {
             <SyncPulse subs={data.subscriptions} />
             <div className="flex items-center justify-between gap-4 border-t border-border py-2.5">
               <PulseLegend />
-              <span className="text-[12px] text-muted-foreground">{hours === 24 ? 'Last 24 hours' : 'Last 7 days'}, one cell per hour</span>
+              <span className="whitespace-nowrap text-[12px] text-muted-foreground">{hours === 24 ? 'Last 24 hours' : 'Last 7 days'}</span>
             </div>
           </>
         ) : (
@@ -115,7 +118,7 @@ export default function Overview() {
         )}
       </Section>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Section title="Recent arrivals" aside={<Link to="/downloads?tab=history" className="text-[12px] text-muted-foreground hover:text-foreground">History</Link>}>
           {isLoading || !data ? (
             <div className="space-y-3 py-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
@@ -126,7 +129,7 @@ export default function Overview() {
           )}
         </Section>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <Section title="Needs attention">
             {attention.length ? <ul className="py-1.5">{attention}</ul> : (
               <p className="py-4 text-[13px] text-muted-foreground">{data ? 'Nothing needs you right now.' : ''}</p>
@@ -134,14 +137,8 @@ export default function Overview() {
           </Section>
           {data && (
             <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border text-[13px]">
-              <div className="bg-card px-4 py-3">
-                <dt className="text-[12px] text-muted-foreground">Downloaded, 24h</dt>
-                <dd className="mt-0.5 text-[18px] font-semibold tabular-nums">{data.last_24h.downloaded}</dd>
-              </div>
-              <div className="bg-card px-4 py-3">
-                <dt className="text-[12px] text-muted-foreground">Added, 24h</dt>
-                <dd className="mt-0.5 text-[18px] font-semibold tabular-nums">{formatBytes(data.last_24h.bytes)}</dd>
-              </div>
+              <StatTile label="Downloaded, 24h" value={data.last_24h.downloaded} data={data.last_24h.series} dataKey="count" />
+              <StatTile label="Added, 24h" value={formatBytes(data.last_24h.bytes)} data={data.last_24h.series} dataKey="bytes" format={formatBytes} />
             </dl>
           )}
         </div>

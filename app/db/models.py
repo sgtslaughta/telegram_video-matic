@@ -5,6 +5,25 @@ from sqlalchemy import (
     ForeignKey, String, Integer, Float, Boolean, DateTime, JSON, UniqueConstraint, PrimaryKeyConstraint
 )
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
+
+
+class UTCDateTime(TypeDecorator):
+    """DateTime that always comes back timezone-aware (UTC). SQLite drops the
+    offset, so naive values would otherwise serialize without "Z" and browsers
+    would read them as local time."""
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 Base = declarative_base()
 
@@ -12,12 +31,12 @@ Base = declarative_base()
 class TimestampMixin:
     """Mixin that adds created_at and updated_at columns to models."""
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UTCDateTime(),
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UTCDateTime(),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
@@ -150,7 +169,7 @@ class Subscription(Base, TimestampMixin):
     # Capture cadence: realtime | 1m | 5m | 15m | 30m | hourly | daily | scheduled.
     # realtime = event-driven (no polling); scheduled uses schedule_days.
     check_frequency: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, default="5m")
-    last_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
     schedule_days: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     filter_regex: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     filter_mode: Mapped[str] = mapped_column(String(32), default=FilterMode.INCLUDE, nullable=False)
@@ -161,8 +180,8 @@ class Subscription(Base, TimestampMixin):
     max_total_gb: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Timeframe window: only capture media posted within [date_from, date_to].
     # date_from set + date_to null = ongoing (catch up + keep going); both null = all.
-    date_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    date_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    date_from: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
+    date_to: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
     storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     rename_template: Mapped[str] = mapped_column(String(1024), nullable=False)
     season_detection: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -194,16 +213,16 @@ class MediaItem(Base, TimestampMixin):
     mime: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     duration_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    date_posted: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    date_posted: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     thumb_b64: Mapped[Optional[str]] = mapped_column(String(8192), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=MediaStatus.PENDING, nullable=False)
     local_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     # Quick content fingerprint (size+head+tail) for dedup / renamed-file relink.
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    downloaded_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
     # Date the content represents (e.g. rugby fixture date); retention ages from
     # this, falling back to date_posted. Set by plugins.
-    content_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_date: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
     keep: Mapped[Optional[bool]] = mapped_column(Boolean, default=False, nullable=True)
     skip_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     reactions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
@@ -232,8 +251,8 @@ class DownloadJob(Base, TimestampMixin):
     bytes_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     error: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
 
     media = relationship("MediaItem", back_populates="download_job")
 
@@ -277,7 +296,7 @@ class Plugin(Base, TimestampMixin):
     last_error: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     status: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     installed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UTCDateTime(),
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
@@ -290,7 +309,7 @@ class PollStat(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     subscription_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    hour: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     ok: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     down: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

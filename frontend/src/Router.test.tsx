@@ -45,7 +45,7 @@ describe('Router', () => {
     expect(screen.queryByRole('navigation')).toBeFalsy()
   })
 
-  it('renders dashboard route at /', () => {
+  it('renders overview route at /', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <QueryClientProvider client={queryClient}>
@@ -62,7 +62,7 @@ describe('Router', () => {
     expect(screen.getAllByRole('navigation')[0]).toBeTruthy()
     // Check for main dashboard content (hero banner or stat cards)
     const mainContent = screen.getByRole('main')
-    expect(mainContent.textContent).toContain('Dashboard')
+    expect(mainContent.textContent).toContain('Overview')
   })
 
   it('navigates to /subscriptions and renders SubscriptionsList', () => {
