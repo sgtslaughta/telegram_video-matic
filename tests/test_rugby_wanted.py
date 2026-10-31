@@ -375,3 +375,23 @@ class TestSearchGrab:
         ctx = PluginContext(name="rugby", config={}, session_factory=factory)
         with pytest.raises(RuntimeError):
             await WantedService(ctx).search_fixture(90)
+
+
+class TestWantedMultipleMatches:
+    @pytest.mark.asyncio
+    async def test_fixture_with_two_matched_videos_does_not_crash(self, ctx, factory):
+        """Prod 500: two videos matched to one fixture → MultipleResultsFound."""
+        now = datetime.now(timezone.utc)
+        async with factory() as s:
+            s.add_all([Channel(id=1, tg_id=100, title="C"), rm.RugbyLeague(id=1, slug="p", name="Prem"),
+                       Subscription(id=1, channel_id=1, enabled=True, storage_path="/tmp", rename_template="{original}"),
+                       rm.RugbySubscription(subscription_id=1, league_id=1),
+                       rm.RugbyFixture(id=70, league_id=1, season="2025", date=now - timedelta(days=2),
+                                       home_name="A", away_name="B"),
+                       MediaItem(id=1, channel_id=1, tg_msg_id=1, date_posted=now, status=MediaStatus.SKIPPED),
+                       MediaItem(id=2, channel_id=1, tg_msg_id=2, date_posted=now, status=MediaStatus.DOWNLOADED),
+                       rm.RugbyMatch(media_id=1, fixture_id=70, status="auto", confidence=0.9),
+                       rm.RugbyMatch(media_id=2, fixture_id=70, status="confirmed", confidence=1.0)])
+            await s.commit()
+        wanted = await WantedService(ctx).list_wanted()
+        assert all(w["fixture_id"] != 70 for w in wanted)  # one copy is downloaded → not wanted

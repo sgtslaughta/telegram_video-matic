@@ -72,26 +72,28 @@ class WantedService:
 
                     # Check if fixture is matched to auto/confirmed and media is
                     # queued/downloading/downloaded
-                    match = (
+                    # A fixture can have several matched videos (different
+                    # uploads); it's covered if ANY of them is active/downloaded.
+                    media_ids = (
                         await s.execute(
-                            select(RugbyMatch).where(
+                            select(RugbyMatch.media_id).where(
                                 and_(
                                     RugbyMatch.fixture_id == fx.id,
                                     RugbyMatch.status.in_(["auto", "confirmed"]),
                                 )
                             )
                         )
-                    ).scalar_one_or_none()
-
-                    if match and match.media_id:
-                        item = await s.get(MediaItem, match.media_id)
-                        if item and item.status in [
-                            MediaStatus.DOWNLOADED,
-                            MediaStatus.DOWNLOADING,
-                            MediaStatus.QUEUED,
-                            MediaStatus.PENDING,
-                        ]:
-                            continue
+                    ).scalars().all()
+                    if media_ids and (await s.execute(
+                        select(MediaItem.id).where(
+                            MediaItem.id.in_(media_ids),
+                            MediaItem.status.in_([
+                                MediaStatus.DOWNLOADED, MediaStatus.DOWNLOADING,
+                                MediaStatus.QUEUED, MediaStatus.PENDING,
+                            ]),
+                        ).limit(1)
+                    )).first():
+                        continue
 
                     # Fixture is wanted
                     if fx.date:

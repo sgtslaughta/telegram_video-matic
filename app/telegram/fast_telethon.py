@@ -1,6 +1,7 @@
 # copied from https://github.com/tulir/mautrix-telegram/blob/master/mautrix_telegram/util/parallel_file_transfer.py
 # Copyright (C) 2021 Tulir Asokan
 import asyncio
+import copy
 import hashlib
 import inspect
 import logging
@@ -179,10 +180,12 @@ class ParallelTransferrer:
         if not self.auth_key:
             log.debug(f"Exporting auth to DC {self.dc_id}")
             auth = await self.client(ExportAuthorizationRequest(self.dc_id))
-            self.client._init_request.query = ImportAuthorizationRequest(id=auth.id,
-                                                                         bytes=auth.bytes)
-            req = InvokeWithLayerRequest(LAYER, self.client._init_request)
-            await sender.send(req)
+            # Copy, never mutate, the client's shared init request: concurrent
+            # downloads overwrote each other's import here and Telegram rejected
+            # the mismatched bytes ("The provided authorization is invalid").
+            init = copy.copy(self.client._init_request)
+            init.query = ImportAuthorizationRequest(id=auth.id, bytes=auth.bytes)
+            await sender.send(InvokeWithLayerRequest(LAYER, init))
             self.auth_key = sender.auth_key
         return sender
 
