@@ -15,6 +15,7 @@ from . import (
     storage,
     history,
     rescan,
+    overview,
 )
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "storage",
     "history",
     "rescan",
+    "overview",
 ]

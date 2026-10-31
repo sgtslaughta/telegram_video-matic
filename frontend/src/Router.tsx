@@ -1,7 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import Shell from '@/components/layout/Shell'
 import Login from '@/pages/Login'
-import Dashboard from '@/pages/Dashboard'
+import Overview from '@/pages/Overview'
 import Connect from '@/pages/Connect'
 import SubscriptionsList from '@/pages/SubscriptionsList'
 import SubscriptionEditor from '@/pages/SubscriptionEditor'
@@ -16,7 +16,7 @@ export default function Router() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={<Shell />}>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Overview />} />
         <Route path="/connect" element={<Connect />} />
         <Route path="/subscriptions" element={<SubscriptionsList />} />
         <Route path="/subscriptions/:id" element={<SubscriptionEditor />} />
