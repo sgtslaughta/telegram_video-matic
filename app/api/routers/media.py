@@ -118,3 +118,24 @@ async def set_keep(media_id: int, body: KeepIn, db: AsyncSession = Depends(get_d
     item.keep = body.keep
     await db.commit()
     return {"id": media_id, "keep": body.keep}
+
+
+@router.get("/{media_id}/stream")
+async def stream(media_id: int, db: AsyncSession = Depends(get_db)):
+    """Stream the downloaded file (HTTP Range supported, so the player can seek)."""
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    item = await media.get(db, media_id)
+    if not item or not item.local_path or not Path(item.local_path).is_file():
+        raise HTTPException(status_code=404, detail="No downloaded file for this item")
+    # Never trust the Telegram-supplied mime: only real video types play inline;
+    # anything else downloads as opaque bytes. nosniff + sandbox CSP stop the
+    # browser from ever treating the file as HTML on our origin.
+    mime = (item.mime or "").lower()
+    playable = mime.startswith("video/") and "html" not in mime and "xml" not in mime
+    resp = FileResponse(item.local_path, media_type=mime if playable else "application/octet-stream",
+                        filename=Path(item.local_path).name,
+                        content_disposition_type="inline" if playable else "attachment")
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    return resp

@@ -1,8 +1,6 @@
 import { Fragment, useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { toast } from 'sonner'
 import { useTgStatus, useTgSetCredentials, useTgLoginPhone, useTgLoginCode, useTgLoginPassword, useTgLogout } from '@/hooks/useTgStatus'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -22,10 +20,14 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
   const [apiId, setApiId] = useState('')
   const [apiHash, setApiHash] = useState('')
   const [editCreds, setEditCreds] = useState(false)
-  const [stepOverride, setStepOverride] = useState<Step | null>(null)
+  // Manual (backward) step choice, valid only while the backend status is unchanged.
+  const [ovr, setOvr] = useState<{ step: Step; status?: string } | null>(null)
+  const stepOverride = ovr && ovr.status === tgStatus.data?.status ? ovr.step : null
+  const setStepOverride = (step: Step | null) => setOvr(step ? { step, status: tgStatus.data?.status } : null)
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
 
   // Determine current step based on status
   const getStep = (): Step => {
@@ -69,11 +71,6 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     if (STEP_ORDER[target] <= STEP_ORDER[derivedStep]) setStepOverride(target)
   }
 
-  // Clear manual override whenever the backend status advances.
-  useEffect(() => {
-    setStepOverride(null)
-  }, [tgStatus.data?.status])
-
   // Call onConnected when status becomes CONNECTED
   useEffect(() => {
     if (tgStatus.data?.status === AccountStatus.CONNECTED) {
@@ -83,44 +80,48 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
     if (!apiId.trim() || !apiHash.trim()) return
     try {
       await setCreds.mutateAsync({ apiId: apiId.trim(), apiHash: apiHash.trim() })
       setEditCreds(false)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
+      setError(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
   const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
     if (!phone.trim()) return
     try {
       await loginPhone.mutateAsync(phone)
       setStepOverride(null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
+      setError(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
   const handleCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
     if (!code.trim()) return
     try {
       await loginCode.mutateAsync(code)
       setStepOverride(null)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
+      setError(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
     if (!password.trim()) return
     try {
       await loginPassword.mutateAsync(password)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
+      setError(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
@@ -131,7 +132,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
       setCode('')
       setPassword('')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Telegram request failed')
+      setError(err instanceof Error ? err.message : 'Telegram request failed')
     }
   }
 
@@ -153,14 +154,14 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
     <div className="w-full">
       {/* Stepper Header (hidden on the pre-req credentials step) */}
       {currentStep !== 'credentials' && (
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-5 flex items-center justify-between">
         {STEPPER.map((s, i) => {
           const reached = STEP_ORDER[derivedStep] >= STEP_ORDER[s.step]
           const active = STEP_ORDER[currentStep] >= STEP_ORDER[s.step]
           return (
             <Fragment key={s.step}>
               {i > 0 && (
-                <div className={`mx-2 h-0.5 flex-1 ${active ? 'bg-primary' : 'bg-muted'}`} />
+                <div className={`mx-2 h-px flex-1 ${active ? 'bg-brand' : 'bg-border'}`} />
               )}
               <div className="flex items-center gap-2">
                 <button
@@ -168,13 +169,13 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                   onClick={() => goToStep(s.step)}
                   disabled={!reached}
                   aria-label={`Go to ${s.label} step`}
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-colors ${
-                    active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold transition-colors ${
+                    active ? 'bg-brand text-primary-foreground' : 'bg-muted text-muted-foreground'
                   } ${reached ? 'cursor-pointer hover:opacity-90' : 'cursor-default'}`}
                 >
                   {s.n}
                 </button>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                <div className="text-[12px] text-muted-foreground">
                   {s.label}
                 </div>
               </div>
@@ -185,8 +186,8 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
       )}
 
       {/* Step Content */}
-      <Card>
-        <CardContent className="pt-8">
+      <div className="rounded-lg border border-border bg-card p-5">
+        <div>
           <AnimatePresence mode="wait">
             {/* Credentials Step */}
             {currentStep === 'credentials' && (
@@ -200,14 +201,14 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                 className="space-y-4"
               >
                 <div>
-                  <h2 className="mb-2 text-xl font-bold">Telegram API credentials</h2>
-                  <p className="mb-4 text-xs text-muted-foreground">
+                  <h2 className="mb-1.5 text-[15px] font-semibold">Telegram API credentials</h2>
+                  <p className="mb-4 text-[12px] text-muted-foreground">
                     Get these from{' '}
                     <a
                       href="https://my.telegram.org/apps"
                       target="_blank"
                       rel="noreferrer"
-                      className="text-primary underline underline-offset-2"
+                      className="text-brand hover:underline"
                     >
                       my.telegram.org/apps
                     </a>
@@ -217,7 +218,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                   </p>
                   <div className="space-y-3">
                     <div className="space-y-2">
-                      <Label htmlFor="api_id">api_id</Label>
+                      <Label className="text-[13px]" htmlFor="api_id">api_id</Label>
                       <Input
                         id="api_id"
                         inputMode="numeric"
@@ -229,7 +230,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="api_hash">api_hash</Label>
+                      <Label className="text-[13px]" htmlFor="api_hash">api_hash</Label>
                       <Input
                         id="api_hash"
                         value={apiHash}
@@ -263,9 +264,9 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                 className="space-y-4"
               >
                 <div>
-                  <h2 className="mb-4 text-xl font-bold">Enter phone number</h2>
+                  <h2 className="mb-3 text-[15px] font-semibold">Enter phone number</h2>
                   <div className="space-y-2">
-                    <Label htmlFor="phone">Phone</Label>
+                    <Label className="text-[13px]" htmlFor="phone">Phone</Label>
                     <Input
                       id="phone"
                       type="tel"
@@ -275,7 +276,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                       placeholder="+1 234 567 8900"
                       autoFocus
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[12px] text-muted-foreground">
                       Include country code (e.g., +1 for US)
                     </p>
                   </div>
@@ -291,7 +292,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                 <button
                   type="button"
                   onClick={() => setEditCreds(true)}
-                  className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  className="w-full text-center text-[12px] text-muted-foreground underline-offset-2 hover:underline"
                 >
                   Change API credentials
                 </button>
@@ -310,9 +311,9 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                 className="space-y-4"
               >
                 <div>
-                  <h2 className="mb-4 text-xl font-bold">Enter SMS code</h2>
+                  <h2 className="mb-3 text-[15px] font-semibold">Enter SMS code</h2>
                   <div className="space-y-2">
-                    <Label htmlFor="code">Code</Label>
+                    <Label className="text-[13px]" htmlFor="code">Code</Label>
                     <Input
                       id="code"
                       type="text"
@@ -324,7 +325,7 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                       className="tracking-widest"
                       autoFocus
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[12px] text-muted-foreground">
                       Check your Telegram for the code
                     </p>
                   </div>
@@ -352,9 +353,9 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                 className="space-y-4"
               >
                 <div>
-                  <h2 className="mb-4 text-xl font-bold">Two-factor password</h2>
+                  <h2 className="mb-3 text-[15px] font-semibold">Two-factor password</h2>
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
+                    <Label className="text-[13px]" htmlFor="password">Password</Label>
                     <Input
                       id="password"
                       type="password"
@@ -388,21 +389,21 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
                 className="space-y-4 text-center"
               >
                 <div className="mb-6">
-                  <h2 className="text-xl font-bold">Connected!</h2>
-                  <p className="mt-4 text-4xl font-bold text-foreground">
+                  <h2 className="text-[15px] font-semibold">Connected!</h2>
+                  <p className="mt-3 text-[24px] font-semibold tracking-tight text-foreground">
                     {tgStatus.data.username
                       ? `@${tgStatus.data.username}`
                       : tgStatus.data.display_name || 'User'}
                   </p>
                   {tgStatus.data.phone && (
-                    <p className="mt-2 text-sm text-muted-foreground">
+                    <p className="mt-2 text-[13px] text-muted-foreground">
                       {tgStatus.data.phone}
                     </p>
                   )}
                 </div>
 
-                <Badge className="inline-block bg-secondary text-secondary-foreground hover:bg-secondary">
-                  ✓ Account verified
+                <Badge className="inline-flex items-center gap-1.5 bg-ok/10 text-ok hover:bg-ok/10">
+                  <span className="h-1.5 w-1.5 rounded-full bg-ok" />Account verified
                 </Badge>
 
                 <Button
@@ -416,8 +417,9 @@ export default function TelegramLoginFlow({ onConnected }: { onConnected?: () =>
               </motion.div>
             )}
           </AnimatePresence>
-        </CardContent>
-      </Card>
+          {error && <p role="alert" className="mt-3 text-[12px] text-err">{error}</p>}
+        </div>
+      </div>
     </div>
   )
 }

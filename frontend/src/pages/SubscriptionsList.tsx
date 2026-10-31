@@ -1,236 +1,126 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trash2, Edit, RefreshCw, Power, Search } from 'lucide-react'
-import {
-  useSubscriptions,
-  useUpdateSubscription,
-  useDeleteSubscription,
-  useScanSubscription,
-} from '@/hooks/useSubscriptions'
-import { useChannels } from '@/hooks/useChannels'
-import { ConfirmDialog, EmptyState, StatusBadge } from '@/components/shared'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Plus, Search } from 'lucide-react'
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
+import { Page, PageHeader } from '@/components/shared/PageHeader'
+import { SubscriptionRow, type ListSub } from '@/components/subscriptions/SubscriptionRow'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import type { SubscriptionRead } from '@/lib/types'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useChannels } from '@/hooks/useChannels'
+import { useOverview } from '@/hooks/useOverview'
+import { useDeleteSubscription, useScanSubscription, useSubscriptions } from '@/hooks/useSubscriptions'
+import { withToast } from '@/lib/toast'
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.05,
-      delayChildren: 0.1,
-    },
-  },
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.getAttribute('role') === 'switch')
+
+function DeleteConfirm({ id, onDone }: { id: number | null; onDone: () => void }) {
+  const del = useDeleteSubscription(id ?? 0)
+  return (
+    <ConfirmDialog isOpen={id !== null} title="Delete subscription" confirmText="Delete" cancelText="Cancel"
+      description="The subscription stops syncing. Files already downloaded are kept."
+      onCancel={onDone}
+      onConfirm={async () => { await withToast(() => del.mutateAsync(), { success: 'Subscription deleted' }); onDone() }} />
+  )
 }
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.3 },
-  },
+function ScanRunner({ id, onDone }: { id: number; onDone: () => void }) {
+  const scan = useScanSubscription(id)
+  const ran = useRef(false)
+  useEffect(() => {
+    if (ran.current) return
+    ran.current = true
+    void withToast(() => scan.mutateAsync(), { success: 'Scan started' }).then(onDone)
+  }, [scan, onDone])
+  return null
 }
 
 export default function SubscriptionsList() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
-  const q = search.toLowerCase()
-  const { data: subscriptions = [], isLoading } = useSubscriptions()
-  const { data: channels } = useChannels()
+  const [active, setActive] = useState(0)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [scanId, setScanId] = useState<number | null>(null)
-  const [toggleId, setToggleId] = useState<number | null>(null)
+  const rows = useRef<(HTMLTableRowElement | null)[]>([])
+  const { data: subs = [], isLoading } = useSubscriptions()
+  const { data: channels } = useChannels()
+  const { data: overview } = useOverview(24)
 
-  // ponytail: hooks called once per sub at top level
-  const deleteMut = useDeleteSubscription(deleteId || 0)
-  const scanMut = useScanSubscription(scanId || 0)
-  const updateMut = useUpdateSubscription(toggleId || 0)
+  const chanTitle = (id: number) => channels?.find((c) => c.id === id)?.title ?? `Channel ${id}`
+  const q = search.toLowerCase()
+  const visible = (subs as ListSub[]).filter((s) =>
+    !q || [s.name, s.channel_title, s.topic_title, chanTitle(s.channel_id)].some((v) => v?.toLowerCase().includes(q)))
 
-  const channelTitle = (id: number) => channels?.find(c => c.id === id)?.title ?? `Channel ${id}`
+  const move = useCallback((to: number) => {
+    const i = Math.max(0, Math.min(to, visible.length - 1))
+    setActive(i)
+    rows.current[i]?.focus()
+  }, [visible.length])
 
-  const handleToggle = (sub: SubscriptionRead) => {
-    setToggleId(sub.id)
-    updateMut.mutate({ enabled: !sub.enabled })
-  }
-
-  const handleDelete = async () => {
-    if (deleteId) {
-      await deleteMut.mutateAsync()
-      setDeleteId(null)
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || !visible.length) return
+      if (e.key === 'j') move(active + 1)
+      else if (e.key === 'k') move(active - 1)
+      else if (e.key === 'e') navigate(`/subscriptions/${visible[Math.min(active, visible.length - 1)].id}`)
     }
-  }
-
-  const handleScan = (id: number) => {
-    setScanId(id)
-    scanMut.mutate()
-  }
-
-  const truncate = (text: string, len: number = 40) =>
-    text.length > len ? text.slice(0, len) + '...' : text
-
-  if (isLoading) return <div className="p-6">Loading...</div>
-
-  const visible = (subscriptions ?? []).filter(
-    (s) => !q || channelTitle(s.channel_id).toLowerCase().includes(q)
-  )
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [active, move, navigate, visible])
 
   return (
-    <motion.div
-      className="space-y-6 p-6"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-    >
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Subscriptions</h1>
-        <Button
-          onClick={() => navigate('/subscriptions/new')}
-          className="bg-primary hover:bg-primary/90"
-        >
-          Add Subscription
-        </Button>
-      </div>
+    <Page wide>
+      <PageHeader title="Subscriptions"
+        description={subs.length ? `${subs.filter((s) => s.enabled).length} of ${subs.length} active` : undefined}
+        actions={<Button onClick={() => navigate('/subscriptions/new')}><Plus className="mr-1.5 h-4 w-4" />New subscription</Button>} />
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search subscriptions…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-8"
-        />
-      </div>
-
-      {visible.length === 0 ? (
-        <EmptyState
-          title="No subscriptions yet"
-          message="Create your first subscription to start downloading media."
-          action={{
-            label: 'Add Subscription',
-            onClick: () => navigate('/subscriptions/new'),
-          }}
-        />
-      ) : (
-        <motion.div
-          className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          {visible.map((sub) => (
-            <motion.div
-              key={sub.id}
-              variants={itemVariants}
-              className="transition-all hover:shadow-lg hover:scale-[1.02]"
-            >
-              <Card className="flex flex-col h-full">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-base">{sub.name || sub.channel_title || channelTitle(sub.channel_id)}</CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {sub.name ? `${sub.channel_title || channelTitle(sub.channel_id)}` : null}
-                        {sub.name && (sub.topic_title || sub.topic_id) ? ' · ' : ''}
-                        {sub.topic_title || (sub.topic_id ? `Topic ${sub.topic_id}` : '')}
-                      </p>
-                    </div>
-                    <StatusBadge status={sub.enabled ? 'enabled' : 'disabled'} />
-                  </div>
-                </CardHeader>
-
-                <CardContent className="flex-1 space-y-3">
-                  {sub.filter_regex && (
-                    <p className="text-xs text-muted-foreground">
-                      Filter: {truncate(sub.filter_regex)}
-                    </p>
-                  )}
-
-                  <p className="text-xs text-muted-foreground">
-                    Last scan:{' '}
-                    {sub.updated_at
-                      ? new Date(sub.updated_at).toLocaleDateString()
-                      : 'Never'}
-                  </p>
-
-                  <div className="flex flex-wrap gap-2 pt-3">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant={sub.enabled ? 'secondary' : 'outline'}
-                          onClick={() => handleToggle(sub)}
-                          className="flex-1"
-                        >
-                          <Power className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {sub.enabled ? 'Disable' : 'Enable'}
-                      </TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          className="flex-1 bg-primary hover:bg-primary/90"
-                          onClick={() => navigate(`/subscriptions/${sub.id}`)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Edit</TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleScan(sub.id)}
-                          className="flex-1"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Scan</TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setDeleteId(sub.id)}
-                          className="flex-1"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Delete</TooltipContent>
-                    </Tooltip>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </motion.div>
+      {subs.length > 3 && (
+        <div className="relative mb-3 max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search subscriptions" aria-label="Search subscriptions" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+        </div>
       )}
 
-      <ConfirmDialog
-        isOpen={deleteId !== null}
-        title="Delete Subscription"
-        description="This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteId(null)}
-      />
-    </motion.div>
+      {isLoading ? (
+        <div className="space-y-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+      ) : visible.length === 0 ? (
+        <p className="rounded-lg border border-border bg-card py-10 text-center text-[13px] text-muted-foreground">
+          {subs.length ? 'No subscriptions match your search.' : 'No subscriptions yet. Create one to start downloading a channel.'}
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="h-9 border-b border-border text-left text-[12px] font-normal text-muted-foreground">
+                <th className="pl-4 pr-3 font-normal">Subscription</th>
+                <th className="hidden px-3 font-normal md:table-cell">Frequency</th>
+                <th className="hidden px-3 font-normal lg:table-cell">Filter</th>
+                <th className="hidden px-3 text-right font-normal lg:table-cell">Downloaded</th>
+                <th className="hidden px-3 text-right font-normal md:table-cell">Last synced</th>
+                <th className="hidden px-3 font-normal xl:table-cell">New, 24h</th>
+                <th className="px-3 font-normal">Enabled</th>
+                <th className="w-10" />
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((s, i) => {
+                const name = s.name || s.channel_title || chanTitle(s.channel_id)
+                const detail = [s.name ? s.channel_title || chanTitle(s.channel_id) : null, s.topic_title || (s.topic_id ? `Topic ${s.topic_id}` : null)].filter(Boolean).join(' / ')
+                return (
+                  <SubscriptionRow key={s.id} ref={(el) => { rows.current[i] = el }} sub={s} title={name} detail={detail}
+                    pulse={overview?.subscriptions.find((o) => o.id === s.id)} focused={i === active}
+                    onFocus={() => setActive(i)} onOpen={() => navigate(`/subscriptions/${s.id}`)}
+                    onDelete={() => setDeleteId(s.id)} onScan={() => setScanId(s.id)} />
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <DeleteConfirm id={deleteId} onDone={() => setDeleteId(null)} />
+      {scanId !== null && <ScanRunner key={scanId} id={scanId} onDone={() => setScanId(null)} />}
+    </Page>
   )
 }

@@ -1,34 +1,22 @@
-import { Palette, Check } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { useAccent } from '@/hooks/useAccent'
 import { ACCENTS } from '@/lib/accent'
-import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 
 export default function AccentPicker() {
   const { accent, setAccent } = useAccent()
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Accent color">
-          <Palette className="h-5 w-5" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-56">
-        <p className="mb-2 text-sm font-medium">Accent color</p>
-        <div className="grid grid-cols-2 gap-2">
-          {ACCENTS.map((a) => (
-            <button
-              key={a.name}
-              onClick={() => setAccent(a.name)}
-              className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
-            >
-              <span className="h-4 w-4 rounded-full" style={{ backgroundColor: a.swatch }} />
-              {a.label}
-              {accent === a.name && <Check className="ml-auto h-3 w-3" />}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+    <div role="radiogroup" aria-label="Accent color" className="flex flex-wrap gap-2">
+      {ACCENTS.map((a) => (
+        <button key={a.name} role="radio" aria-checked={accent === a.name} onClick={() => setAccent(a.name)}
+          className={cn('flex items-center gap-2 rounded-md border px-3 py-1.5 text-[13px] transition-colors',
+            accent === a.name ? 'border-brand bg-brand/10 font-medium text-brand' : 'border-border text-muted-foreground hover:text-foreground')}>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-border" style={{ backgroundColor: a.swatch }}>
+            {accent === a.name && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+          </span>
+          {a.label}
+        </button>
+      ))}
+    </div>
   )
 }

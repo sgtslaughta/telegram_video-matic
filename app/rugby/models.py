@@ -9,10 +9,10 @@ is fine: the dependency points plugin -> core, never core -> plugin.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.models import Base, TimestampMixin
+from app.db.models import UTCDateTime, Base, TimestampMixin
 
 
 class RugbyLeague(Base, TimestampMixin):
@@ -27,7 +27,7 @@ class RugbyLeague(Base, TimestampMixin):
     badge_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     tracked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_deep_fetch_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True)
+        UTCDateTime(), nullable=True)
 
 
 class RugbyTeam(Base, TimestampMixin):
@@ -54,7 +54,7 @@ class RugbyFixture(Base, TimestampMixin):
     league_id: Mapped[int] = mapped_column(ForeignKey("rugby_leagues.id"), nullable=False)
     season: Mapped[str] = mapped_column(String(16), nullable=False)
     round: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
-    date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    date: Mapped[Optional[datetime]] = mapped_column(UTCDateTime(), nullable=True)
     home_team_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     away_team_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     home_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -101,7 +101,7 @@ class RugbyWantedState(Base, TimestampMixin):
     fixture_id: Mapped[int] = mapped_column(
         ForeignKey("rugby_fixtures.id"), primary_key=True)
     last_searched_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True)
+        UTCDateTime(), nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     gave_up: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     dismissed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

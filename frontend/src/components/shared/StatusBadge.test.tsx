@@ -3,46 +3,25 @@ import { render, screen } from '@testing-library/react'
 import { StatusBadge } from './StatusBadge'
 import { MediaStatus, AccountStatus, JobStatus } from '@/lib/types'
 
+const tone = (label: string) => screen.getByText(label).closest('[data-tone]')?.getAttribute('data-tone')
+
 describe('StatusBadge', () => {
-  it('renders green badge for ready status', () => {
-    render(<StatusBadge status={MediaStatus.READY} />)
-    const badge = screen.getByText('Ready')
-    expect(badge.className).toContain('bg-green-100')
-    expect(badge.className).toContain('text-green-800')
+  it.each([
+    [MediaStatus.READY, 'Ready', 'ok'],
+    [MediaStatus.DOWNLOADING, 'Downloading', 'warn'],
+    [MediaStatus.FAILED, 'Failed', 'err'],
+    [AccountStatus.DISCONNECTED, 'Disconnected', 'muted'],
+    [AccountStatus.CONNECTED, 'Connected', 'ok'],
+    [JobStatus.PENDING, 'Pending', 'warn'],
+    [AccountStatus.WAITING_CODE, 'Waiting for code', 'warn'],
+    ['pruned', 'Deleted', 'muted'],
+  ])('%s → %s (%s)', (status, label, t) => {
+    render(<StatusBadge status={status} />)
+    expect(tone(label)).toBe(t)
   })
 
-  it('renders amber badge for downloading status', () => {
-    render(<StatusBadge status={MediaStatus.DOWNLOADING} />)
-    const badge = screen.getByText('Downloading')
-    expect(badge.className).toContain('bg-amber-100')
-    expect(badge.className).toContain('text-amber-800')
-  })
-
-  it('renders red badge for failed status', () => {
-    render(<StatusBadge status={MediaStatus.FAILED} />)
-    const badge = screen.getByText('Failed')
-    expect(badge.className).toContain('bg-red-100')
-    expect(badge.className).toContain('text-red-800')
-  })
-
-  it('renders gray badge for disconnected account status', () => {
-    render(<StatusBadge status={AccountStatus.DISCONNECTED} />)
-    const badge = screen.getByText('Disconnected')
-    expect(badge.className).toContain('bg-muted')
-    expect(badge.className).toContain('text-foreground')
-  })
-
-  it('renders green badge for connected account status', () => {
-    render(<StatusBadge status={AccountStatus.CONNECTED} />)
-    const badge = screen.getByText('Connected')
-    expect(badge.className).toContain('bg-green-100')
-    expect(badge.className).toContain('text-green-800')
-  })
-
-  it('renders amber badge for job pending status', () => {
-    render(<StatusBadge status={JobStatus.PENDING} />)
-    const badge = screen.getByText('Pending')
-    expect(badge.className).toContain('bg-amber-100')
-    expect(badge.className).toContain('text-amber-800')
+  it('falls back to the raw status, muted', () => {
+    render(<StatusBadge status="mystery" />)
+    expect(tone('mystery')).toBe('muted')
   })
 })

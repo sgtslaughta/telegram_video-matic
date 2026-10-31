@@ -39,7 +39,7 @@ export function RugbyMatchup({
           </span>
         )}
         {hasScore && (
-          <span className={`font-bold tabular-nums ${size === 'lg' ? 'text-xl' : 'text-sm'} ${win ? 'text-primary' : 'text-muted-foreground'}`}>
+          <span className={`font-bold tabular-nums ${size === 'lg' ? 'text-xl' : 'text-sm'} ${win ? 'text-foreground' : 'text-muted-foreground'}`}>
             {score}
           </span>
         )}

@@ -258,6 +258,14 @@ class SyncEngine:
                              message="Telegram reconnected")
         return True
 
+    async def _announce(self, job_id: int, media_id: int, status: str) -> None:
+        """Tell live clients a download finished or finally failed (toasts)."""
+        try:
+            await self.broadcast({"kind": "download_progress", "job_id": job_id, "media_id": media_id,
+                                  "status": status, "progress": 1 if status == "done" else 0})
+        except Exception:  # nosec B110 — UI notification is best-effort
+            pass
+
     def request_cancel(self, media_id: int) -> None:
         """Signal an in-flight download to abort and discard its partial."""
         self._control[media_id] = "cancel"
@@ -276,6 +284,13 @@ class SyncEngine:
         chan_dto, topic_dto = await self._sub_dtos(session, sub)
         queued = skipped = 0
         async for media_dto in self.tg_service.iter_media(chan_dto, topic_dto, since_msg_id=last_msg_id):
+            # A one-off Browse download of this message already exists: adopt it
+            # into the subscription, never re-classify (would re-queue the file).
+            adhoc = await media.get_by_tg_msg_id(session, sub.channel_id, media_dto.tg_msg_id)
+            if adhoc is not None and adhoc.subscription_id is None:
+                adhoc.subscription_id, adhoc.topic_id = sub.id, sub.topic_id
+                await session.commit()
+                continue
             item = await media.upsert_from_tg_dto(session, media_dto, sub.id, sub.channel_id, sub.topic_id)
             status, _reason = classify(sub, item)
             item.skip_reason = _reason if status == "skip" else None
@@ -297,6 +312,7 @@ class SyncEngine:
                              message=f"{label}: queued {queued} new"
                                      + (f", skipped {skipped} (filtered)" if skipped else ""))
         await session.commit()
+        return queued
 
     async def _poller_once(self, session: AsyncSession) -> None:
         """One poller tick: poll each due subscription per its check_frequency.
@@ -304,7 +320,13 @@ class SyncEngine:
         realtime subs are skipped here (handled by live events). Each sub is
         polled only when its interval has elapsed since last_checked_at.
         """
+        from app.sync import pulse
         if not await self._ensure_connected():
+            try:
+                for sub in await subscriptions.list(session, enabled_only=True):
+                    await pulse.record(session, sub.id, "down")
+            except Exception as e:
+                log(f"Pulse record failed: {e}", "WARN")
             return
         try:
             subs = await subscriptions.list(session, enabled_only=True)
@@ -314,14 +336,16 @@ class SyncEngine:
                 if not _sub_due(sub, now):
                     continue
                 try:
-                    await self._poll_one_sub(session, sub)
+                    queued = await self._poll_one_sub(session, sub)
                     sub.last_checked_at = now
                     await session.commit()
+                    await pulse.record(session, sub.id, "ok", queued=queued or 0)
                 except Exception as e:
                     ok = False
                     await events.add(session, level=EventLevel.ERROR, kind="sync",
                                      subscription_id=sub.id, message=f"Sync error: {e}")
                     await session.commit()
+                    await pulse.record(session, sub.id, "error")
             if ok:
                 self.last_ok_poll_at = now
         except Exception as e:
@@ -591,6 +615,7 @@ class SyncEngine:
                                     subscription_id=item.subscription_id, media_id=item.id,
                                     message=f"Downloaded {item.file_name or target_full.name}",
                                 )
+                                await self._announce(job.id, item.id, "done")
 
                                 # Dispatch plugin hook
                                 try:
@@ -650,6 +675,7 @@ class SyncEngine:
                                             media_id=item.id,
                                             message=f"Download failed after {max_attempts} attempts: {e}",
                                         )
+                                        await self._announce(job.id, item.id, "error")
                                     else:
                                         # Non-final failure: set media back to PENDING for next cycle
                                         # ponytail: retries deferred to next poller cycle, backoff gated by elapsed-time check
@@ -792,6 +818,9 @@ class SyncEngine:
                 kind="drift",
                 message=f"Gap reconcile: queued {gap_count} new media item(s)",
             )
+
+        from app.sync import pulse
+        await pulse.prune(session)
 
         # 3. Retention (age from content date, keep pins, mass-delete cap).
         from app.sync import retention

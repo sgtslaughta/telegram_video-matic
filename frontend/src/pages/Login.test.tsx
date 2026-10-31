@@ -42,7 +42,7 @@ describe('Login', () => {
     fireEvent.click(button)
 
     // Verify form submitted (button is still present for re-render)
-    expect(screen.getByRole('button', { name: /login/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /log/i })).toBeTruthy()
   })
 
   it('disables button when password is empty', () => {

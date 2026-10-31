@@ -3,7 +3,7 @@ import type * as T from './types'
 const API_BASE = '/api'
 
 // Typed fetch wrapper
-async function fetchAPI<R>(
+export async function fetchAPI<R>(
   endpoint: string,
   options?: RequestInit & { params?: Record<string, string | number | boolean> }
 ): Promise<R> {

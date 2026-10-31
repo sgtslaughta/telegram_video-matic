@@ -132,6 +132,7 @@ export interface SubscriptionCreateRequest {
 }
 
 export interface SubscriptionUpdateRequest {
+  keep?: boolean | null;
   name?: string | null;
   enabled?: boolean | null;
   mode?: string | null;
@@ -154,6 +155,9 @@ export interface SubscriptionUpdateRequest {
 
 export interface SubscriptionRead {
   id: number;
+  keep?: boolean | null;
+  downloaded_count?: number;
+  downloaded_bytes?: number;
   name?: string | null;
   channel_id: number;
   channel_title?: string | null;
@@ -186,6 +190,9 @@ export interface SubscriptionRead {
 
 export interface MediaItemRead {
   id: number;
+  content_date?: string | null;
+  keep?: boolean | null;
+  skip_reason?: string | null;
   channel_id: number;
   topic_id?: number | null;
   subscription_id?: number | null;
@@ -262,7 +269,9 @@ export interface EventRead {
   subscription_id?: number | null;
   media_id?: number | null;
   message: string;
+  count?: number | null;
   created_at: string; // ISO datetime
+  updated_at?: string | null;
 }
 
 // ============================================================================

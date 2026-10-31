@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from app.db.models import MediaItem, MediaStatus, Subscription
 
 if TYPE_CHECKING:
@@ -100,7 +100,7 @@ async def claim_pending(
                     Subscription.enabled.is_(True),
                 ),
             )
-        ).limit(limit)
+        ).order_by(func.coalesce(MediaItem.priority, 0).desc(), MediaItem.id).limit(limit)
     )
     items = result.scalars().all()
 
@@ -122,13 +122,16 @@ async def get_max_tg_msg_id(
     channel_id: int,
     topic_id: int | None,
 ) -> int | None:
-    """Get maximum tg_msg_id for a channel+topic to use as since_msg_id."""
-    from sqlalchemy import func
+    """Get maximum tg_msg_id for a channel+topic to use as since_msg_id.
+
+    Ad-hoc items (Browse downloads, no subscription) are excluded: a one-off
+    grab of a newer message must not make the poller skip posts before it."""
     result = await session.execute(
         select(func.max(MediaItem.tg_msg_id)).where(
             and_(
                 MediaItem.channel_id == channel_id,
                 MediaItem.topic_id == topic_id,
+                MediaItem.subscription_id.is_not(None),
             )
         )
     )

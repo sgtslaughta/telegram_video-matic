@@ -8,6 +8,9 @@ import { tgKeys } from './useTgStatus'
 import { mediaKeys } from './useMedia'
 import { eventKeys } from './useEvents'
 import { toast } from 'sonner'
+import { burstToast } from '@/lib/toast'
+
+const lastStatus = new Map<number, string>()
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ws`
 
@@ -64,6 +67,16 @@ export function useWebSocket() {
           updated.push({ id: msg.job_id, media_id: msg.media_id, attempt: 1, error: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...patch } as any)
         }
         qc.setQueryData(downloadKeys.active(), updated)
+        // Toast only on transitions that matter; bursts collapse into one toast.
+        if (lastStatus.get(msg.media_id) !== msg.status) {
+          lastStatus.set(msg.media_id, msg.status)
+          if (msg.status === 'done') {
+            burstToast('dl-done', () => 'Download finished', (n) => `${n} downloads finished`, '')
+            qc.invalidateQueries({ queryKey: ['overview'] })
+          } else if (msg.status === 'error') {
+            toast.error('Download failed', { description: 'It will retry automatically. See Downloads for details.' })
+          }
+        }
       } else if (msg.kind === 'media_status') {
         // Update all media lists containing this media_id
         qc.invalidateQueries({ queryKey: mediaKeys.all })
@@ -77,7 +90,8 @@ export function useWebSocket() {
             total: current.total + 1,
           })
         }
-        toast[msg.event.level === 'error' ? 'error' : msg.event.level === 'success' ? 'success' : 'info'](msg.event.message)
+        // Only errors interrupt; everything else lives in Activity.
+        if (msg.event.level === 'error') toast.error(msg.event.message)
       } else if (msg.kind === 'tg_status') {
         qc.setQueryData(tgKeys.status(), msg)
       }

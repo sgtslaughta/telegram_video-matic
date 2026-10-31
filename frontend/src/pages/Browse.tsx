@@ -1,37 +1,27 @@
 import { useMemo, useState } from 'react'
-import { usePersistedState } from '@/hooks/usePersistedState'
-import { useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { toast } from 'sonner'
-import { Download, LayoutGrid, List, Search, MapPin } from 'lucide-react'
-import { useChannels, useTopics, useBrowse } from '@/hooks/useChannelsTopics'
-import { useDownloadMedia } from '@/hooks/useMedia'
-import { useRugbyEnrichMessages } from '@/hooks/useRugby'
-import { MediaThumb } from '@/components/shared/MediaThumb'
-import { StatusBadge } from '@/components/shared/StatusBadge'
+import { LayoutGrid, List, Search } from 'lucide-react'
+import { Page, PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Combobox } from '@/components/ui/combobox'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import MediaDrawer from '@/components/MediaDrawer'
-import { RugbyTag } from '@/components/shared/RugbyTag'
-import { RugbyMatchup } from '@/components/shared/RugbyMatchup'
-import * as api from '@/lib/api'
-
-function formatBytes(n?: number | null): string {
-  if (!n || n <= 0) return '—'
-  const u = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), u.length - 1)
-  return `${(n / 1024 ** i).toFixed(1)} ${u[i]}`
-}
+import type { BrowseMsg } from '@/components/media/BrowseItem'
+import { BrowseCard, BrowseRow, BrowseSkeleton } from '@/components/media/BrowseItem'
+import { useItemDownload } from '@/components/media/useItemDownload'
+import { usePersistedState } from '@/hooks/usePersistedState'
+import { useChannels, useTopics, useBrowse } from '@/hooks/useChannelsTopics'
+import { useRugbyEnrichMessages } from '@/hooks/useRugby'
+import { useListNav } from '@/hooks/useMediaTools'
 
 type SortKey = 'date' | 'size' | 'name'
 type ViewMode = 'cards' | 'list'
 
 const STATUSES = ['all', 'available', 'queued', 'downloading', 'downloaded', 'failed', 'skipped', 'pending']
+const SORTS = [
+  { value: 'date', label: 'Newest first' }, { value: 'size', label: 'Largest first' }, { value: 'name', label: 'Name (A–Z)' },
+]
 
 export default function Browse() {
   const [params] = useSearchParams()
@@ -43,7 +33,7 @@ export default function Browse() {
   const [sortKey, setSortKey] = usePersistedState<SortKey>('browse.sort', 'date')
   const [statusFilter, setStatusFilter] = usePersistedState('browse.status', 'all')
   const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState<any | null>(null)
+  const [selected, setSelected] = useState<BrowseMsg | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const channels = useChannels()
@@ -51,117 +41,89 @@ export default function Browse() {
   const browse = useBrowse(channelId, topicId)
   const drawerDl = useItemDownload(selected ?? { tg_msg_id: 0 }, channelId ?? 0)
 
-  const openItem = (item: any) => { setSelected(item); setDrawerOpen(true) }
+  const openItem = (item: BrowseMsg) => { setSelected(item); setDrawerOpen(true) }
 
-  const allItems = useMemo(
-    () => browse.data?.pages.flatMap((p: any) => p.items) ?? [],
-    [browse.data]
-  )
+  const allItems = useMemo(() => browse.data?.pages.flatMap((p: { items: BrowseMsg[] }) => p.items) ?? ([] as BrowseMsg[]), [browse.data])
   // Enrich the live items on screen — works for un-cached videos in any topic.
   const enrichment = useRugbyEnrichMessages(allItems)
 
   const items = useMemo(() => {
     const q = (search || topbarQ).toLowerCase()
-    let list = allItems.filter((m: any) => {
+    const list = allItems.filter((m: BrowseMsg) => {
       if (statusFilter !== 'all' && m.status !== statusFilter) return false
-      if (q && !(`${m.caption ?? ''} ${m.file_name ?? ''}`.toLowerCase().includes(q))) return false
-      return true
+      return !q || `${m.caption ?? ''} ${m.file_name ?? ''}`.toLowerCase().includes(q)
     })
-    list = [...list].sort((a: any, b: any) => {
+    return list.sort((a: BrowseMsg, b: BrowseMsg) => {
       if (sortKey === 'size') return (b.size_bytes ?? 0) - (a.size_bytes ?? 0)
       if (sortKey === 'name') return (a.file_name ?? '').localeCompare(b.file_name ?? '')
       return new Date(b.date_posted).getTime() - new Date(a.date_posted).getTime()
     })
-    return list
   }, [allItems, statusFilter, search, topbarQ, sortKey])
 
+  const { active, searchRef } = useListNav(items.length, (i) => openItem(items[i]))
+  const rugbyOf = (i: BrowseMsg) => enrichment.data?.[String(i.tg_msg_id)]
+
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Browse Media</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Live media from your channels — download or see what a subscription captures</p>
-      </div>
-
-      <Card>
-        <CardContent className="grid gap-4 pt-6 md:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
-            <Label>Channel</Label>
-            <Combobox
-              value={channelId?.toString() || ''}
-              onChange={(v) => { setChannelId(v ? parseInt(v) : null); setTopicId(null) }}
-              disabled={channels.isLoading}
-              placeholder="Select a channel…"
-              searchPlaceholder="Search channels…"
-              options={(channels.data ?? []).map((ch) => ({ value: ch.id.toString(), label: ch.title }))}
-            />
+    <Page wide>
+      <PageHeader
+        title="Browse"
+        description="Live media from your channels. Download a video or check what a subscription would capture."
+        actions={
+          <div className="flex items-center gap-1">
+            <Button variant={view === 'cards' ? 'secondary' : 'ghost'} size="icon" onClick={() => setView('cards')} aria-label="Card view"><LayoutGrid className="h-4 w-4" /></Button>
+            <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setView('list')} aria-label="List view"><List className="h-4 w-4" /></Button>
           </div>
+        }
+      />
 
-          <div className="space-y-2">
-            <Label>Topic</Label>
-            <Combobox
-              value={topicId?.toString() || 'all'}
-              onChange={(v) => setTopicId(v === 'all' ? null : parseInt(v))}
-              disabled={!channelId || topics.isLoading}
-              placeholder="All topics"
-              searchPlaceholder="Search topics…"
-              options={[{ value: 'all', label: 'All topics' }, ...(topics.data ?? []).map((t) => ({ value: t.id.toString(), label: t.title }))]}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Status</Label>
-            <Combobox
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={STATUSES.map((s) => ({ value: s, label: s === 'all' ? 'All statuses' : s }))}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Sort by</Label>
-            <Combobox
-              value={sortKey}
-              onChange={(v) => setSortKey(v as SortKey)}
-              options={[
-                { value: 'date', label: 'Newest first' },
-                { value: 'size', label: 'Largest first' },
-                { value: 'name', label: 'Name (A–Z)' },
-              ]}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search title / filename…" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
-        </div>
-        <div className="ml-auto flex items-center gap-1">
-          <span className="mr-2 text-sm text-muted-foreground">{items.length} items</span>
-          <Button variant={view === 'cards' ? 'secondary' : 'ghost'} size="icon" onClick={() => setView('cards')} aria-label="Card view"><LayoutGrid className="h-4 w-4" /></Button>
-          <Button variant={view === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setView('list')} aria-label="List view"><List className="h-4 w-4" /></Button>
+      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_160px_160px_minmax(0,1.2fr)]">
+        <Combobox
+          value={channelId?.toString() || ''}
+          onChange={(v) => { setChannelId(v ? parseInt(v) : null); setTopicId(null) }}
+          disabled={channels.isLoading}
+          placeholder="Select a channel…"
+          searchPlaceholder="Search channels…"
+          options={(channels.data ?? []).map((ch) => ({ value: ch.id.toString(), label: ch.title }))}
+        />
+        <Combobox
+          value={topicId?.toString() || 'all'}
+          onChange={(v) => setTopicId(v === 'all' ? null : parseInt(v))}
+          disabled={!channelId || topics.isLoading}
+          placeholder="All topics"
+          searchPlaceholder="Search topics…"
+          options={[{ value: 'all', label: 'All topics' }, ...(topics.data ?? []).map((t) => ({ value: t.id.toString(), label: t.title }))]}
+        />
+        <Combobox value={statusFilter} onChange={setStatusFilter} options={STATUSES.map((s) => ({ value: s, label: s === 'all' ? 'All statuses' : s[0].toUpperCase() + s.slice(1) }))} />
+        <Combobox value={sortKey} onChange={(v) => setSortKey(v as SortKey)} options={SORTS} />
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input ref={searchRef} aria-label="Search videos" placeholder="Search title or file name (/)" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
         </div>
       </div>
 
       {!channelId ? (
-        <EmptyState title="Select a channel" message="Choose a channel above to browse its media" />
+        <EmptyState title="Select a channel" message="Pick a channel above to browse its media." />
       ) : browse.isLoading ? (
-        <div className="py-12 text-center text-muted-foreground">Loading media from Telegram…</div>
+        <BrowseSkeleton view={view} />
       ) : items.length === 0 ? (
-        <EmptyState title="No media found" message="Try a different channel, topic, status, or search" />
+        <EmptyState title="No media found" message="Try a different channel, topic, status or search." />
       ) : view === 'cards' ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((item: any) => <MediaCard key={item.tg_msg_id} item={item} channelId={channelId} rugby={enrichment.data?.[String(item.tg_msg_id)]} onOpen={openItem} />)}
+        <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {items.map((item: BrowseMsg, i: number) => (
+            <BrowseCard key={item.tg_msg_id} item={item} index={i} active={i === active} channelId={channelId} rugby={rugbyOf(item)} onOpen={openItem} />
+          ))}
         </div>
       ) : (
-        <Card><div className="divide-y divide-border">
-          {items.map((item: any) => <MediaRow key={item.tg_msg_id} item={item} channelId={channelId} rugby={enrichment.data?.[String(item.tg_msg_id)]} onOpen={openItem} />)}
-        </div></Card>
+        <div className="divide-y divide-border rounded-lg border bg-card">
+          {items.map((item: BrowseMsg, i: number) => (
+            <BrowseRow key={item.tg_msg_id} item={item} index={i} active={i === active} channelId={channelId} rugby={rugbyOf(item)} onOpen={openItem} />
+          ))}
+        </div>
       )}
 
       {channelId && browse.hasNextPage && (
-        <div className="flex justify-center pt-2">
+        <div className="flex flex-col items-center gap-1 pt-5">
+          <span className="text-[12px] text-muted-foreground">{items.length} shown</span>
           <Button variant="outline" onClick={() => browse.fetchNextPage()} disabled={browse.isFetchingNextPage}>
             {browse.isFetchingNextPage ? 'Loading…' : 'Load more'}
           </Button>
@@ -173,107 +135,10 @@ export default function Browse() {
         channelId={channelId}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
-        onDownload={drawerDl.onDownload}
+        onDownload={() => void drawerDl.onDownload()}
         downloadPending={drawerDl.pending}
-        rugby={selected ? enrichment.data?.[String(selected.tg_msg_id)] : null}
+        rugby={selected ? rugbyOf(selected) : null}
       />
-    </div>
-  )
-}
-
-function useItemDownload(item: any, channelId: number) {
-  const qc = useQueryClient()
-  const dl = useDownloadMedia(item.media_id ?? 0)
-  const [adhocPending, setAdhocPending] = useState(false)
-  const onDownload = async () => {
-    if (item.media_id) { dl.mutate(); return }
-    try {
-      setAdhocPending(true)
-      await api.channels.browseDownload(channelId, item.tg_msg_id)
-      toast.success('Queued for download')
-      qc.invalidateQueries({ queryKey: ['browse'] })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Download failed')
-    } finally {
-      setAdhocPending(false)
-    }
-  }
-  return { onDownload, pending: dl.isPending || adhocPending }
-}
-
-function MediaCard({ item, channelId, rugby, onOpen }: { item: any; channelId: number; rugby?: any; onOpen: (i: any) => void }) {
-  const { onDownload, pending } = useItemDownload(item, channelId)
-  const thumb = (
-    <MediaThumb src={api.channels.browseThumbUrl(channelId, item.tg_msg_id)} alt={item.caption || 'Media'} size="md" />
-  )
-  return (
-    // Whole card is one click target — fixes the multi-click-to-open issue.
-    <Card
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(item)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(item) } }}
-      className="flex h-full cursor-pointer flex-col overflow-hidden transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {rugby ? (
-        // Rugby: thumb shares the top row with the team matchup (uses full width).
-        <div className="flex items-stretch gap-2 border-b bg-muted/30 p-2">
-          <div className="w-1/3 shrink-0 overflow-hidden rounded">{thumb}</div>
-          <div className="flex flex-1 items-center">
-            <RugbyMatchup rugby={rugby} size="sm" />
-          </div>
-        </div>
-      ) : (
-        <div className="w-full overflow-hidden">{thumb}</div>
-      )}
-      <CardContent className="flex flex-1 flex-col gap-2 p-3">
-        <p className="line-clamp-2 text-xs text-foreground">{item.caption || item.file_name || 'Untitled'}</p>
-        {item.subscription_label && (
-          <p className="truncate text-[10px] text-muted-foreground">↳ {item.subscription_label}</p>
-        )}
-        {rugby && (
-          <div className="flex flex-wrap items-center gap-1 text-[10px]">
-            {rugby.round && <span className="rounded bg-primary/10 px-1 font-medium text-primary">R{rugby.round}</span>}
-            {rugby.venue && (
-              <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
-                <MapPin className="h-2.5 w-2.5 shrink-0" /><span className="truncate">{rugby.venue}</span>
-              </span>
-            )}
-          </div>
-        )}
-        <div className="mt-auto flex items-center justify-between">
-          <StatusBadge status={item.status} />
-          <span className="text-xs text-muted-foreground">{formatBytes(item.size_bytes)}</span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="sm" onClick={(e) => { e.stopPropagation(); onDownload() }} disabled={pending}><Download className="h-3 w-3" /></Button>
-            </TooltipTrigger>
-            <TooltipContent>Download</TooltipContent>
-          </Tooltip>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function MediaRow({ item, channelId, rugby, onOpen }: { item: any; channelId: number; rugby?: any; onOpen: (i: any) => void }) {
-  const { onDownload, pending } = useItemDownload(item, channelId)
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50">
-      <button onClick={() => onOpen(item)} className="h-10 w-16 shrink-0 overflow-hidden rounded">
-        <MediaThumb src={api.channels.browseThumbUrl(channelId, item.tg_msg_id)} alt={item.caption || 'Media'} size="sm" />
-      </button>
-      <button onClick={() => onOpen(item)} className="min-w-0 flex-1 text-left">
-        <p className="truncate text-sm hover:underline">{item.caption || item.file_name || 'Untitled'}</p>
-        <p className="flex items-center gap-1 text-xs text-muted-foreground">
-          <span className="shrink-0">{new Date(item.date_posted).toLocaleDateString()}</span>
-          {item.subscription_label ? <span className="shrink-0">· ↳ {item.subscription_label}</span> : null}
-          {rugby ? <RugbyTag rugby={rugby} className="min-w-0" /> : null}
-        </p>
-      </button>
-      <span className="hidden w-20 text-right text-xs text-muted-foreground sm:inline">{formatBytes(item.size_bytes)}</span>
-      <StatusBadge status={item.status} />
-      <Button size="sm" variant="ghost" onClick={onDownload} disabled={pending} aria-label="Download"><Download className="h-4 w-4" /></Button>
-    </div>
+    </Page>
   )
 }
