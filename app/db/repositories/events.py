@@ -10,6 +10,10 @@ _COLLAPSE_LOOKBACK = 20
 _COLLAPSE_WINDOW = timedelta(hours=1)
 _COLLAPSE_LEVELS = {"warning", "error"}
 
+# Sync callbacks fired once per NEW event (collapsed repeats don't fire).
+# Used by the notifier; keep listeners cheap and non-blocking.
+listeners: list = []
+
 
 async def add(
     session: AsyncSession,
@@ -46,6 +50,11 @@ async def add(
     )
     session.add(event)
     await session.commit()
+    for listener in listeners:
+        try:
+            listener(event)
+        except Exception:  # nosec B110 — a broken listener must never break logging
+            pass
     return event
 
 

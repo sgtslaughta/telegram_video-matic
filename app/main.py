@@ -1,3 +1,4 @@
+import asyncio
 import pathlib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
@@ -161,12 +162,33 @@ async def lifespan(app: FastAPI):
     # Store session factory on app.state for get_db dependency
     app.state.async_session = session_factory
 
+    # Notifications (Apprise) + debounced Jellyfin refresh, fed by new events.
+    notify_stop = asyncio.Event()
+    notify_task = None
+    try:
+        from app.db.repositories import events as events_repo
+        from app.notify.jellyfin import JellyfinRefresher
+        from app.notify.notifier import Notifier, run_loop
+        notifier, jellyfin = Notifier(session_factory), JellyfinRefresher()
+        await notifier.load()
+        await jellyfin.load(session_factory)
+        events_repo.listeners[:] = [notifier.on_event, jellyfin.on_event]
+        app.state.notifier, app.state.jellyfin = notifier, jellyfin
+        notify_task = asyncio.create_task(
+            run_loop(app.state, notifier, jellyfin, settings.media_root, notify_stop))
+        log("Notifier started", "SUCCESS")
+    except Exception as e:
+        log(f"Notifier init failed: {e}", "ERROR")
+
     log("App startup complete", "SUCCESS")
 
     yield
 
     # Shutdown
     log("Shutting down...", "INFO")
+    notify_stop.set()
+    if notify_task:
+        notify_task.cancel()
     try:
         if hasattr(app.state, "engine") and app.state.engine:
             await app.state.engine.stop()
@@ -204,6 +226,7 @@ def create_app() -> FastAPI:
     app.include_router(routers.settings.router)
     app.include_router(routers.plugins.router)
     app.include_router(routers.fs.router)
+    app.include_router(routers.notifications.router)
 
     # Build the plugin host HERE (not in lifespan) so plugin-contributed routers
     # can be mounted at startup — FastAPI can't add routes after startup. The

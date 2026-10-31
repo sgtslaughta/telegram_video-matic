@@ -459,3 +459,43 @@ export interface RugbyJobReport {
   files?: string[]
   [count: string]: unknown
 }
+
+// Notifications
+export interface NotificationTarget {
+  id: string
+  name: string
+  url_masked: string
+  triggers: string[]
+}
+
+export interface NotificationTargetInput {
+  id?: string
+  name: string
+  url?: string
+  triggers: string[]
+}
+
+export interface NotificationOptions {
+  quiet: { enabled: boolean; start: number; end: number }
+  disk_low_pct: number
+  public_url: string
+}
+
+export interface NotificationJellyfin {
+  url: string
+  library_id: string
+  api_key_set: boolean
+}
+
+export interface NotificationsRead {
+  triggers: string[]
+  targets: NotificationTarget[]
+  options: NotificationOptions
+  jellyfin: NotificationJellyfin
+}
+
+export interface NotificationJellyfinInput {
+  url: string
+  library_id: string
+  api_key?: string
+}
