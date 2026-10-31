@@ -11,6 +11,7 @@ from . import (
     settings,
     plugins,
     fs,
+    notifications,
 )
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "settings",
     "plugins",
     "fs",
+    "notifications",
 ]

@@ -12,11 +12,15 @@ router = APIRouter(
 )
 
 
+# Owned by dedicated routers (hold encrypted secrets); hide from the generic list.
+_PRIVATE = {"notify_targets", "notify_options", "jellyfin", "last_visit_at"}
+
+
 @router.get("")
 async def get_settings(db: AsyncSession = Depends(get_db)):
     """GET /api/settings — list all settings."""
     items = await settings.list(db)
-    return [SettingRead.from_orm(s) for s in items]
+    return [SettingRead.from_orm(s) for s in items if s.key not in _PRIVATE]
 
 
 @router.patch("")
@@ -30,4 +34,4 @@ async def patch_settings(
         await settings.set(db, key, str(value))
 
     items = await settings.list(db)
-    return [SettingRead.from_orm(s) for s in items]
+    return [SettingRead.from_orm(s) for s in items if s.key not in _PRIVATE]
