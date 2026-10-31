@@ -60,7 +60,7 @@ export const SubscriptionRow = forwardRef<HTMLTableRowElement, Props>(function S
       <td className="hidden whitespace-nowrap px-3 text-muted-foreground md:table-cell">{FREQ[sub.check_frequency ?? ''] ?? sub.check_frequency ?? ''}</td>
       <td className="hidden max-w-[200px] truncate px-3 text-muted-foreground lg:table-cell" title={sub.filter_regex ?? undefined}>{filterSummary(sub)}</td>
       <td className="hidden whitespace-nowrap px-3 text-right tabular-nums text-muted-foreground lg:table-cell">
-        {sub.downloaded_count != null ? `${sub.downloaded_count} · ${formatBytes(sub.downloaded_bytes)}` : ''}
+        {sub.downloaded_count != null ? `${sub.downloaded_count} video${sub.downloaded_count === 1 ? '' : 's'}, ${formatBytes(sub.downloaded_bytes)}` : ''}
       </td>
       <td className="hidden whitespace-nowrap px-3 text-right text-[12px] text-muted-foreground md:table-cell" title={absTime(checked)}>
         {sub.enabled ? relTime(checked) : ''}

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatBytes } from '@/lib/format'
 import type { Storage, StorageItem } from '@/hooks/useStorage'
@@ -9,7 +10,11 @@ const REASON: Record<StorageItem['reason'], string> = {
   disk: 'Disk is nearly full',
 }
 
+const FIRST = 20
+
 export function PreviewTable({ preview }: { preview: Storage['preview'] }) {
+  const [all, setAll] = useState(false)
+  const rows = all ? preview.items : preview.items.slice(0, FIRST)
   return (
     <Panel id="cleanup-preview" title={`Deleting in the next ${preview.days} days`}
       aside={preview.count ? `${preview.count} file${preview.count === 1 ? '' : 's'}, ${formatBytes(preview.bytes)}` : undefined}>
@@ -21,7 +26,7 @@ export function PreviewTable({ preview }: { preview: Storage['preview'] }) {
               <th className={`${TH} text-right`}>Size</th>
             </tr></thead>
             <tbody className="divide-y divide-border">
-              {preview.items.map((i) => (
+              {rows.map((i) => (
                 <tr key={i.id} className="transition-colors hover:bg-accent/60">
                   <td className={`${TD} max-w-[320px]`}>
                     <Link to={`/media/${i.id}`} className="block truncate font-medium hover:underline" title={i.file_name}>{i.file_name}</Link>
@@ -33,6 +38,12 @@ export function PreviewTable({ preview }: { preview: Storage['preview'] }) {
               ))}
             </tbody>
           </table>
+          {preview.items.length > FIRST && (
+            <button onClick={() => setAll((v) => !v)}
+              className="w-full border-t border-border py-2.5 text-[13px] font-medium text-brand transition-colors hover:bg-accent/60">
+              {all ? 'Show fewer' : `Show all ${preview.items.length} files`}
+            </button>
+          )}
         </div>
       ) : (
         <p className="px-4 py-6 text-[13px] text-muted-foreground">Nothing is due for cleanup this week.</p>
